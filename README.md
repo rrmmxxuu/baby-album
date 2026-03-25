@@ -10,10 +10,11 @@ Open source baby photo platform for self-hosted families. The current test build
 ## Repository layout
 
 - `apps/web`: Next.js mobile-first PWA shell for timeline, uploads, onboarding, members, and settings
-- `services/api`: Go control plane API with PostgreSQL persistence, auth sessions, invite flows, and blob-cache-backed upload ingestion
+- `services/api`: Go control plane API with PostgreSQL persistence, auth sessions, invite flows, blob-cache-backed upload ingestion, health checks, and configurable CORS allow-lists
 - `services/agent`: Go NAS connector that registers, heartbeats, polls jobs, downloads original blobs from the API, generates previews for supported images, and stores originals locally
 - `docs/architecture.md`: architecture and data-flow notes
 - `docs/test-deploy.md`: single-VM test deployment guide
+- `docs/vps-deploy.md`: Ubuntu + Docker + Nginx Proxy Manager + Cloudflare guide
 
 ## Quick start
 
@@ -30,6 +31,7 @@ Open source baby photo platform for self-hosted families. The current test build
 cd E:\qinbaobao\services\api
 $env:DATABASE_URL='postgres://baby_album:baby_album@localhost:5432/baby_album?sslmode=disable'
 $env:CACHE_ROOT='E:\qinbaobao\tmp\cache'
+$env:ALLOWED_ORIGINS='http://localhost:3000'
 & 'C:\Program Files\Go\bin\go.exe' run .\cmd\server
 
 # terminal 2
@@ -48,11 +50,12 @@ npm.cmd run dev
 The repository already supports a simple single-VM test deployment:
 
 1. Copy `.env.example` to `.env`
-2. Run `docker compose up --build -d`
-3. Expose ports `3000` and `8080`, or place them behind a reverse proxy
-4. Pair the NAS agent to the public API URL when you move the agent off the same host
+2. Set `NEXT_PUBLIC_API_BASE_URL` to your public API domain
+3. Set `ALLOWED_ORIGINS` to your public web domain
+4. Run `docker compose up --build -d`
+5. Put `web:3000` and `api:8080` behind your reverse proxy
 
-For a fuller production-style checklist, use [docs/test-deploy.md](docs/test-deploy.md).
+For a fuller VPS guide built around Nginx Proxy Manager and Cloudflare, use [docs/vps-deploy.md](docs/vps-deploy.md).
 
 ## Upload and processing flow
 

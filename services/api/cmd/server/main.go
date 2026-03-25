@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 
 	"babyalbum/api/internal/blob"
 	"babyalbum/api/internal/httpapi"
@@ -27,8 +28,9 @@ func main() {
 			maxUploadBytes = int64(parsed) << 20
 		}
 	}
-	server := httpapi.NewServer(repository, blob.New(cacheRoot), maxUploadBytes)
-	log.Printf("baby album api listening on %s cache=%s max_upload_mb=%d", addr, cacheRoot, maxUploadBytes>>20)
+	allowedOrigins := parseAllowedOrigins(os.Getenv("ALLOWED_ORIGINS"))
+	server := httpapi.NewServer(repository, blob.New(cacheRoot), maxUploadBytes, allowedOrigins)
+	log.Printf("baby album api listening on %s cache=%s max_upload_mb=%d allowed_origins=%s", addr, cacheRoot, maxUploadBytes>>20, strings.Join(allowedOrigins, ","))
 	if err := server.ListenAndServe(addr); err != nil {
 		log.Fatal(err)
 	}
@@ -50,4 +52,21 @@ func mustLoadRepository() (store.Repository, func()) {
 			log.Printf("close postgres store: %v", err)
 		}
 	}
+}
+
+func parseAllowedOrigins(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return []string{"http://localhost:3000", "http://127.0.0.1:3000"}
+	}
+	parts := strings.Split(raw, ",")
+	origins := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if value := strings.TrimSpace(part); value != "" {
+			origins = append(origins, value)
+		}
+	}
+	if len(origins) == 0 {
+		return []string{"http://localhost:3000", "http://127.0.0.1:3000"}
+	}
+	return origins
 }

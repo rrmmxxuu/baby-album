@@ -22,6 +22,7 @@ services:
       DATABASE_URL: postgres://baby_album:baby_album@postgres:5432/baby_album?sslmode=disable
       CACHE_ROOT: /var/lib/baby-album/cache
       MAX_UPLOAD_MB: 512
+      ALLOWED_ORIGINS: http://localhost:3000
     volumes:
       - media-cache:/var/lib/baby-album/cache
     ports:

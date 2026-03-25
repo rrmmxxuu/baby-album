@@ -19,11 +19,12 @@ type Server struct {
 	store          store.Repository
 	blob           *blob.Storage
 	maxUploadBytes int64
+	allowedOrigins []string
 	mux            *http.ServeMux
 }
 
-func NewServer(repo store.Repository, blobStorage *blob.Storage, maxUploadBytes int64) *Server {
-	s := &Server{store: repo, blob: blobStorage, maxUploadBytes: maxUploadBytes, mux: http.NewServeMux()}
+func NewServer(repo store.Repository, blobStorage *blob.Storage, maxUploadBytes int64, allowedOrigins []string) *Server {
+	s := &Server{store: repo, blob: blobStorage, maxUploadBytes: maxUploadBytes, allowedOrigins: normalizeOrigins(allowedOrigins), mux: http.NewServeMux()}
 	s.routes()
 	return s
 }
@@ -34,6 +35,7 @@ func (s *Server) ListenAndServe(addr string) error {
 
 func (s *Server) routes() {
 	s.mux.HandleFunc("/healthz", s.handleHealth)
+	s.mux.HandleFunc("/api/v1/healthz", s.handleHealth)
 	s.mux.HandleFunc("/api/v1/auth/register", s.handleAuthRegister)
 	s.mux.HandleFunc("/api/v1/auth/login", s.handleAuthLogin)
 	s.mux.HandleFunc("/api/v1/auth/logout", s.handleAuthLogout)
@@ -55,9 +57,19 @@ func (s *Server) routes() {
 
 func (s *Server) withMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-User-ID, X-Node-Token")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		origin := strings.TrimSpace(r.Header.Get("Origin"))
+		if origin != "" {
+			w.Header().Add("Vary", "Origin")
+			allowedOrigin, ok := s.allowedOrigin(origin)
+			if !ok {
+				writeJSON(w, http.StatusForbidden, map[string]string{"error": "origin not allowed"})
+				return
+			}
+			w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-User-ID, X-Node-Token")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			w.Header().Set("Access-Control-Max-Age", "600")
+		}
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -681,6 +693,37 @@ func bearerToken(r *http.Request) string {
 
 func familyID(r *http.Request) string {
 	return r.URL.Query().Get("familyId")
+}
+
+func normalizeOrigins(items []string) []string {
+	seen := make(map[string]struct{}, len(items))
+	origins := make([]string, 0, len(items))
+	for _, item := range items {
+		normalized := strings.TrimRight(strings.TrimSpace(item), "/")
+		if normalized == "" {
+			continue
+		}
+		key := strings.ToLower(normalized)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		origins = append(origins, normalized)
+	}
+	return origins
+}
+
+func (s *Server) allowedOrigin(origin string) (string, bool) {
+	normalized := strings.TrimRight(strings.TrimSpace(origin), "/")
+	for _, item := range s.allowedOrigins {
+		if item == "*" {
+			return "*", true
+		}
+		if strings.EqualFold(item, normalized) {
+			return origin, true
+		}
+	}
+	return "", false
 }
 
 func writeMethodNotAllowed(w http.ResponseWriter) {

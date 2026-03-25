@@ -12,8 +12,8 @@ This guide matches your target setup:
 
 Use two hostnames:
 
-- `album.yourdomain.com` -> Baby Album web app
-- `api.album.yourdomain.com` -> Baby Album API
+- `album.ramonxu.com` -> Baby Album web app
+- `album-api.ramonxu.com` -> Baby Album API
 
 Keep the NAS agent outside the VPS. It should call the public API domain outbound from your home network.
 
@@ -22,7 +22,7 @@ Keep the NAS agent outside the VPS. It should call the public API domain outboun
 Create two DNS records pointing to the VPS public IP:
 
 - `album`
-- `api.album`
+- `album-api`
 
 For the first smoke test, DNS-only mode is the simplest path because it removes one extra proxy layer while you validate uploads and previews.
 
@@ -31,13 +31,16 @@ For the first smoke test, DNS-only mode is the simplest path because it removes 
 Create `.env` from `.env.example`, then set at least:
 
 ```env
-NEXT_PUBLIC_API_BASE_URL=https://api.album.yourdomain.com
+NEXT_PUBLIC_API_BASE_URL=https://album-api.ramonxu.com
+WEB_PORT=3000
+API_PORT=18080
+POSTGRES_PORT=15432
 API_ADDR=:8080
 DATABASE_URL=postgres://baby_album:REPLACE_ME@postgres:5432/baby_album?sslmode=disable
 CACHE_ROOT=/var/lib/baby-album/cache
 MAX_UPLOAD_MB=512
-ALLOWED_ORIGINS=https://album.yourdomain.com
-AGENT_API_BASE_URL=https://api.album.yourdomain.com
+ALLOWED_ORIGINS=https://album.ramonxu.com
+AGENT_API_BASE_URL=https://album-api.ramonxu.com
 AGENT_NODE_ID=node-demo
 AGENT_NODE_NAME=Home NAS
 AGENT_REGISTRATION_TOKEN=REPLACE_ME
@@ -59,18 +62,20 @@ Create two proxy hosts.
 
 ### Web host
 
-- Domain: `album.yourdomain.com`
+- Domain: `album.ramonxu.com`
 - Forward host: `127.0.0.1`
 - Forward port: `3000`
 - Websockets: enabled
 - Block common exploits: enabled
 - SSL: request a Let's Encrypt certificate and force SSL
 
+Because your VPS already has another service on `8080`, the example above maps the API to host port `18080` and Postgres to `15432`.
+
 ### API host
 
-- Domain: `api.album.yourdomain.com`
+- Domain: `album-api.ramonxu.com`
 - Forward host: `127.0.0.1`
-- Forward port: `8080`
+- Forward port: `18080`
 - Websockets: enabled
 - Block common exploits: enabled
 - SSL: request a Let's Encrypt certificate and force SSL
@@ -79,9 +84,9 @@ Create two proxy hosts.
 
 Check these URLs after NPM is ready:
 
-- `https://album.yourdomain.com`
-- `https://api.album.yourdomain.com/healthz`
-- `https://api.album.yourdomain.com/api/v1/healthz`
+- `https://album.ramonxu.com`
+- `https://album-api.ramonxu.com/healthz`
+- `https://album-api.ramonxu.com/api/v1/healthz`
 
 Then validate the product flow:
 
@@ -96,7 +101,7 @@ Then validate the product flow:
 
 When you move the agent off the VPS, set:
 
-- `AGENT_API_BASE_URL=https://api.album.yourdomain.com`
+- `AGENT_API_BASE_URL=https://album-api.ramonxu.com`
 - `AGENT_NODE_ID` and `AGENT_REGISTRATION_TOKEN` to your real pairing values
 - `AGENT_LIBRARY_ROOT` to local NAS storage
 

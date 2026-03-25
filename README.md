@@ -52,8 +52,9 @@ The repository already supports a simple single-VM test deployment:
 1. Copy `.env.example` to `.env`
 2. Set `NEXT_PUBLIC_API_BASE_URL` to your public API domain
 3. Set `ALLOWED_ORIGINS` to your public web domain
-4. Run `docker compose up --build -d`
-5. Put `web:3000` and `api:8080` behind your reverse proxy
+4. If your VPS already uses common ports, set `WEB_PORT`, `API_PORT`, and `POSTGRES_PORT` in `.env` before running Docker Compose
+5. Run `docker compose up --build -d`
+6. Put the published web and API host ports behind your reverse proxy
 
 For a fuller VPS guide built around Nginx Proxy Manager and Cloudflare, use [docs/vps-deploy.md](docs/vps-deploy.md).
 

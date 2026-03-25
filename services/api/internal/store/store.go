@@ -71,6 +71,11 @@ type CreateBabyInput struct {
 	BirthDate *time.Time
 }
 
+type LeaveFamilyInput struct {
+	FamilyID        string
+	TransferOwnerTo string
+}
+
 type UpdateMemberRoleInput struct {
 	FamilyID     string
 	MemberUserID string
@@ -117,6 +122,8 @@ type Repository interface {
 	MediaByID(familyID, userID, mediaID string) (domain.MediaAsset, error)
 	CreateFamily(userID string, input CreateFamilyInput) (domain.Family, error)
 	CreateBaby(userID string, input CreateBabyInput) (domain.BabyProfile, error)
+	DeleteBaby(userID, familyID, babyID string) error
+	LeaveFamily(userID string, input LeaveFamilyInput) error
 	UpdateMemberRole(userID string, input UpdateMemberRoleInput) (domain.FamilyMember, error)
 	CreateInvite(userID string, input CreateInviteInput) (domain.FamilyInvite, error)
 	Invites(familyID, userID string) ([]domain.FamilyInvite, error)

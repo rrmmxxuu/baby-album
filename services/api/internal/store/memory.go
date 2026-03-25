@@ -252,6 +252,63 @@ func (s *InMemoryStore) CreateBaby(userID string, input CreateBabyInput) (domain
 	return baby, nil
 }
 
+func (s *InMemoryStore) DeleteBaby(userID, familyID, babyID string) error {
+	if err := s.Authorize(familyID, userID, domain.RoleAdmin); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	babies := s.babies[familyID]
+	for i := range babies {
+		if babies[i].ID == babyID {
+			s.babies[familyID] = append(babies[:i], babies[i+1:]...)
+			return nil
+		}
+	}
+	return ErrNotFound
+}
+
+func (s *InMemoryStore) LeaveFamily(userID string, input LeaveFamilyInput) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	members := append([]domain.FamilyMember(nil), s.members[input.FamilyID]...)
+	actor, err := findMember(members, userID)
+	if err != nil {
+		return err
+	}
+	transferOwnerTo := stringsTrim(input.TransferOwnerTo)
+	if actor.Role == domain.RoleOwner {
+		if transferOwnerTo == "" || transferOwnerTo == userID {
+			return fmt.Errorf("owner must transfer ownership before leaving")
+		}
+		targetIndex := -1
+		for i := range members {
+			if members[i].UserID == transferOwnerTo {
+				targetIndex = i
+				break
+			}
+		}
+		if targetIndex < 0 {
+			return ErrNotFound
+		}
+		members[targetIndex].Role = domain.RoleOwner
+	} else if transferOwnerTo != "" {
+		return ErrForbidden
+	}
+	remaining := make([]domain.FamilyMember, 0, len(members)-1)
+	for _, member := range members {
+		if member.UserID != userID {
+			remaining = append(remaining, member)
+		}
+	}
+	if len(remaining) == len(members) {
+		return ErrNotFound
+	}
+	s.members[input.FamilyID] = remaining
+	return nil
+}
+
 func (s *InMemoryStore) UpdateMemberRole(userID string, input UpdateMemberRoleInput) (domain.FamilyMember, error) {
 	if !validRole(input.Role) || input.Role == domain.RoleOwner {
 		return domain.FamilyMember{}, ErrForbidden

@@ -132,3 +132,43 @@ func TestInMemoryOnboardingInviteFlow(t *testing.T) {
 		t.Fatalf("expected active family membership admin, got %s", state.ActiveFamily.Membership.Role)
 	}
 }
+func TestInMemoryDeleteBabyRequiresAdmin(t *testing.T) {
+	repo := NewInMemoryStore()
+	if err := repo.DeleteBaby("user-member", "family-demo", "baby-demo"); err == nil {
+		t.Fatal("expected member delete to be forbidden")
+	}
+	if err := repo.DeleteBaby("user-admin", "family-demo", "baby-demo"); err != nil {
+		t.Fatalf("DeleteBaby admin returned error: %v", err)
+	}
+	state, err := repo.AppState("user-owner", "family-demo")
+	if err != nil {
+		t.Fatalf("AppState returned error: %v", err)
+	}
+	if len(state.ActiveFamily.Babies) != 0 {
+		t.Fatalf("expected no babies after deletion, got %d", len(state.ActiveFamily.Babies))
+	}
+}
+
+func TestInMemoryOwnerMustTransferBeforeLeaving(t *testing.T) {
+	repo := NewInMemoryStore()
+	if err := repo.LeaveFamily("user-owner", LeaveFamilyInput{FamilyID: "family-demo"}); err == nil {
+		t.Fatal("expected owner leave without transfer to fail")
+	}
+	if err := repo.LeaveFamily("user-owner", LeaveFamilyInput{FamilyID: "family-demo", TransferOwnerTo: "user-admin"}); err != nil {
+		t.Fatalf("LeaveFamily owner returned error: %v", err)
+	}
+	state, err := repo.AppState("user-admin", "family-demo")
+	if err != nil {
+		t.Fatalf("AppState returned error: %v", err)
+	}
+	if state.ActiveFamily.Membership.Role != domain.RoleOwner {
+		t.Fatalf("expected transferred owner role, got %s", state.ActiveFamily.Membership.Role)
+	}
+	leftState, err := repo.AppState("user-owner", "family-demo")
+	if err != nil {
+		t.Fatalf("AppState former owner returned error: %v", err)
+	}
+	if len(leftState.Families) != 0 {
+		t.Fatalf("expected former owner to have left all families, got %d", len(leftState.Families))
+	}
+}

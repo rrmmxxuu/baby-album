@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"path/filepath"
@@ -230,6 +231,35 @@ func (s *Server) handleFamilyActions(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusCreated, baby)
+		return
+	case len(parts) == 3 && parts[1] == "babies":
+		if r.Method != http.MethodDelete {
+			writeMethodNotAllowed(w)
+			return
+		}
+		if err := s.store.DeleteBaby(userID, familyID, parts[2]); err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+		return
+	case len(parts) == 2 && parts[1] == "leave":
+		if r.Method != http.MethodPost {
+			writeMethodNotAllowed(w)
+			return
+		}
+		var input struct {
+			TransferOwnerTo string `json:"transferOwnerTo"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil && !errors.Is(err, io.EOF) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+			return
+		}
+		if err := s.store.LeaveFamily(userID, store.LeaveFamilyInput{FamilyID: familyID, TransferOwnerTo: input.TransferOwnerTo}); err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "left"})
 		return
 	case len(parts) == 2 && parts[1] == "invites":
 		s.handleFamilyInvites(w, r, userID, familyID)

@@ -81,6 +81,29 @@ export async function createBaby(token: string, familyId: string, input: { name:
   return parseResponse<{ id: string }>(response);
 }
 
+export async function deleteBaby(token: string, familyId: string, babyId: string): Promise<void> {
+  const response = await fetch(`${apiBaseUrl}/api/v1/families/${encodeURIComponent(familyId)}/babies/${encodeURIComponent(babyId)}`, {
+    method: "DELETE",
+    headers: buildHeaders(token)
+  });
+  if (!response.ok) {
+    const payload = (await response.json()) as { error?: string };
+    throw new Error(payload.error ?? "Delete baby failed");
+  }
+}
+
+export async function leaveFamily(token: string, familyId: string, transferOwnerTo?: string): Promise<void> {
+  const response = await fetch(`${apiBaseUrl}/api/v1/families/${encodeURIComponent(familyId)}/leave`, {
+    method: "POST",
+    headers: buildHeaders(token, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ transferOwnerTo: transferOwnerTo ?? "" })
+  });
+  if (!response.ok) {
+    const payload = (await response.json()) as { error?: string };
+    throw new Error(payload.error ?? "Leave family failed");
+  }
+}
+
 export async function updateMemberRole(token: string, familyId: string, memberUserId: string, role: Role) {
   const response = await fetch(`${apiBaseUrl}/api/v1/families/${encodeURIComponent(familyId)}/members/${encodeURIComponent(memberUserId)}/role`, {
     method: "POST",

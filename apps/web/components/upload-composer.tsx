@@ -26,11 +26,11 @@ export function UploadComposer({ familyId, apiBaseUrl, authToken, disabled, onUp
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (disabled) {
-      setStatus("Connect a NAS storage node before uploading media.");
+      setStatus("请先连接家庭存储节点，再上传照片或视频。");
       return;
     }
     if (!selectedFile) {
-      setStatus("Pick a photo or video first.");
+      setStatus("请先选择一个照片或视频文件。");
       return;
     }
 
@@ -54,7 +54,7 @@ export function UploadComposer({ familyId, apiBaseUrl, authToken, disabled, onUp
 
       const createPayload = (await createResponse.json()) as { id?: string; error?: string };
       if (!createResponse.ok || !createPayload.id) {
-        setStatus(createPayload.error ?? "Failed to create upload session.");
+        setStatus(createPayload.error ?? "创建上传任务失败。")
         return;
       }
 
@@ -71,15 +71,15 @@ export function UploadComposer({ familyId, apiBaseUrl, authToken, disabled, onUp
 
       const uploadPayload = (await uploadResponse.json()) as { error?: string; status?: string };
       if (!uploadResponse.ok) {
-        setStatus(uploadPayload.error ?? "Failed to upload file content.");
+        setStatus(uploadPayload.error ?? "上传文件内容失败。")
         return;
       }
 
-      setStatus(`Uploaded ${selectedFile.name}. Session is now ${uploadPayload.status ?? "uploaded"}.`);
+      setStatus(`已上传 ${selectedFile.name}，当前状态：${uploadPayload.status ?? "uploaded"}。`);
       setSelectedFile(null);
       onUploaded?.();
     } catch {
-      setStatus("Upload failed. Check that the API is reachable from this browser.");
+      setStatus("上传失败，请检查浏览器是否能够访问 API 服务。");
     } finally {
       setSubmitting(false);
     }
@@ -89,14 +89,14 @@ export function UploadComposer({ familyId, apiBaseUrl, authToken, disabled, onUp
     <form className="panelStack" onSubmit={onSubmit}>
       <div className="sectionHeading">
         <div>
-          <p className="eyebrow">Upload</p>
-          <h2>Send media to the family timeline</h2>
+          <p className="eyebrow">上传</p>
+          <h2>上传到宝宝时间线</h2>
         </div>
-        <span className="pill">Blob -&gt; Agent</span>
+        <span className="pill">云端缓存 -&gt; 存储节点</span>
       </div>
 
       <label>
-        File
+        选择文件
         <input
           type="file"
           accept="image/*,video/*"
@@ -111,24 +111,17 @@ export function UploadComposer({ familyId, apiBaseUrl, authToken, disabled, onUp
       </label>
 
       <label>
-        Captured At
+        拍摄时间
         <input value={capturedAt} onChange={(event) => setCapturedAt(event.target.value)} />
       </label>
 
       <button disabled={submitting || disabled} type="submit">
-        {submitting ? "Uploading..." : "Create session and upload"}
+        {submitting ? "上传中..." : "创建任务并上传"}
       </button>
 
-      <p className="helperText">
-        Files land in the control plane cache first, then the NAS agent downloads and stores them in the family library.
-      </p>
+      <p className="helperText">文件会先进入主控缓存，再由家庭存储节点下载并归档到相册库中。</p>
 
-      {selectedFile ? (
-        <p className="helperText">
-          Selected: {selectedFile.name} · {Math.ceil(selectedFile.size / 1024)} KB · {selectedFile.type || "application/octet-stream"}
-        </p>
-      ) : null}
-
+      {selectedFile ? <p className="helperText">已选择：{selectedFile.name} / {Math.ceil(selectedFile.size / 1024)} KB / {selectedFile.type || "application/octet-stream"}</p> : null}
       {status ? <p className="statusNote">{status}</p> : null}
     </form>
   );

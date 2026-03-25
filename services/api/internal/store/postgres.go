@@ -394,6 +394,74 @@ func (s *PostgresStore) CreateBaby(userID string, input CreateBabyInput) (domain
 	return baby, nil
 }
 
+func (s *PostgresStore) DeleteBaby(userID, familyID, babyID string) error {
+	if err := s.authorize(familyID, userID, domain.RoleAdmin); err != nil {
+		return err
+	}
+	result, err := s.db.Exec(`delete from babies where family_id = $1 and id = $2`, familyID, babyID)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *PostgresStore) LeaveFamily(userID string, input LeaveFamilyInput) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var actor domain.FamilyMember
+	var role string
+	err = tx.QueryRow(`select user_id, family_id, role, display_name from family_members where family_id = $1 and user_id = $2 for update`, input.FamilyID, userID).Scan(&actor.UserID, &actor.FamilyID, &role, &actor.DisplayName)
+	if err == sql.ErrNoRows {
+		return ErrForbidden
+	}
+	if err != nil {
+		return err
+	}
+	actor.Role = domain.Role(role)
+	transferOwnerTo := strings.TrimSpace(input.TransferOwnerTo)
+	if actor.Role == domain.RoleOwner {
+		if transferOwnerTo == "" || transferOwnerTo == userID {
+			return fmt.Errorf("owner must transfer ownership before leaving")
+		}
+		result, err := tx.Exec(`update family_members set role = $1 where family_id = $2 and user_id = $3`, domain.RoleOwner, input.FamilyID, transferOwnerTo)
+		if err != nil {
+			return err
+		}
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if affected == 0 {
+			return ErrNotFound
+		}
+	} else if transferOwnerTo != "" {
+		return ErrForbidden
+	}
+	result, err := tx.Exec(`delete from family_members where family_id = $1 and user_id = $2`, input.FamilyID, userID)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return ErrNotFound
+	}
+	return tx.Commit()
+}
+
 func (s *PostgresStore) UpdateMemberRole(userID string, input UpdateMemberRoleInput) (domain.FamilyMember, error) {
 	if !validRole(input.Role) || input.Role == domain.RoleOwner || input.MemberUserID == userID {
 		return domain.FamilyMember{}, ErrForbidden

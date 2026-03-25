@@ -50,11 +50,21 @@ AGENT_LIBRARY_ROOT=/var/lib/baby-album/library
 
 If you want both a production domain and a temporary preview domain, separate them with commas in `ALLOWED_ORIGINS`.
 
-## 3. Start the stack
+## 3. Shared Docker network with NPM
+
+Because your Nginx Proxy Manager is also in Docker, create or confirm the external network once:
 
 ```bash
-docker compose up --build -d
+docker network create npm_net
 ```
+
+Then start Baby Album with the NPM override:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.npm.yml up --build -d
+```
+
+This puts the `web` and `api` services onto the same Docker network as NPM, so NPM can proxy to them by service name instead of by host port.
 
 ## 4. Nginx Proxy Manager
 
@@ -63,22 +73,24 @@ Create two proxy hosts.
 ### Web host
 
 - Domain: `album.ramonxu.com`
-- Forward host: `127.0.0.1`
+- Scheme: `http`
+- Forward host: `web`
 - Forward port: `3000`
 - Websockets: enabled
 - Block common exploits: enabled
 - SSL: request a Let's Encrypt certificate and force SSL
 
-Because your VPS already has another service on `8080`, the example above maps the API to host port `18080` and Postgres to `15432`.
-
 ### API host
 
 - Domain: `album-api.ramonxu.com`
-- Forward host: `127.0.0.1`
-- Forward port: `18080`
+- Scheme: `http`
+- Forward host: `api`
+- Forward port: `8080`
 - Websockets: enabled
 - Block common exploits: enabled
 - SSL: request a Let's Encrypt certificate and force SSL
+
+If you prefer to keep NPM proxying to host ports instead, you can skip `docker-compose.npm.yml` and continue forwarding to `127.0.0.1:3000` and `127.0.0.1:18080`.
 
 ## 5. Verify
 

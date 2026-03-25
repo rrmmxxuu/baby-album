@@ -1,0 +1,14 @@
+services:
+  api:
+    networks:
+      - default
+      - npm_net
+
+  web:
+    networks:
+      - default
+      - npm_net
+
+networks:
+  npm_net:
+    external: true

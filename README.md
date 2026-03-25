@@ -15,6 +15,7 @@ Open source baby photo platform for self-hosted families. The current test build
 - `docs/architecture.md`: architecture and data-flow notes
 - `docs/test-deploy.md`: single-VM test deployment guide
 - `docs/vps-deploy.md`: Ubuntu + Docker + Nginx Proxy Manager + Cloudflare guide
+- `docker-compose.npm.yml`: override that joins `web` and `api` to an external `npm_net`
 
 ## Quick start
 
@@ -53,8 +54,9 @@ The repository already supports a simple single-VM test deployment:
 2. Set `NEXT_PUBLIC_API_BASE_URL` to your public API domain
 3. Set `ALLOWED_ORIGINS` to your public web domain
 4. If your VPS already uses common ports, set `WEB_PORT`, `API_PORT`, and `POSTGRES_PORT` in `.env` before running Docker Compose
-5. Run `docker compose up --build -d`
-6. Put the published web and API host ports behind your reverse proxy
+5. If Nginx Proxy Manager runs in Docker, start with `docker compose -f docker-compose.yml -f docker-compose.npm.yml up --build -d`
+6. Otherwise, run `docker compose up --build -d`
+7. Put the published web and API host ports behind your reverse proxy, or proxy to the shared Docker network directly when using NPM
 
 For a fuller VPS guide built around Nginx Proxy Manager and Cloudflare, use [docs/vps-deploy.md](docs/vps-deploy.md).
 

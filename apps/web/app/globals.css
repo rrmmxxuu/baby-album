@@ -1,0 +1,416 @@
+:root {
+  --bg: #f6efe4;
+  --panel: rgba(255, 250, 242, 0.88);
+  --panel-strong: #fffaf3;
+  --ink: #2f251d;
+  --muted: #6e5c4b;
+  --accent: #b55233;
+  --accent-soft: #f6c6a1;
+  --line: rgba(47, 37, 29, 0.12);
+  --shadow: 0 22px 50px rgba(85, 52, 28, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.7), transparent 30%),
+    linear-gradient(180deg, #f1ddc8 0%, var(--bg) 46%, #f3eadf 100%);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--ink);
+  font-family: "Trebuchet MS", "Avenir Next", "Segoe UI", sans-serif;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+code {
+  font-family: "Cascadia Code", monospace;
+}
+
+.appShell {
+  width: min(1120px, calc(100vw - 24px));
+  margin: 0 auto;
+  padding: 20px 0 104px;
+}
+
+.panel {
+  border: 1px solid var(--line);
+  border-radius: 28px;
+  background: var(--panel);
+  backdrop-filter: blur(14px);
+  box-shadow: var(--shadow);
+}
+
+.panelStack {
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+}
+
+.topBar {
+  display: grid;
+  gap: 14px;
+  padding: 22px;
+}
+
+.topBar h1,
+.sectionHeading h2,
+.timelineDay h3 {
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+.topBar h1,
+.sectionHeading h2,
+.timelineDay h3 {
+  margin: 0;
+}
+
+.eyebrow {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.78rem;
+  color: var(--accent);
+}
+
+.helperText,
+.memberRow p,
+.timelineCopy p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.noticeBanner,
+.errorBanner {
+  margin: 12px 0 0;
+  padding: 12px 14px;
+  border-radius: 18px;
+}
+
+.noticeBanner {
+  background: #fff1dd;
+  color: #734b1d;
+}
+
+.errorBanner {
+  background: #f8ddda;
+  color: #8a2c1d;
+}
+
+.sessionBadge,
+.metricCard,
+.inviteCard,
+.timelineDay,
+.tag,
+.statusNote {
+  border-radius: 22px;
+}
+
+.sessionBadge,
+.metricCard {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  background: var(--panel-strong);
+}
+
+.sessionBadge {
+  display: grid;
+  gap: 4px;
+}
+
+.summaryGrid,
+.gridColumns {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.metricCard span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.84rem;
+  margin-bottom: 6px;
+}
+
+.metricCard strong {
+  font-size: 1.1rem;
+}
+
+.pageStack {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.sectionHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pill,
+.tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: #f2dfcf;
+  color: #6d341a;
+  font-size: 0.84rem;
+  white-space: nowrap;
+}
+
+.pillOnline {
+  background: #d9efdf;
+  color: #205f2e;
+}
+
+.formGrid,
+.inlineForm {
+  display: grid;
+  gap: 12px;
+}
+
+.formGrid label,
+.inlineForm label {
+  display: grid;
+  gap: 6px;
+}
+
+input,
+select,
+button {
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  padding: 14px 16px;
+}
+
+input,
+select {
+  background: rgba(255, 255, 255, 0.76);
+}
+
+button {
+  border: 0;
+  background: linear-gradient(135deg, #c96544 0%, var(--accent) 100%);
+  color: white;
+  font-weight: 700;
+}
+
+.secondaryButton {
+  background: #ead8c8;
+  color: #5e3c24;
+}
+
+.stackList,
+.timelineGroups,
+.timelineItems {
+  display: grid;
+  gap: 12px;
+}
+
+.listRow,
+.memberRow,
+.timelineItem {
+  display: grid;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.listRow:first-child,
+.memberRow:first-child,
+.timelineItem:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.memberRow {
+  grid-template-columns: 1fr auto;
+}
+
+.memberActions {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) auto;
+  gap: 8px;
+}
+
+.tagRow {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.timelineDay {
+  padding: 18px;
+  background: rgba(255, 248, 238, 0.78);
+}
+
+.timelineDay header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.timelineDay header p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.timelineItem {
+  grid-template-columns: 92px 1fr;
+  align-items: start;
+}
+
+.timelineCopy {
+  min-width: 0;
+}
+
+.timelineCopy strong {
+  display: block;
+  word-break: break-word;
+}
+
+.thumb {
+  height: 92px;
+  border-radius: 22px;
+  overflow: hidden;
+  background:
+    linear-gradient(135deg, rgba(255, 236, 214, 0.65), rgba(216, 145, 112, 0.55)),
+    linear-gradient(135deg, #f5d3b0, #cd7f57);
+}
+
+.thumbImage,
+.thumbFallback {
+  width: 100%;
+  height: 100%;
+}
+
+.thumbImage {
+  object-fit: cover;
+}
+
+.thumbFallback {
+  display: grid;
+  place-items: center;
+  color: #5a2e1b;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  font-size: 0.78rem;
+}
+
+.inviteCard {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  background: #fffaf3;
+  display: grid;
+  gap: 6px;
+}
+
+.inviteLink {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: #f4e3d6;
+  color: #573020;
+  word-break: break-all;
+}
+
+.statusNote {
+  margin: 0;
+  padding: 12px 14px;
+  background: #fff1dd;
+  color: #734b1d;
+}
+
+.loadingRow {
+  margin-top: 16px;
+  text-align: center;
+}
+
+.bottomNav {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 24px));
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 8px;
+  border-radius: 26px;
+  background: rgba(47, 37, 29, 0.92);
+  box-shadow: 0 18px 40px rgba(47, 37, 29, 0.25);
+}
+
+.bottomNav button {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.78);
+  padding: 12px 14px;
+}
+
+.bottomNav .navActive {
+  background: linear-gradient(135deg, #c96544 0%, var(--accent) 100%);
+  color: white;
+}
+
+@media (min-width: 860px) {
+  .summaryGrid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .gridColumns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .inlineForm {
+    grid-template-columns: minmax(160px, 220px) auto;
+    align-items: end;
+  }
+}
+
+@media (max-width: 680px) {
+  .appShell {
+    width: min(100vw - 16px, 1120px);
+    padding-top: 16px;
+  }
+
+  .panel,
+  .timelineDay,
+  .inviteCard,
+  .metricCard,
+  .sessionBadge {
+    border-radius: 22px;
+  }
+
+  .timelineItem,
+  .memberRow,
+  .memberActions {
+    grid-template-columns: 1fr;
+  }
+
+  .thumb {
+    height: 180px;
+  }
+}

@@ -1,0 +1,28 @@
+# Node / Next.js
+apps/web/node_modules/
+apps/web/.next/
+apps/web/out/
+
+# Go build outputs
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+coverage.out
+
+# Local runtime data
+.env
+.env.local
+.env.*.local
+tmp/
+services/api/tmp/
+services/agent/tmp/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

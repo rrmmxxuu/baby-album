@@ -233,7 +233,7 @@ func (s *PostgresStore) AppState(userID, familyID string) (AppState, error) {
 	}
 	state := AppState{CurrentUser: user, Families: families}
 	if len(families) == 0 {
-		return state, nil
+		return normalizeAppState(state), nil
 	}
 	selectedFamilyID := familyID
 	if selectedFamilyID == "" || !familySummaryContains(families, selectedFamilyID) {
@@ -245,7 +245,7 @@ func (s *PostgresStore) AppState(userID, familyID string) (AppState, error) {
 	}
 	state.ActiveFamily = &bootstrap
 	state.ActiveFamilyID = selectedFamilyID
-	return state, nil
+	return normalizeAppState(state), nil
 }
 
 func (s *PostgresStore) Bootstrap(familyID, userID string) (Bootstrap, error) {
@@ -284,7 +284,7 @@ func (s *PostgresStore) Bootstrap(familyID, userID string) (Bootstrap, error) {
 			return Bootstrap{}, err
 		}
 	}
-	return Bootstrap{Family: family, CurrentUser: user, Membership: membership, StorageNode: node, Timeline: timeline, Members: members, Babies: babies, Invites: invites}, nil
+	return normalizeBootstrap(Bootstrap{Family: family, CurrentUser: user, Membership: membership, StorageNode: node, Timeline: timeline, Members: members, Babies: babies, Invites: invites}), nil
 }
 
 func (s *PostgresStore) Timeline(familyID, userID string) ([]domain.MediaAsset, error) {

@@ -267,9 +267,13 @@ function AppShellInner() {
 
   const activeFamily = appState?.activeFamily ?? null;
   const currentUser = appState?.currentUser ?? null;
+  const familyBabies = activeFamily?.babies ?? [];
+  const familyTimeline = activeFamily?.timeline ?? [];
+  const familyMembers = activeFamily?.members ?? [];
+  const familyInvites = activeFamily?.invites ?? [];
   const isOwner = activeFamily?.membership.role === "owner";
   const canManageInvites = activeFamily?.membership.role === "owner" || activeFamily?.membership.role === "admin";
-  const timelineGroups = groupTimeline(activeFamily?.timeline ?? []);
+  const timelineGroups = groupTimeline(familyTimeline);
 
   return (
     <main className="appShell">
@@ -385,8 +389,8 @@ function AppShellInner() {
           <section className="summaryGrid">
             <article className="metricCard panel"><span>Active family</span><strong>{activeFamily.family.name}</strong></article>
             <article className="metricCard panel"><span>Your role</span><strong>{activeFamily.membership.role}</strong></article>
-            <article className="metricCard panel"><span>Babies</span><strong>{activeFamily.babies.length}</strong></article>
-            <article className="metricCard panel"><span>Media</span><strong>{activeFamily.timeline.length}</strong></article>
+            <article className="metricCard panel"><span>Babies</span><strong>{familyBabies.length}</strong></article>
+            <article className="metricCard panel"><span>Media</span><strong>{familyTimeline.length}</strong></article>
           </section>
 
           {activeTab === "photos" ? (
@@ -397,10 +401,10 @@ function AppShellInner() {
                     <p className="eyebrow">Photos</p>
                     <h2>Captured-date timeline</h2>
                   </div>
-                  <span className="pill">{activeFamily.timeline.length} items</span>
+                  <span className="pill">{familyTimeline.length} items</span>
                 </div>
                 <div className="tagRow">
-                  {activeFamily.babies.map((baby) => (
+                  {familyBabies.map((baby) => (
                     <span className="tag" key={baby.id}>{baby.name}{baby.birthDate ? ` / ${formatDate(baby.birthDate)}` : ""}</span>
                   ))}
                 </div>
@@ -478,7 +482,7 @@ function AppShellInner() {
                 <article className="panelStack panel">
                   <div className="sectionHeading"><div><p className="eyebrow">Baby Profiles</p><h2>Children in this family</h2></div></div>
                   <div className="stackList">
-                    {activeFamily.babies.map((baby) => (
+                    {familyBabies.map((baby) => (
                       <div className="listRow" key={baby.id}><div><strong>{baby.name}</strong><p className="helperText">{baby.birthDate ? formatDate(baby.birthDate) : "Birth date not set"}</p></div></div>
                     ))}
                   </div>
@@ -498,7 +502,7 @@ function AppShellInner() {
                 <article className="panelStack panel">
                   <div className="sectionHeading"><div><p className="eyebrow">Member Roles</p><h2>RBAC management</h2></div></div>
                   <div className="stackList">
-                    {activeFamily.members.map((member) => (
+                    {familyMembers.map((member) => (
                       <MemberRow canEdit={Boolean(isOwner && currentUser && member.userId !== currentUser.id && member.role !== "owner")} draftRole={roleDrafts[member.userId] ?? member.role} key={member.userId} member={member} onChange={(role) => setRoleDrafts((current) => ({ ...current, [member.userId]: role }))} onSave={() => void handleRoleUpdate(member.userId)} />
                     ))}
                   </div>
@@ -520,8 +524,8 @@ function AppShellInner() {
                     <button type="submit">Generate invite link</button>
                   </form>
                   <div className="stackList">
-                    {activeFamily.invites.length === 0 ? <p className="helperText">No invite links yet.</p> : null}
-                    {activeFamily.invites.map((item) => <InviteCard invite={item} key={item.id} mode="manage" origin={origin} />)}
+                    {familyInvites.length === 0 ? <p className="helperText">No invite links yet.</p> : null}
+                    {familyInvites.map((item) => <InviteCard invite={item} key={item.id} mode="manage" origin={origin} />)}
                   </div>
                 </article>
               ) : null}

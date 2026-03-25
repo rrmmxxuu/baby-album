@@ -181,6 +181,33 @@ func sortInvites(items []domain.FamilyInvite) {
 	})
 }
 
+func normalizeBootstrap(value Bootstrap) Bootstrap {
+	if value.Timeline == nil {
+		value.Timeline = []domain.MediaAsset{}
+	}
+	if value.Members == nil {
+		value.Members = []domain.FamilyMember{}
+	}
+	if value.Babies == nil {
+		value.Babies = []domain.BabyProfile{}
+	}
+	if value.Invites == nil {
+		value.Invites = []domain.FamilyInvite{}
+	}
+	return value
+}
+
+func normalizeAppState(value AppState) AppState {
+	if value.Families == nil {
+		value.Families = []FamilySummary{}
+	}
+	if value.ActiveFamily != nil {
+		normalized := normalizeBootstrap(*value.ActiveFamily)
+		value.ActiveFamily = &normalized
+	}
+	return value
+}
+
 func canonicalEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
 }

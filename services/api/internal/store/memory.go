@@ -150,7 +150,7 @@ func (s *InMemoryStore) AppState(userID, familyID string) (AppState, error) {
 	families := s.familySummariesLocked(userID)
 	state := AppState{CurrentUser: user, Families: families}
 	if len(families) == 0 {
-		return state, nil
+		return normalizeAppState(state), nil
 	}
 	selectedFamilyID := familyID
 	if selectedFamilyID == "" || !s.userBelongsToFamilyLocked(userID, selectedFamilyID) {
@@ -162,7 +162,7 @@ func (s *InMemoryStore) AppState(userID, familyID string) (AppState, error) {
 	}
 	state.ActiveFamily = &bootstrap
 	state.ActiveFamilyID = selectedFamilyID
-	return state, nil
+	return normalizeAppState(state), nil
 }
 
 func (s *InMemoryStore) Bootstrap(familyID, userID string) (Bootstrap, error) {
@@ -580,7 +580,7 @@ func (s *InMemoryStore) buildBootstrapLocked(familyID, userID string) (Bootstrap
 		}
 		sortInvites(invites)
 	}
-	return Bootstrap{Family: family, CurrentUser: user, Membership: member, StorageNode: node, Timeline: timeline, Members: members, Babies: babies, Invites: invites}, nil
+	return normalizeBootstrap(Bootstrap{Family: family, CurrentUser: user, Membership: member, StorageNode: node, Timeline: timeline, Members: members, Babies: babies, Invites: invites}), nil
 }
 
 func (s *InMemoryStore) familySummariesLocked(userID string) []FamilySummary {

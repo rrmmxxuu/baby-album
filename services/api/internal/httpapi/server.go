@@ -1,9 +1,14 @@
 package httpapi
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	"image/color"
+	"image/draw"
+	"image/jpeg"
 	"io"
 	"log"
 	"net/http"
@@ -14,6 +19,10 @@ import (
 	"babyalbum/api/internal/blob"
 	"babyalbum/api/internal/domain"
 	"babyalbum/api/internal/store"
+
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 )
 
 type Server struct {
@@ -41,15 +50,19 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/v1/auth/login", s.handleAuthLogin)
 	s.mux.HandleFunc("/api/v1/auth/logout", s.handleAuthLogout)
 	s.mux.HandleFunc("/api/v1/auth/app", s.handleAuthApp)
-	s.mux.HandleFunc("/api/v1/families", s.handleFamilies)
+	s.mux.HandleFunc("/api/v1/albums", s.handleAlbums)
+	s.mux.HandleFunc("/api/v1/albums/", s.handleAlbumActions)
+	s.mux.HandleFunc("/api/v1/families", s.handleAlbums)
 	s.mux.HandleFunc("/api/v1/families/", s.handleFamilyActions)
 	s.mux.HandleFunc("/api/v1/invites/", s.handleInviteActions)
 	s.mux.HandleFunc("/api/v1/bootstrap", s.handleBootstrap)
 	s.mux.HandleFunc("/api/v1/timeline", s.handleTimeline)
+	s.mux.HandleFunc("/api/v1/timeline-entries", s.handleTimelineEntries)
 	s.mux.HandleFunc("/api/v1/members", s.handleMembers)
 	s.mux.HandleFunc("/api/v1/upload-sessions", s.handleUploadSessions)
 	s.mux.HandleFunc("/api/v1/upload-sessions/", s.handleUploadSessionActions)
 	s.mux.HandleFunc("/api/v1/media/", s.handleMediaActions)
+	s.mux.HandleFunc("/api/v1/babies/", s.handleBabyAssets)
 	s.mux.HandleFunc("/api/v1/storage-nodes/register", s.handleNodeRegister)
 	s.mux.HandleFunc("/api/v1/storage-nodes/heartbeat", s.handleNodeHeartbeat)
 	s.mux.HandleFunc("/api/v1/agents/jobs", s.handleAgentJobs)
@@ -155,7 +168,7 @@ func (s *Server) handleAuthApp(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	payload, err := s.store.AppState(userID, familyID(r))
+	payload, err := s.store.AppState(userID, albumID(r))
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -163,7 +176,7 @@ func (s *Server) handleAuthApp(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, payload)
 }
 
-func (s *Server) handleFamilies(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleAlbums(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeMethodNotAllowed(w)
 		return
@@ -174,28 +187,48 @@ func (s *Server) handleFamilies(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input struct {
-		Name     string `json:"name"`
-		Timezone string `json:"timezone"`
+		Name      string  `json:"name"`
+		Timezone  string  `json:"timezone"`
+		BabyName  string  `json:"babyName"`
+		BirthDate *string `json:"birthDate"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
-	family, err := s.store.CreateFamily(userID, store.CreateFamilyInput{Name: input.Name, Timezone: input.Timezone})
+	var birthDate *time.Time
+	if input.BirthDate != nil && *input.BirthDate != "" {
+		value, err := time.Parse(time.RFC3339, *input.BirthDate)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "birthDate must be RFC3339"})
+			return
+		}
+		birthDate = &value
+	}
+	album, err := s.store.CreateAlbum(userID, store.CreateAlbumInput{Name: input.Name, Timezone: input.Timezone, BabyName: input.BabyName, BirthDate: birthDate})
 	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, family)
+	writeJSON(w, http.StatusCreated, album)
+}
+
+func (s *Server) handleAlbumActions(w http.ResponseWriter, r *http.Request) {
+	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/albums/"), "/")
+	s.handleCollectionActions(w, r, path)
 }
 
 func (s *Server) handleFamilyActions(w http.ResponseWriter, r *http.Request) {
+	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/families/"), "/")
+	s.handleCollectionActions(w, r, path)
+}
+
+func (s *Server) handleCollectionActions(w http.ResponseWriter, r *http.Request, path string) {
 	userID, err := s.actorID(r)
 	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
-	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/families/"), "/")
 	parts := strings.Split(path, "/")
 	if len(parts) < 2 {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
@@ -225,7 +258,7 @@ func (s *Server) handleFamilyActions(w http.ResponseWriter, r *http.Request) {
 			}
 			birthDate = &value
 		}
-		baby, err := s.store.CreateBaby(userID, store.CreateBabyInput{FamilyID: familyID, Name: input.Name, BirthDate: birthDate})
+		baby, err := s.store.CreateBaby(userID, store.CreateBabyInput{AlbumID: familyID, Name: input.Name, BirthDate: birthDate})
 		if err != nil {
 			writeStoreError(w, err)
 			return
@@ -233,15 +266,68 @@ func (s *Server) handleFamilyActions(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusCreated, baby)
 		return
 	case len(parts) == 3 && parts[1] == "babies":
-		if r.Method != http.MethodDelete {
+		switch r.Method {
+		case http.MethodDelete:
+			if err := s.store.DeleteBaby(userID, familyID, parts[2]); err != nil {
+				writeStoreError(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+		case http.MethodPost:
+			var input struct {
+				Name      string  `json:"name"`
+				BirthDate *string `json:"birthDate"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+				return
+			}
+			var birthDate *time.Time
+			if input.BirthDate != nil && *input.BirthDate != "" {
+				value, err := time.Parse(time.RFC3339, *input.BirthDate)
+				if err != nil {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "birthDate must be RFC3339"})
+					return
+				}
+				birthDate = &value
+			}
+			baby, err := s.store.UpdateBaby(userID, store.UpdateBabyInput{AlbumID: familyID, BabyID: parts[2], Name: input.Name, BirthDate: birthDate})
+			if err != nil {
+				writeStoreError(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, baby)
+		default:
+			writeMethodNotAllowed(w)
+		}
+		return
+	case len(parts) == 4 && parts[1] == "babies" && parts[3] == "avatar":
+		if r.Method != http.MethodPost {
 			writeMethodNotAllowed(w)
 			return
 		}
-		if err := s.store.DeleteBaby(userID, familyID, parts[2]); err != nil {
+		r.Body = http.MaxBytesReader(w, r.Body, s.maxUploadBytes)
+		if err := r.ParseMultipartForm(s.maxUploadBytes); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("invalid multipart upload: %v", err)})
+			return
+		}
+		file, header, err := r.FormFile("file")
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "file field is required"})
+			return
+		}
+		defer file.Close()
+		saved, err := s.saveAvatar(parts[2], header.Filename, file)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		baby, err := s.store.UpdateBabyAvatar(userID, store.UpdateBabyAvatarInput{AlbumID: familyID, BabyID: parts[2], AvatarKey: saved.Key})
+		if err != nil {
 			writeStoreError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+		writeJSON(w, http.StatusOK, baby)
 		return
 	case len(parts) == 2 && parts[1] == "leave":
 		if r.Method != http.MethodPost {
@@ -255,11 +341,23 @@ func (s *Server) handleFamilyActions(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 			return
 		}
-		if err := s.store.LeaveFamily(userID, store.LeaveFamilyInput{FamilyID: familyID, TransferOwnerTo: input.TransferOwnerTo}); err != nil {
+		if err := s.store.LeaveAlbum(userID, store.LeaveAlbumInput{AlbumID: familyID, TransferOwnerTo: input.TransferOwnerTo}); err != nil {
 			writeStoreError(w, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "left"})
+		return
+	case len(parts) == 2 && parts[1] == "storage-pairing":
+		if r.Method != http.MethodPost {
+			writeMethodNotAllowed(w)
+			return
+		}
+		pairing, err := s.store.CreateStorageNodePairing(userID, store.CreateStorageNodePairingInput{AlbumID: familyID})
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, pairing)
 		return
 	case len(parts) == 2 && parts[1] == "invites":
 		s.handleFamilyInvites(w, r, userID, familyID)
@@ -276,7 +374,7 @@ func (s *Server) handleFamilyActions(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 			return
 		}
-		member, err := s.store.UpdateMemberRole(userID, store.UpdateMemberRoleInput{FamilyID: familyID, MemberUserID: parts[2], Role: domain.Role(input.Role)})
+		member, err := s.store.UpdateMemberRole(userID, store.UpdateAlbumMemberRoleInput{AlbumID: familyID, MemberUserID: parts[2], Role: domain.Role(input.Role)})
 		if err != nil {
 			writeStoreError(w, err)
 			return
@@ -305,7 +403,7 @@ func (s *Server) handleFamilyInvites(w http.ResponseWriter, r *http.Request, use
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 			return
 		}
-		invite, err := s.store.CreateInvite(userID, store.CreateInviteInput{FamilyID: familyID, Role: domain.Role(input.Role)})
+		invite, err := s.store.CreateInvite(userID, store.CreateAlbumInviteInput{AlbumID: familyID, Role: domain.Role(input.Role)})
 		if err != nil {
 			writeStoreError(w, err)
 			return
@@ -368,7 +466,7 @@ func (s *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	payload, err := s.store.Bootstrap(familyID(r), userID)
+	payload, err := s.store.AlbumWorkspace(albumID(r), userID)
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -386,7 +484,7 @@ func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	payload, err := s.store.Timeline(familyID(r), userID)
+	payload, err := s.store.Timeline(albumID(r), userID)
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -404,12 +502,52 @@ func (s *Server) handleMembers(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	payload, err := s.store.Members(familyID(r), userID)
+	payload, err := s.store.Members(albumID(r), userID)
 	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": payload})
+}
+
+func (s *Server) handleTimelineEntries(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w)
+		return
+	}
+	userID, err := s.actorID(r)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	var input struct {
+		AlbumID    string `json:"albumId"`
+		Caption    string `json:"caption"`
+		Visibility string `json:"visibility"`
+		TimeMode   string `json:"timeMode"`
+		DisplayAt  string `json:"displayAt"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	displayAt, err := time.Parse(time.RFC3339, input.DisplayAt)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "displayAt must be RFC3339"})
+		return
+	}
+	entry, err := s.store.CreateTimelineEntry(userID, store.CreateTimelineEntryInput{
+		AlbumID:    input.AlbumID,
+		Caption:    input.Caption,
+		Visibility: domain.TimelineEntryVisibility(input.Visibility),
+		TimeMode:   domain.TimelineEntryTimeMode(input.TimeMode),
+		DisplayAt:  displayAt,
+	})
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, entry)
 }
 
 func (s *Server) handleUploadSessions(w http.ResponseWriter, r *http.Request) {
@@ -423,10 +561,12 @@ func (s *Server) handleUploadSessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input struct {
-		FamilyID   string  `json:"familyId"`
-		FileName   string  `json:"fileName"`
-		MediaType  string  `json:"mediaType"`
-		CapturedAt *string `json:"capturedAt"`
+		AlbumID       string  `json:"albumId"`
+		EntryID       string  `json:"entryId"`
+		UploadBatchID string  `json:"uploadBatchId"`
+		FileName      string  `json:"fileName"`
+		MediaType     string  `json:"mediaType"`
+		CapturedAt    *string `json:"capturedAt"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
@@ -441,7 +581,7 @@ func (s *Server) handleUploadSessions(w http.ResponseWriter, r *http.Request) {
 		}
 		capturedAt = &value
 	}
-	session, err := s.store.CreateUploadSession(userID, store.UploadSessionInput{FamilyID: input.FamilyID, FileName: input.FileName, MediaType: input.MediaType, CapturedAt: capturedAt})
+	session, err := s.store.CreateUploadSession(userID, store.UploadSessionInput{AlbumID: input.AlbumID, EntryID: input.EntryID, UploadBatchID: input.UploadBatchID, FileName: input.FileName, MediaType: input.MediaType, CapturedAt: capturedAt})
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -495,7 +635,7 @@ func (s *Server) handleUploadSessionActions(w http.ResponseWriter, r *http.Reque
 
 func (s *Server) handleMediaActions(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/v1/media/")
-	if !strings.HasSuffix(path, "/preview") {
+	if !strings.HasSuffix(path, "/preview") && !strings.HasSuffix(path, "/original") {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
 	}
@@ -508,28 +648,82 @@ func (s *Server) handleMediaActions(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	mediaID := strings.TrimSuffix(strings.TrimSuffix(path, "/preview"), "/")
-	if mediaID == "" || familyID(r) == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "media id and familyId are required"})
+	serveOriginal := strings.HasSuffix(path, "/original")
+	mediaID := strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(path, "/preview"), "/original"), "/")
+	if mediaID == "" || albumID(r) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "media id and albumId are required"})
 		return
 	}
-	item, err := s.store.MediaByID(familyID(r), userID, mediaID)
+	item, err := s.store.MediaByID(albumID(r), userID, mediaID)
 	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
-	if item.PreviewStatus != domain.PreviewReady || item.PreviewBlobKey == "" {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "preview not available"})
-		return
+	blobKey := item.PreviewBlobKey
+	contentType := "image/jpeg"
+	fileName := filepath.Base(item.FileName) + "-preview.jpg"
+	if serveOriginal {
+		if item.OriginalBlobKey == "" {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "original not available"})
+			return
+		}
+		blobKey = item.OriginalBlobKey
+		contentType = item.MediaType
+		fileName = filepath.Base(item.FileName)
+	} else {
+		if item.PreviewStatus != domain.PreviewReady || item.PreviewBlobKey == "" {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "preview not available"})
+			return
+		}
 	}
-	blobFile, err := s.blob.Open(item.PreviewBlobKey)
+	blobFile, err := s.blob.Open(blobKey)
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
 		return
 	}
 	defer blobFile.Close()
-	w.Header().Set("Content-Type", "image/jpeg")
-	http.ServeContent(w, r, filepath.Base(item.FileName)+"-preview.jpg", time.Time{}, blobFile)
+	w.Header().Set("Content-Type", contentType)
+	http.ServeContent(w, r, fileName, time.Time{}, blobFile)
+}
+
+func (s *Server) handleBabyAssets(w http.ResponseWriter, r *http.Request) {
+	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/babies/"), "/")
+	parts := strings.Split(path, "/")
+	if len(parts) != 2 || parts[1] != "avatar" {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w)
+		return
+	}
+	babyID := parts[0]
+	if babyID == "" || albumID(r) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "baby id and albumId are required"})
+		return
+	}
+	userID, err := s.actorID(r)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	baby, err := s.store.BabyByID(userID, albumID(r), babyID)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if baby.AvatarKey == "" {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "avatar not available"})
+		return
+	}
+	blobFile, err := s.blob.Open(baby.AvatarKey)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	defer blobFile.Close()
+	w.Header().Set("Content-Type", contentTypeForFileName(baby.AvatarKey))
+	http.ServeContent(w, r, filepath.Base(baby.AvatarKey), time.Time{}, blobFile)
 }
 
 func (s *Server) handleNodeRegister(w http.ResponseWriter, r *http.Request) {
@@ -538,20 +732,36 @@ func (s *Server) handleNodeRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input struct {
-		NodeID string `json:"nodeId"`
-		Name   string `json:"name"`
-		Token  string `json:"token"`
+		NodeID      string `json:"nodeId"`
+		Name        string `json:"name"`
+		Token       string `json:"token"`
+		PairingCode string `json:"pairingCode"`
+		Capacity    struct {
+			TotalBytes     int64 `json:"totalBytes"`
+			FreeBytes      int64 `json:"freeBytes"`
+			AvailableBytes int64 `json:"availableBytes"`
+		} `json:"capacity"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
-	node, err := s.store.RegisterStorageNode(input.NodeID, input.Name, input.Token)
+	result, err := s.store.RegisterStorageNode(store.StorageNodeRegisterInput{
+		NodeID:      input.NodeID,
+		NodeName:    input.Name,
+		Token:       input.Token,
+		PairingCode: input.PairingCode,
+		Capacity: store.StorageCapacityReport{
+			TotalBytes:     input.Capacity.TotalBytes,
+			FreeBytes:      input.Capacity.FreeBytes,
+			AvailableBytes: input.Capacity.AvailableBytes,
+		},
+	})
 	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, node)
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (s *Server) handleNodeHeartbeat(w http.ResponseWriter, r *http.Request) {
@@ -560,14 +770,23 @@ func (s *Server) handleNodeHeartbeat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input struct {
-		NodeID string `json:"nodeId"`
-		Token  string `json:"token"`
+		NodeID   string `json:"nodeId"`
+		Token    string `json:"token"`
+		Capacity struct {
+			TotalBytes     int64 `json:"totalBytes"`
+			FreeBytes      int64 `json:"freeBytes"`
+			AvailableBytes int64 `json:"availableBytes"`
+		} `json:"capacity"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
-	node, err := s.store.HeartbeatStorageNode(input.NodeID, input.Token)
+	node, err := s.store.HeartbeatStorageNode(input.NodeID, input.Token, store.StorageCapacityReport{
+		TotalBytes:     input.Capacity.TotalBytes,
+		FreeBytes:      input.Capacity.FreeBytes,
+		AvailableBytes: input.Capacity.AvailableBytes,
+	})
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -721,8 +940,79 @@ func bearerToken(r *http.Request) string {
 	return ""
 }
 
-func familyID(r *http.Request) string {
+func albumID(r *http.Request) string {
+	if value := r.URL.Query().Get("albumId"); value != "" {
+		return value
+	}
 	return r.URL.Query().Get("familyId")
+}
+
+func contentTypeForFileName(name string) string {
+	lower := strings.ToLower(name)
+	switch {
+	case strings.HasSuffix(lower, ".png"):
+		return "image/png"
+	case strings.HasSuffix(lower, ".webp"):
+		return "image/webp"
+	case strings.HasSuffix(lower, ".gif"):
+		return "image/gif"
+	default:
+		return "image/jpeg"
+	}
+}
+
+func (s *Server) saveAvatar(babyID, originalName string, file io.Reader) (blob.SavedBlob, error) {
+	data, err := io.ReadAll(io.LimitReader(file, s.maxUploadBytes))
+	if err != nil {
+		return blob.SavedBlob{}, err
+	}
+	src, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return blob.SavedBlob{}, err
+	}
+	resized := resizeAvatar(src, 320)
+	canvas := image.NewRGBA(resized.Bounds())
+	draw.Draw(canvas, canvas.Bounds(), &image.Uniform{C: color.White}, image.Point{}, draw.Src)
+	draw.Draw(canvas, canvas.Bounds(), resized, resized.Bounds().Min, draw.Over)
+	var encoded bytes.Buffer
+	if err := jpeg.Encode(&encoded, canvas, &jpeg.Options{Quality: 82}); err != nil {
+		return blob.SavedBlob{}, err
+	}
+	return s.blob.SaveBytes(babyID+"-avatar", strings.TrimSuffix(originalName, filepath.Ext(originalName))+".jpg", encoded.Bytes())
+}
+
+func resizeAvatar(src image.Image, maxEdge int) image.Image {
+	bounds := src.Bounds()
+	width := bounds.Dx()
+	height := bounds.Dy()
+	if width <= 0 || height <= 0 {
+		return src
+	}
+	if width <= maxEdge && height <= maxEdge {
+		return src
+	}
+	scale := float64(maxEdge) / float64(width)
+	if height > width {
+		scale = float64(maxEdge) / float64(height)
+	}
+	targetWidth := maxInt(1, int(float64(width)*scale))
+	targetHeight := maxInt(1, int(float64(height)*scale))
+	dst := image.NewRGBA(image.Rect(0, 0, targetWidth, targetHeight))
+	for y := 0; y < targetHeight; y++ {
+		sourceY := bounds.Min.Y + y*height/targetHeight
+		for x := 0; x < targetWidth; x++ {
+			sourceX := bounds.Min.X + x*width/targetWidth
+			dst.Set(x, y, src.At(sourceX, sourceY))
+		}
+	}
+	return dst
+}
+
+func maxInt(left, right int) int {
+	if left > right {
+		return left
+	}
+	return right
 }
 
 func normalizeOrigins(items []string) []string {
@@ -768,6 +1058,12 @@ func writeStoreError(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
 	case errors.Is(err, store.ErrNodeUnauthorized):
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": err.Error()})
+	case errors.Is(err, store.ErrPairingNotFound):
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+	case errors.Is(err, store.ErrPairingExpired):
+		writeJSON(w, http.StatusGone, map[string]string{"error": err.Error()})
+	case errors.Is(err, store.ErrPairingUsed):
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 	case errors.Is(err, store.ErrNotFound):
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
 	case errors.Is(err, store.ErrConflict):

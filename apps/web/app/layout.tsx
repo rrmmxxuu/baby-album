@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "宝宝相册 | Baby Album",
-  description: "Self-hosted baby photo timeline with family RBAC"
+  description: "Self-hosted baby photo timeline with album membership and RBAC"
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -13,4 +13,3 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     </html>
   );
 }
-

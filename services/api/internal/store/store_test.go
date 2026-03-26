@@ -50,7 +50,17 @@ func TestInMemoryAuthFlow(t *testing.T) {
 
 func TestInMemoryUploadRequiresContentBeforeJobs(t *testing.T) {
 	repo := NewInMemoryStore()
-	session, err := repo.CreateUploadSession("user-owner", UploadSessionInput{FamilyID: "family-demo", FileName: "2026-03-25-bedtime.jpg", MediaType: "image/jpeg"})
+	entry, err := repo.CreateTimelineEntry("user-owner", CreateTimelineEntryInput{
+		AlbumID:    "family-demo",
+		Caption:    "睡前时刻",
+		Visibility: domain.EntryVisibilityMembers,
+		TimeMode:   domain.EntryTimeCaptured,
+		DisplayAt:  time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("CreateTimelineEntry returned error: %v", err)
+	}
+	session, err := repo.CreateUploadSession("user-owner", UploadSessionInput{AlbumID: "family-demo", EntryID: entry.ID, FileName: "2026-03-25-bedtime.jpg", MediaType: "image/jpeg"})
 	if err != nil {
 		t.Fatalf("CreateUploadSession returned error: %v", err)
 	}
@@ -83,20 +93,64 @@ func TestInMemoryUploadRequiresContentBeforeJobs(t *testing.T) {
 	}
 }
 
+func TestInMemoryStorageNodePairingAndCapacity(t *testing.T) {
+	repo := NewInMemoryStore()
+	owner, err := repo.RegisterUser(RegisterUserInput{DisplayName: "Mia", Email: "mia@example.com", Password: "strongpass1"})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	album, err := repo.CreateAlbum(owner.User.ID, CreateAlbumInput{Name: "Mia Family", Timezone: "Asia/Shanghai", BabyName: "Peanut"})
+	if err != nil {
+		t.Fatalf("CreateFamily returned error: %v", err)
+	}
+	pairing, err := repo.CreateStorageNodePairing(owner.User.ID, CreateStorageNodePairingInput{AlbumID: album.ID})
+	if err != nil {
+		t.Fatalf("CreateStorageNodePairing returned error: %v", err)
+	}
+	registered, err := repo.RegisterStorageNode(StorageNodeRegisterInput{
+		NodeName:    "Basement NAS",
+		PairingCode: pairing.Code,
+		Capacity:    StorageCapacityReport{TotalBytes: 10 << 40, FreeBytes: 4 << 40, AvailableBytes: 3 << 40},
+	})
+	if err != nil {
+		t.Fatalf("RegisterStorageNode returned error: %v", err)
+	}
+	if registered.Node.FamilyID != album.ID {
+		t.Fatalf("expected node album %s, got %s", album.ID, registered.Node.FamilyID)
+	}
+	if registered.NodeToken == "" || registered.NodeID == "" {
+		t.Fatal("expected issued node credentials")
+	}
+	node, err := repo.HeartbeatStorageNode(registered.NodeID, registered.NodeToken, StorageCapacityReport{TotalBytes: 10 << 40, FreeBytes: 2 << 40, AvailableBytes: 1 << 40})
+	if err != nil {
+		t.Fatalf("HeartbeatStorageNode returned error: %v", err)
+	}
+	if node.AvailableBytes != 1<<40 {
+		t.Fatalf("expected available bytes to update, got %d", node.AvailableBytes)
+	}
+	state, err := repo.AppState(owner.User.ID, album.ID)
+	if err != nil {
+		t.Fatalf("AppState returned error: %v", err)
+	}
+	if state.ActiveAlbum == nil || state.ActiveAlbum.StorageNode == nil {
+		t.Fatal("expected active album storage node")
+	}
+	if state.ActiveAlbum.StorageNode.AvailableBytes != 1<<40 {
+		t.Fatalf("expected app state storage node available bytes to match heartbeat, got %d", state.ActiveAlbum.StorageNode.AvailableBytes)
+	}
+}
+
 func TestInMemoryOnboardingInviteFlow(t *testing.T) {
 	repo := NewInMemoryStore()
 	owner, err := repo.RegisterUser(RegisterUserInput{DisplayName: "Mia", Email: "mia@example.com", Password: "strongpass1"})
 	if err != nil {
 		t.Fatalf("RegisterUser owner returned error: %v", err)
 	}
-	family, err := repo.CreateFamily(owner.User.ID, CreateFamilyInput{Name: "Mia Family", Timezone: "Asia/Shanghai"})
+	album, err := repo.CreateAlbum(owner.User.ID, CreateAlbumInput{Name: "Mia Family", Timezone: "Asia/Shanghai", BabyName: "Peanut"})
 	if err != nil {
 		t.Fatalf("CreateFamily returned error: %v", err)
 	}
-	if _, err := repo.CreateBaby(owner.User.ID, CreateBabyInput{FamilyID: family.ID, Name: "Peanut"}); err != nil {
-		t.Fatalf("CreateBaby returned error: %v", err)
-	}
-	invite, err := repo.CreateInvite(owner.User.ID, CreateInviteInput{FamilyID: family.ID, Role: domain.RoleMember})
+	invite, err := repo.CreateInvite(owner.User.ID, CreateAlbumInviteInput{AlbumID: album.ID, Role: domain.RoleMember})
 	if err != nil {
 		t.Fatalf("CreateInvite returned error: %v", err)
 	}
@@ -111,25 +165,25 @@ func TestInMemoryOnboardingInviteFlow(t *testing.T) {
 	if accepted.Status != domain.InviteAccepted {
 		t.Fatalf("expected accepted invite, got %s", accepted.Status)
 	}
-	member, err := repo.UpdateMemberRole(owner.User.ID, UpdateMemberRoleInput{FamilyID: family.ID, MemberUserID: guest.User.ID, Role: domain.RoleAdmin})
+	member, err := repo.UpdateMemberRole(owner.User.ID, UpdateAlbumMemberRoleInput{AlbumID: album.ID, MemberUserID: guest.User.ID, Role: domain.RoleAdmin})
 	if err != nil {
 		t.Fatalf("UpdateMemberRole returned error: %v", err)
 	}
 	if member.Role != domain.RoleAdmin {
 		t.Fatalf("expected admin role, got %s", member.Role)
 	}
-	state, err := repo.AppState(guest.User.ID, family.ID)
+	state, err := repo.AppState(guest.User.ID, album.ID)
 	if err != nil {
 		t.Fatalf("AppState returned error: %v", err)
 	}
-	if state.ActiveFamily == nil {
-		t.Fatal("expected active family in app state")
+	if state.ActiveAlbum == nil {
+		t.Fatal("expected active album in app state")
 	}
-	if len(state.ActiveFamily.Babies) != 1 {
-		t.Fatalf("expected one baby profile, got %d", len(state.ActiveFamily.Babies))
+	if len(state.ActiveAlbum.Babies) != 1 {
+		t.Fatalf("expected one baby profile, got %d", len(state.ActiveAlbum.Babies))
 	}
-	if state.ActiveFamily.Membership.Role != domain.RoleAdmin {
-		t.Fatalf("expected active family membership admin, got %s", state.ActiveFamily.Membership.Role)
+	if state.ActiveAlbum.Membership.Role != domain.RoleAdmin {
+		t.Fatalf("expected active album membership admin, got %s", state.ActiveAlbum.Membership.Role)
 	}
 }
 func TestInMemoryDeleteBabyRequiresAdmin(t *testing.T) {
@@ -137,38 +191,38 @@ func TestInMemoryDeleteBabyRequiresAdmin(t *testing.T) {
 	if err := repo.DeleteBaby("user-member", "family-demo", "baby-demo"); err == nil {
 		t.Fatal("expected member delete to be forbidden")
 	}
-	if err := repo.DeleteBaby("user-admin", "family-demo", "baby-demo"); err != nil {
-		t.Fatalf("DeleteBaby admin returned error: %v", err)
+	if err := repo.DeleteBaby("user-admin", "family-demo", "baby-demo"); err == nil {
+		t.Fatal("expected deleting the only baby album profile to fail")
 	}
 	state, err := repo.AppState("user-owner", "family-demo")
 	if err != nil {
 		t.Fatalf("AppState returned error: %v", err)
 	}
-	if len(state.ActiveFamily.Babies) != 0 {
-		t.Fatalf("expected no babies after deletion, got %d", len(state.ActiveFamily.Babies))
+	if len(state.ActiveAlbum.Babies) != 1 {
+		t.Fatalf("expected original baby profile to remain, got %d", len(state.ActiveAlbum.Babies))
 	}
 }
 
 func TestInMemoryOwnerMustTransferBeforeLeaving(t *testing.T) {
 	repo := NewInMemoryStore()
-	if err := repo.LeaveFamily("user-owner", LeaveFamilyInput{FamilyID: "family-demo"}); err == nil {
+	if err := repo.LeaveAlbum("user-owner", LeaveAlbumInput{AlbumID: "family-demo"}); err == nil {
 		t.Fatal("expected owner leave without transfer to fail")
 	}
-	if err := repo.LeaveFamily("user-owner", LeaveFamilyInput{FamilyID: "family-demo", TransferOwnerTo: "user-admin"}); err != nil {
-		t.Fatalf("LeaveFamily owner returned error: %v", err)
+	if err := repo.LeaveAlbum("user-owner", LeaveAlbumInput{AlbumID: "family-demo", TransferOwnerTo: "user-admin"}); err != nil {
+		t.Fatalf("LeaveAlbum owner returned error: %v", err)
 	}
 	state, err := repo.AppState("user-admin", "family-demo")
 	if err != nil {
 		t.Fatalf("AppState returned error: %v", err)
 	}
-	if state.ActiveFamily.Membership.Role != domain.RoleOwner {
-		t.Fatalf("expected transferred owner role, got %s", state.ActiveFamily.Membership.Role)
+	if state.ActiveAlbum.Membership.Role != domain.RoleOwner {
+		t.Fatalf("expected transferred owner role, got %s", state.ActiveAlbum.Membership.Role)
 	}
 	leftState, err := repo.AppState("user-owner", "family-demo")
 	if err != nil {
 		t.Fatalf("AppState former owner returned error: %v", err)
 	}
-	if len(leftState.Families) != 0 {
-		t.Fatalf("expected former owner to have left all families, got %d", len(leftState.Families))
+	if len(leftState.Albums) != 0 {
+		t.Fatalf("expected former owner to have left all albums, got %d", len(leftState.Albums))
 	}
 }

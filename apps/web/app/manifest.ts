@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "宝宝相册",
     short_name: "宝宝相册",
-    description: "Self-hosted baby photo timeline with family RBAC",
+    description: "Self-hosted baby photo timeline with album membership and RBAC",
     start_url: "/",
     display: "standalone",
     background_color: "#f6efe4",

@@ -103,8 +103,8 @@ Check these URLs after NPM is ready:
 Then validate the product flow:
 
 1. Register a user
-2. Create a family
-3. Create a baby profile
+2. Create an album
+3. Confirm the baby profile is created with the album
 4. Generate an invite link
 5. Upload one image
 6. Confirm the timeline loads through the public web domain

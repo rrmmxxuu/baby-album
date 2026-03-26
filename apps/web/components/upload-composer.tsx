@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 interface UploadComposerProps {
-  familyId: string;
+  albumId: string;
   apiBaseUrl: string;
   authToken: string;
   disabled?: boolean;
@@ -17,20 +17,87 @@ function toISOStringFromLastModified(value: number) {
   return new Date(value).toISOString();
 }
 
-export function UploadComposer({ familyId, apiBaseUrl, authToken, disabled, onUploaded }: UploadComposerProps) {
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [capturedAt, setCapturedAt] = useState(new Date().toISOString());
+function createUploadBatchId() {
+  if (typeof globalThis.crypto !== "undefined" && typeof globalThis.crypto.randomUUID === "function") {
+    return `batch-${globalThis.crypto.randomUUID()}`;
+  }
+  const randomPart = Math.random().toString(36).slice(2, 10);
+  return `batch-${Date.now().toString(36)}-${randomPart}`;
+}
+
+function validateSelection(files: File[]) {
+  if (files.length === 0) {
+    return "请先选择照片或视频。";
+  }
+  const videoCount = files.filter((file) => file.type.startsWith("video/")).length;
+  if (videoCount > 1) {
+    return "每次只能上传 1 个视频。";
+  }
+  if (videoCount === 1 && files.length > 1) {
+    return "视频必须单独上传，不能和照片混传。";
+  }
+  if (videoCount === 0 && files.length > 9) {
+    return "每次最多上传 9 张照片。";
+  }
+  return null;
+}
+
+export function UploadComposer({ albumId, apiBaseUrl, authToken, disabled, onUploaded }: UploadComposerProps) {
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [capturedAtOverride, setCapturedAtOverride] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const selectionError = useMemo(() => validateSelection(selectedFiles), [selectedFiles]);
+  const isVideoBatch = selectedFiles.length === 1 && selectedFiles[0]?.type.startsWith("video/");
+
+  async function uploadSingleFile(file: File, uploadBatchId: string) {
+    const capturedAt = capturedAtOverride || toISOStringFromLastModified(file.lastModified);
+    const createResponse = await fetch(`${apiBaseUrl}/api/v1/upload-sessions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${authToken}`
+      },
+      body: JSON.stringify({
+        albumId,
+        uploadBatchId,
+        fileName: file.name,
+        mediaType: file.type || "application/octet-stream",
+        capturedAt
+      })
+    });
+
+    const createPayload = (await createResponse.json()) as { id?: string; error?: string };
+    if (!createResponse.ok || !createPayload.id) {
+      throw new Error(createPayload.error ?? `创建 ${file.name} 的上传任务失败。`);
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const uploadResponse = await fetch(`${apiBaseUrl}/api/v1/upload-sessions/${createPayload.id}/content`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${authToken}`
+      },
+      body: formData
+    });
+
+    const uploadPayload = (await uploadResponse.json()) as { error?: string };
+    if (!uploadResponse.ok) {
+      throw new Error(uploadPayload.error ?? `上传 ${file.name} 失败。`);
+    }
+  }
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (disabled) {
-      setStatus("请先连接家庭存储节点，再上传照片或视频。");
+      setStatus("请先连接 NAS，再上传照片或视频。");
       return;
     }
-    if (!selectedFile) {
-      setStatus("请先选择一个照片或视频文件。");
+    if (selectionError) {
+      setStatus(selectionError);
       return;
     }
 
@@ -38,48 +105,17 @@ export function UploadComposer({ familyId, apiBaseUrl, authToken, disabled, onUp
     setStatus(null);
 
     try {
-      const createResponse = await fetch(`${apiBaseUrl}/api/v1/upload-sessions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${authToken}`
-        },
-        body: JSON.stringify({
-          familyId,
-          fileName: selectedFile.name,
-          mediaType: selectedFile.type || "application/octet-stream",
-          capturedAt
-        })
-      });
-
-      const createPayload = (await createResponse.json()) as { id?: string; error?: string };
-      if (!createResponse.ok || !createPayload.id) {
-        setStatus(createPayload.error ?? "创建上传任务失败。")
-        return;
+      const uploadBatchId = createUploadBatchId();
+      for (const [index, file] of selectedFiles.entries()) {
+        setStatus(`正在上传 ${index + 1} / ${selectedFiles.length}: ${file.name}`);
+        await uploadSingleFile(file, uploadBatchId);
       }
-
-      const formData = new FormData();
-      formData.append("file", selectedFile);
-
-      const uploadResponse = await fetch(`${apiBaseUrl}/api/v1/upload-sessions/${createPayload.id}/content`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${authToken}`
-        },
-        body: formData
-      });
-
-      const uploadPayload = (await uploadResponse.json()) as { error?: string; status?: string };
-      if (!uploadResponse.ok) {
-        setStatus(uploadPayload.error ?? "上传文件内容失败。")
-        return;
-      }
-
-      setStatus(`已上传 ${selectedFile.name}，当前状态：${uploadPayload.status ?? "uploaded"}。`);
-      setSelectedFile(null);
+      setStatus(`已完成 ${selectedFiles.length} 个文件上传。`);
+      setSelectedFiles([]);
+      setCapturedAtOverride("");
       onUploaded?.();
-    } catch {
-      setStatus("上传失败，请检查浏览器是否能够访问 API 服务。");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "上传失败，请检查浏览器是否能够访问 API 服务。");
     } finally {
       setSubmitting(false);
     }
@@ -92,36 +128,41 @@ export function UploadComposer({ familyId, apiBaseUrl, authToken, disabled, onUp
           <p className="eyebrow">上传</p>
           <h2>上传到宝宝时间线</h2>
         </div>
-        <span className="pill">云端缓存 -&gt; 存储节点</span>
+        <span className="pill">{isVideoBatch ? "单视频" : "最多 9 张照片"}</span>
       </div>
 
       <label>
         选择文件
         <input
+          multiple
           type="file"
           accept="image/*,video/*"
           onChange={(event) => {
-            const file = event.target.files?.[0] ?? null;
-            setSelectedFile(file);
-            if (file) {
-              setCapturedAt(toISOStringFromLastModified(file.lastModified));
+            const files = Array.from(event.target.files ?? []);
+            setSelectedFiles(files);
+            if (files.length === 1) {
+              setCapturedAtOverride(toISOStringFromLastModified(files[0].lastModified));
+            } else {
+              setCapturedAtOverride("");
             }
+            setStatus(null);
           }}
         />
       </label>
 
       <label>
-        拍摄时间
-        <input value={capturedAt} onChange={(event) => setCapturedAt(event.target.value)} />
+        拍摄时间覆盖
+        <input placeholder="留空则按文件时间自动判断" value={capturedAtOverride} onChange={(event) => setCapturedAtOverride(event.target.value)} />
       </label>
 
       <button disabled={submitting || disabled} type="submit">
         {submitting ? "上传中..." : "创建任务并上传"}
       </button>
 
-      <p className="helperText">文件会先进入主控缓存，再由家庭存储节点下载并归档到相册库中。</p>
+      <p className="helperText">照片支持每次最多 9 张；视频每次 1 个。系统会把同一次提交的内容归为一组展示在时间线里。</p>
 
-      {selectedFile ? <p className="helperText">已选择：{selectedFile.name} / {Math.ceil(selectedFile.size / 1024)} KB / {selectedFile.type || "application/octet-stream"}</p> : null}
+      {selectedFiles.length > 0 ? <p className="helperText">已选择 {selectedFiles.length} 个文件，总大小约 {Math.ceil(selectedFiles.reduce((sum, file) => sum + file.size, 0) / 1024)} KB。</p> : null}
+      {selectionError ? <p className="helperText">{selectionError}</p> : null}
       {status ? <p className="statusNote">{status}</p> : null}
     </form>
   );

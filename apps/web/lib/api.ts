@@ -1,4 +1,4 @@
-import type { AppStatePayload, AuthPayload, FamilyInvite, Role } from "./types";
+import type { AlbumInvite, AppStatePayload, AuthPayload, Role, StorageNodePairing, TimelineEntry, TimelineTimeMode, TimelineVisibility } from "./types";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
 
@@ -21,13 +21,23 @@ export function getApiBaseUrl() {
   return apiBaseUrl;
 }
 
-export function getPreviewUrl(mediaId: string, familyId: string, token: string) {
-  return `${apiBaseUrl}/api/v1/media/${encodeURIComponent(mediaId)}/preview?familyId=${encodeURIComponent(familyId)}&token=${encodeURIComponent(token)}`;
+export function getPreviewUrl(mediaId: string, albumId: string, token: string, version?: string) {
+  const suffix = version ? `&v=${encodeURIComponent(version)}` : "";
+  return `${apiBaseUrl}/api/v1/media/${encodeURIComponent(mediaId)}/preview?albumId=${encodeURIComponent(albumId)}&token=${encodeURIComponent(token)}${suffix}`;
 }
 
-export async function loadAppState(token: string, familyId?: string): Promise<AppStatePayload> {
-  const familyQuery = familyId ? `?familyId=${encodeURIComponent(familyId)}` : "";
-  const response = await fetch(`${apiBaseUrl}/api/v1/auth/app${familyQuery}`, {
+export function getOriginalUrl(mediaId: string, albumId: string, token: string) {
+  return `${apiBaseUrl}/api/v1/media/${encodeURIComponent(mediaId)}/original?albumId=${encodeURIComponent(albumId)}&token=${encodeURIComponent(token)}`;
+}
+
+export function getBabyAvatarUrl(babyId: string, albumId: string, token: string, version?: string) {
+  const suffix = version ? `&v=${encodeURIComponent(version)}` : "";
+  return `${apiBaseUrl}/api/v1/babies/${encodeURIComponent(babyId)}/avatar?albumId=${encodeURIComponent(albumId)}&token=${encodeURIComponent(token)}${suffix}`;
+}
+
+export async function loadAppState(token: string, albumId?: string): Promise<AppStatePayload> {
+  const albumQuery = albumId ? `?albumId=${encodeURIComponent(albumId)}` : "";
+  const response = await fetch(`${apiBaseUrl}/api/v1/auth/app${albumQuery}`, {
     headers: buildHeaders(token),
     cache: "no-store"
   });
@@ -63,8 +73,8 @@ export async function logoutUser(token: string): Promise<void> {
   }
 }
 
-export async function createFamily(token: string, input: { name: string; timezone: string }) {
-  const response = await fetch(`${apiBaseUrl}/api/v1/families`, {
+export async function createAlbum(token: string, input: { name: string; timezone: string; babyName: string; birthDate?: string }) {
+  const response = await fetch(`${apiBaseUrl}/api/v1/albums`, {
     method: "POST",
     headers: buildHeaders(token, { "Content-Type": "application/json" }),
     body: JSON.stringify(input)
@@ -72,40 +82,20 @@ export async function createFamily(token: string, input: { name: string; timezon
   return parseResponse<{ id: string; name: string; timezone: string }>(response);
 }
 
-export async function createBaby(token: string, familyId: string, input: { name: string; birthDate?: string }) {
-  const response = await fetch(`${apiBaseUrl}/api/v1/families/${encodeURIComponent(familyId)}/babies`, {
-    method: "POST",
-    headers: buildHeaders(token, { "Content-Type": "application/json" }),
-    body: JSON.stringify(input)
-  });
-  return parseResponse<{ id: string }>(response);
-}
-
-export async function deleteBaby(token: string, familyId: string, babyId: string): Promise<void> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/families/${encodeURIComponent(familyId)}/babies/${encodeURIComponent(babyId)}`, {
-    method: "DELETE",
-    headers: buildHeaders(token)
-  });
-  if (!response.ok) {
-    const payload = (await response.json()) as { error?: string };
-    throw new Error(payload.error ?? "Delete baby failed");
-  }
-}
-
-export async function leaveFamily(token: string, familyId: string, transferOwnerTo?: string): Promise<void> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/families/${encodeURIComponent(familyId)}/leave`, {
+export async function leaveAlbum(token: string, albumId: string, transferOwnerTo?: string): Promise<void> {
+  const response = await fetch(`${apiBaseUrl}/api/v1/albums/${encodeURIComponent(albumId)}/leave`, {
     method: "POST",
     headers: buildHeaders(token, { "Content-Type": "application/json" }),
     body: JSON.stringify({ transferOwnerTo: transferOwnerTo ?? "" })
   });
   if (!response.ok) {
     const payload = (await response.json()) as { error?: string };
-    throw new Error(payload.error ?? "Leave family failed");
+    throw new Error(payload.error ?? "Leave album failed");
   }
 }
 
-export async function updateMemberRole(token: string, familyId: string, memberUserId: string, role: Role) {
-  const response = await fetch(`${apiBaseUrl}/api/v1/families/${encodeURIComponent(familyId)}/members/${encodeURIComponent(memberUserId)}/role`, {
+export async function updateMemberRole(token: string, albumId: string, memberUserId: string, role: Role) {
+  const response = await fetch(`${apiBaseUrl}/api/v1/albums/${encodeURIComponent(albumId)}/members/${encodeURIComponent(memberUserId)}/role`, {
     method: "POST",
     headers: buildHeaders(token, { "Content-Type": "application/json" }),
     body: JSON.stringify({ role })
@@ -113,24 +103,61 @@ export async function updateMemberRole(token: string, familyId: string, memberUs
   return parseResponse<{ userId: string; role: Role }>(response);
 }
 
-export async function createInvite(token: string, familyId: string, role: Role): Promise<FamilyInvite> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/families/${encodeURIComponent(familyId)}/invites`, {
+export async function createInvite(token: string, albumId: string, role: Role): Promise<AlbumInvite> {
+  const response = await fetch(`${apiBaseUrl}/api/v1/albums/${encodeURIComponent(albumId)}/invites`, {
     method: "POST",
     headers: buildHeaders(token, { "Content-Type": "application/json" }),
     body: JSON.stringify({ role })
   });
-  return parseResponse<FamilyInvite>(response);
+  return parseResponse<AlbumInvite>(response);
 }
 
-export async function loadInvite(code: string): Promise<FamilyInvite> {
+export async function createStorageNodePairing(token: string, albumId: string): Promise<StorageNodePairing> {
+  const response = await fetch(`${apiBaseUrl}/api/v1/albums/${encodeURIComponent(albumId)}/storage-pairing`, {
+    method: "POST",
+    headers: buildHeaders(token)
+  });
+  return parseResponse<StorageNodePairing>(response);
+}
+
+export async function loadInvite(code: string): Promise<AlbumInvite> {
   const response = await fetch(`${apiBaseUrl}/api/v1/invites/${encodeURIComponent(code)}`, { cache: "no-store" });
-  return parseResponse<FamilyInvite>(response);
+  return parseResponse<AlbumInvite>(response);
 }
 
-export async function acceptInvite(token: string, code: string): Promise<FamilyInvite> {
+export async function acceptInvite(token: string, code: string): Promise<AlbumInvite> {
   const response = await fetch(`${apiBaseUrl}/api/v1/invites/${encodeURIComponent(code)}/accept`, {
     method: "POST",
     headers: buildHeaders(token)
   });
-  return parseResponse<FamilyInvite>(response);
+  return parseResponse<AlbumInvite>(response);
+}
+
+export async function createTimelineEntry(token: string, input: { albumId: string; caption: string; visibility: TimelineVisibility; timeMode: TimelineTimeMode; displayAt: string }): Promise<TimelineEntry> {
+  const response = await fetch(`${apiBaseUrl}/api/v1/timeline-entries`, {
+    method: "POST",
+    headers: buildHeaders(token, { "Content-Type": "application/json" }),
+    body: JSON.stringify(input)
+  });
+  return parseResponse<TimelineEntry>(response);
+}
+
+export async function updateBabyProfile(token: string, albumId: string, babyId: string, input: { name: string; birthDate?: string }) {
+  const response = await fetch(`${apiBaseUrl}/api/v1/albums/${encodeURIComponent(albumId)}/babies/${encodeURIComponent(babyId)}`, {
+    method: "POST",
+    headers: buildHeaders(token, { "Content-Type": "application/json" }),
+    body: JSON.stringify(input)
+  });
+  return parseResponse<{ id: string; name: string; birthDate?: string }>(response);
+}
+
+export async function uploadBabyAvatar(token: string, albumId: string, babyId: string, file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await fetch(`${apiBaseUrl}/api/v1/albums/${encodeURIComponent(albumId)}/babies/${encodeURIComponent(babyId)}/avatar`, {
+    method: "POST",
+    headers: buildHeaders(token),
+    body: formData
+  });
+  return parseResponse<{ id: string; hasAvatar?: boolean }>(response);
 }

@@ -35,7 +35,7 @@ Then verify:
 
 - `http://<host>:3000` opens the web UI
 - `http://<host>:8080/api/v1/healthz` is reachable if you add a health endpoint later
-- a user can register, create a family, create a baby profile, generate an invite link, and upload media
+- a user can register, create an album, generate an invite link, and upload media
 
 ## Security limits of the current test build
 

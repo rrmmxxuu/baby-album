@@ -20,13 +20,26 @@ var (
 	ErrNodeUnauthorized = errors.New("storage node unauthorized")
 	ErrNotFound         = errors.New("not found")
 	ErrConflict         = errors.New("conflict")
+	ErrPairingNotFound  = errors.New("pairing code not found")
+	ErrPairingExpired   = errors.New("pairing code expired")
+	ErrPairingUsed      = errors.New("pairing code already used")
 )
 
 type UploadSessionInput struct {
-	FamilyID   string
-	FileName   string
-	MediaType  string
-	CapturedAt *time.Time
+	AlbumID       string
+	EntryID       string
+	UploadBatchID string
+	FileName      string
+	MediaType     string
+	CapturedAt    *time.Time
+}
+
+type CreateTimelineEntryInput struct {
+	AlbumID    string
+	Caption    string
+	Visibility domain.TimelineEntryVisibility
+	TimeMode   domain.TimelineEntryTimeMode
+	DisplayAt  time.Time
 }
 
 type UploadContentInput struct {
@@ -41,6 +54,30 @@ type JobCompletionInput struct {
 	Height         int
 	PreviewStatus  domain.PreviewStatus
 	ProcessedAt    time.Time
+}
+
+type StorageCapacityReport struct {
+	TotalBytes     int64
+	FreeBytes      int64
+	AvailableBytes int64
+}
+
+type StorageNodeRegisterInput struct {
+	NodeID      string
+	NodeName    string
+	PairingCode string
+	Token       string
+	Capacity    StorageCapacityReport
+}
+
+type StorageNodeRegisterResult struct {
+	Node      domain.StorageNode `json:"node"`
+	NodeID    string             `json:"nodeId"`
+	NodeToken string             `json:"nodeToken"`
+}
+
+type CreateStorageNodePairingInput struct {
+	AlbumID string
 }
 
 type RegisterUserInput struct {
@@ -60,54 +97,71 @@ type AuthResult struct {
 	ExpiresAt time.Time   `json:"expiresAt"`
 }
 
-type CreateFamilyInput struct {
-	Name     string
-	Timezone string
+type CreateAlbumInput struct {
+	Name      string
+	Timezone  string
+	BabyName  string
+	BirthDate *time.Time
 }
 
 type CreateBabyInput struct {
-	FamilyID  string
+	AlbumID   string
 	Name      string
 	BirthDate *time.Time
 }
 
-type LeaveFamilyInput struct {
-	FamilyID        string
+type UpdateBabyInput struct {
+	AlbumID   string
+	BabyID    string
+	Name      string
+	BirthDate *time.Time
+}
+
+type UpdateBabyAvatarInput struct {
+	AlbumID   string
+	BabyID    string
+	AvatarKey string
+}
+
+type LeaveAlbumInput struct {
+	AlbumID         string
 	TransferOwnerTo string
 }
 
-type UpdateMemberRoleInput struct {
-	FamilyID     string
+type UpdateAlbumMemberRoleInput struct {
+	AlbumID      string
 	MemberUserID string
 	Role         domain.Role
 }
 
-type CreateInviteInput struct {
-	FamilyID string
-	Role     domain.Role
+type CreateAlbumInviteInput struct {
+	AlbumID string
+	Role    domain.Role
 }
 
-type FamilySummary struct {
-	Family     domain.Family       `json:"family"`
-	Membership domain.FamilyMember `json:"membership"`
+type AlbumSummary struct {
+	Album      domain.Album        `json:"album"`
+	Baby       *domain.BabyProfile `json:"baby,omitempty"`
+	Membership domain.AlbumMember  `json:"membership"`
 }
 
-type Bootstrap struct {
-	Family      domain.Family         `json:"family"`
-	CurrentUser domain.User           `json:"currentUser"`
-	Membership  domain.FamilyMember   `json:"membership"`
-	StorageNode *domain.StorageNode   `json:"storageNode,omitempty"`
-	Timeline    []domain.MediaAsset   `json:"timeline"`
-	Members     []domain.FamilyMember `json:"members"`
-	Babies      []domain.BabyProfile  `json:"babies"`
-	Invites     []domain.FamilyInvite `json:"invites"`
+type AlbumWorkspace struct {
+	Album       domain.Album           `json:"album"`
+	Baby        *domain.BabyProfile    `json:"baby,omitempty"`
+	CurrentUser domain.User            `json:"currentUser"`
+	Membership  domain.AlbumMember     `json:"membership"`
+	StorageNode *domain.StorageNode    `json:"storageNode,omitempty"`
+	Timeline    []domain.TimelineEntry `json:"timeline"`
+	Members     []domain.AlbumMember   `json:"members"`
+	Babies      []domain.BabyProfile   `json:"babies"`
+	Invites     []domain.AlbumInvite   `json:"invites"`
 }
 
 type AppState struct {
-	CurrentUser    domain.User     `json:"currentUser"`
-	Families       []FamilySummary `json:"families"`
-	ActiveFamily   *Bootstrap      `json:"activeFamily,omitempty"`
-	ActiveFamilyID string          `json:"activeFamilyId,omitempty"`
+	CurrentUser   domain.User     `json:"currentUser"`
+	Albums        []AlbumSummary  `json:"albums"`
+	ActiveAlbum   *AlbumWorkspace `json:"activeAlbum,omitempty"`
+	ActiveAlbumID string          `json:"activeAlbumId,omitempty"`
 }
 
 type Repository interface {
@@ -115,24 +169,29 @@ type Repository interface {
 	Login(input LoginInput) (AuthResult, error)
 	SessionUser(token string) (domain.User, error)
 	RevokeSession(token string) error
-	AppState(userID, familyID string) (AppState, error)
-	Bootstrap(familyID, userID string) (Bootstrap, error)
-	Timeline(familyID, userID string) ([]domain.MediaAsset, error)
-	Members(familyID, userID string) ([]domain.FamilyMember, error)
-	MediaByID(familyID, userID, mediaID string) (domain.MediaAsset, error)
-	CreateFamily(userID string, input CreateFamilyInput) (domain.Family, error)
+	AppState(userID, albumID string) (AppState, error)
+	AlbumWorkspace(albumID, userID string) (AlbumWorkspace, error)
+	Timeline(albumID, userID string) ([]domain.TimelineEntry, error)
+	Members(albumID, userID string) ([]domain.AlbumMember, error)
+	MediaByID(albumID, userID, mediaID string) (domain.MediaAsset, error)
+	CreateTimelineEntry(userID string, input CreateTimelineEntryInput) (domain.TimelineEntry, error)
+	CreateAlbum(userID string, input CreateAlbumInput) (domain.Album, error)
 	CreateBaby(userID string, input CreateBabyInput) (domain.BabyProfile, error)
-	DeleteBaby(userID, familyID, babyID string) error
-	LeaveFamily(userID string, input LeaveFamilyInput) error
-	UpdateMemberRole(userID string, input UpdateMemberRoleInput) (domain.FamilyMember, error)
-	CreateInvite(userID string, input CreateInviteInput) (domain.FamilyInvite, error)
-	Invites(familyID, userID string) ([]domain.FamilyInvite, error)
-	InviteByCode(code string) (domain.FamilyInvite, error)
-	AcceptInvite(userID, code string) (domain.FamilyInvite, error)
+	BabyByID(userID, albumID, babyID string) (domain.BabyProfile, error)
+	UpdateBaby(userID string, input UpdateBabyInput) (domain.BabyProfile, error)
+	UpdateBabyAvatar(userID string, input UpdateBabyAvatarInput) (domain.BabyProfile, error)
+	DeleteBaby(userID, albumID, babyID string) error
+	LeaveAlbum(userID string, input LeaveAlbumInput) error
+	UpdateMemberRole(userID string, input UpdateAlbumMemberRoleInput) (domain.AlbumMember, error)
+	CreateInvite(userID string, input CreateAlbumInviteInput) (domain.AlbumInvite, error)
+	Invites(albumID, userID string) ([]domain.AlbumInvite, error)
+	InviteByCode(code string) (domain.AlbumInvite, error)
+	AcceptInvite(userID, code string) (domain.AlbumInvite, error)
 	CreateUploadSession(userID string, input UploadSessionInput) (domain.UploadSession, error)
 	AttachUploadContent(userID, sessionID string, input UploadContentInput) (domain.UploadSession, error)
-	RegisterStorageNode(nodeID, nodeName, token string) (domain.StorageNode, error)
-	HeartbeatStorageNode(nodeID, token string) (domain.StorageNode, error)
+	CreateStorageNodePairing(userID string, input CreateStorageNodePairingInput) (domain.StorageNodePairing, error)
+	RegisterStorageNode(input StorageNodeRegisterInput) (StorageNodeRegisterResult, error)
+	HeartbeatStorageNode(nodeID, token string, capacity StorageCapacityReport) (domain.StorageNode, error)
 	PendingJobs(nodeID, token string) ([]domain.AgentJob, error)
 	AgentJob(nodeID, token, jobID string) (domain.AgentJob, error)
 	CompleteJob(nodeID, token, jobID string, input JobCompletionInput) (domain.AgentJob, error)
@@ -170,9 +229,18 @@ func sortMedia(items []domain.MediaAsset) {
 	})
 }
 
-func sortFamilies(items []FamilySummary) {
+func sortTimelineEntries(items []domain.TimelineEntry) {
 	sort.Slice(items, func(i, j int) bool {
-		return items[i].Family.Name < items[j].Family.Name
+		if items[i].DisplayAt.Equal(items[j].DisplayAt) {
+			return items[i].UploadedAt.After(items[j].UploadedAt)
+		}
+		return items[i].DisplayAt.After(items[j].DisplayAt)
+	})
+}
+
+func sortAlbums(items []AlbumSummary) {
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].Album.Name < items[j].Album.Name
 	})
 }
 
@@ -182,35 +250,35 @@ func sortBabies(items []domain.BabyProfile) {
 	})
 }
 
-func sortInvites(items []domain.FamilyInvite) {
+func sortInvites(items []domain.AlbumInvite) {
 	sort.Slice(items, func(i, j int) bool {
 		return items[i].CreatedAt.After(items[j].CreatedAt)
 	})
 }
 
-func normalizeBootstrap(value Bootstrap) Bootstrap {
+func normalizeAlbumWorkspace(value AlbumWorkspace) AlbumWorkspace {
 	if value.Timeline == nil {
-		value.Timeline = []domain.MediaAsset{}
+		value.Timeline = []domain.TimelineEntry{}
 	}
 	if value.Members == nil {
-		value.Members = []domain.FamilyMember{}
+		value.Members = []domain.AlbumMember{}
 	}
 	if value.Babies == nil {
 		value.Babies = []domain.BabyProfile{}
 	}
 	if value.Invites == nil {
-		value.Invites = []domain.FamilyInvite{}
+		value.Invites = []domain.AlbumInvite{}
 	}
 	return value
 }
 
 func normalizeAppState(value AppState) AppState {
-	if value.Families == nil {
-		value.Families = []FamilySummary{}
+	if value.Albums == nil {
+		value.Albums = []AlbumSummary{}
 	}
-	if value.ActiveFamily != nil {
-		normalized := normalizeBootstrap(*value.ActiveFamily)
-		value.ActiveFamily = &normalized
+	if value.ActiveAlbum != nil {
+		normalized := normalizeAlbumWorkspace(*value.ActiveAlbum)
+		value.ActiveAlbum = &normalized
 	}
 	return value
 }
@@ -222,6 +290,24 @@ func canonicalEmail(email string) string {
 func validRole(role domain.Role) bool {
 	switch role {
 	case domain.RoleViewer, domain.RoleMember, domain.RoleAdmin, domain.RoleOwner:
+		return true
+	default:
+		return false
+	}
+}
+
+func validTimelineVisibility(value domain.TimelineEntryVisibility) bool {
+	switch value {
+	case domain.EntryVisibilityMembers, domain.EntryVisibilityManagers:
+		return true
+	default:
+		return false
+	}
+}
+
+func validTimelineTimeMode(value domain.TimelineEntryTimeMode) bool {
+	switch value {
+	case domain.EntryTimeCaptured, domain.EntryTimeUploaded, domain.EntryTimeManual:
 		return true
 	default:
 		return false
@@ -242,6 +328,23 @@ func newInviteCode() string {
 		return fmt.Sprintf("invite-%d", time.Now().UTC().UnixNano())
 	}
 	return strings.ToLower(hex.EncodeToString(buf))
+}
+
+func newPairingCode() string {
+	buf := make([]byte, 4)
+	if _, err := rand.Read(buf); err != nil {
+		return fmt.Sprintf("%08d", time.Now().UTC().UnixNano()%100000000)
+	}
+	value := binaryUint32(buf) % 100000000
+	return fmt.Sprintf("%08d", value)
+}
+
+func binaryUint32(buf []byte) uint32 {
+	var value uint32
+	for _, b := range buf {
+		value = (value << 8) | uint32(b)
+	}
+	return value
 }
 
 func newSessionToken() string {

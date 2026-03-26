@@ -1,10 +1,10 @@
 # Baby Album
 
-Open source baby photo platform for self-hosted families. The current test build focuses on four end-to-end flows:
+Open source baby photo platform for self-hosted households. The current test build focuses on four end-to-end flows:
 
 - mobile-first photo timeline and manual upload
-- family onboarding with registration, login, family creation, and baby profiles
-- family RBAC with invite links and role management
+- album onboarding with registration, login, album creation, and baby profiles
+- album RBAC with invite links and role management
 - cloud control plane plus NAS agent with outbound-only coordination
 
 ## Repository layout
@@ -70,6 +70,15 @@ For a fuller VPS guide built around Nginx Proxy Manager and Cloudflare, use [doc
 6. The NAS agent stores the original file in its own library root.
 7. For supported images, the NAS agent generates a JPEG thumbnail and uploads it back to `POST /api/v1/agents/jobs/{id}/preview?nodeId=...`.
 8. The NAS agent completes the job with width, height, preview status, preview blob key, and original-path metadata.
+
+## NAS pairing and storage reporting
+
+1. An album owner or admin generates a NAS pairing code from the web control panel.
+2. The first-time NAS deployment sets `AGENT_API_BASE_URL`, `AGENT_PAIRING_CODE`, `AGENT_NODE_NAME`, and `AGENT_LIBRARY_ROOT`.
+3. The agent registers with `POST /api/v1/storage-nodes/register`, and the control plane creates a storage-node record bound to that album.
+4. The control plane returns a dedicated `nodeId` and `nodeToken`; the agent saves them to `.agent-state.json` under `AGENT_LIBRARY_ROOT`.
+5. Subsequent restarts and heartbeats reuse the saved node credentials and report `total/free/available` bytes from the NAS filesystem.
+6. The web control panel reads the latest capacity numbers from the active album's storage node and shows remaining space.
 
 ## Production note
 

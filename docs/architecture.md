@@ -2,8 +2,8 @@
 
 ## Components
 
-- `web`: mobile-first PWA shell for browsing the family timeline, checking storage-node health, and creating upload sessions
-- `api`: cloud control plane for family membership, RBAC, timeline queries, upload sessions, and agent coordination
+- `web`: mobile-first PWA shell for browsing the album timeline, checking storage-node health, and creating upload sessions
+- `api`: cloud control plane for album membership, RBAC, timeline queries, upload sessions, and agent coordination
 - `agent`: outbound NAS connector that registers itself, heartbeats, polls jobs, and simulates file-processing completion
 
 ## Why this shape

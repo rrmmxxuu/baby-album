@@ -1,0 +1,626 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createTimelineEntry, getApiBaseUrl } from "../lib/api";
+import type { TimelineTimeMode, TimelineVisibility } from "../lib/types";
+
+type DraftMedia = {
+  id: string;
+  file: File;
+  previewUrl: string;
+  capturedAt: string;
+  mediaType: string;
+};
+
+type UploadDraft = {
+  id: string;
+  caption: string;
+  visibility: TimelineVisibility;
+  timeMode: TimelineTimeMode;
+  manualDate: string;
+  items: DraftMedia[];
+};
+
+interface UploadDraftSheetProps {
+  albumId: string;
+  authToken: string;
+  babyName?: string;
+  open: boolean;
+  disabled?: boolean;
+  disabledReason?: string;
+  onClose: () => void;
+  onUploaded?: () => void;
+}
+
+function createClientId(prefix: string) {
+  const randomPart = Math.random().toString(36).slice(2, 10);
+  return `${prefix}-${Date.now().toString(36)}-${randomPart}`;
+}
+
+function toCapturedAt(file: File) {
+  return new Date(file.lastModified || Date.now()).toISOString();
+}
+
+function toLocalDay(value: string) {
+  const date = new Date(value);
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function draftDayLabel(value: string) {
+  const target = new Date(`${value}T00:00:00`);
+  const now = new Date();
+  if (target.getFullYear() === now.getFullYear() && target.getMonth() === now.getMonth() && target.getDate() === now.getDate()) {
+    return "今天";
+  }
+  return value;
+}
+
+function chunkItems<T>(items: T[], size: number) {
+  const result: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    result.push(items.slice(index, index + size));
+  }
+  return result;
+}
+
+function buildDrafts(files: File[]) {
+  const drafts: UploadDraft[] = [];
+  const photosByDay = new Map<string, DraftMedia[]>();
+
+  for (const file of files) {
+    const capturedAt = toCapturedAt(file);
+    const media: DraftMedia = {
+      id: createClientId("media"),
+      file,
+      previewUrl: URL.createObjectURL(file),
+      capturedAt,
+      mediaType: file.type || "application/octet-stream"
+    };
+    if (media.mediaType.startsWith("video/")) {
+      drafts.push({
+        id: createClientId("draft"),
+        caption: "",
+        visibility: "members",
+        timeMode: "captured_at",
+        manualDate: toLocalDay(capturedAt),
+        items: [media]
+      });
+      continue;
+    }
+    const day = toLocalDay(capturedAt);
+    const existing = photosByDay.get(day) ?? [];
+    existing.push(media);
+    photosByDay.set(day, existing);
+  }
+
+  for (const [day, items] of Array.from(photosByDay.entries()).sort((left, right) => right[0].localeCompare(left[0]))) {
+    for (const group of chunkItems(items, 9)) {
+      drafts.push({
+        id: createClientId("draft"),
+        caption: "",
+        visibility: "members",
+        timeMode: "captured_at",
+        manualDate: day,
+        items: group.sort((left, right) => left.capturedAt.localeCompare(right.capturedAt))
+      });
+    }
+  }
+
+  return drafts.sort((left, right) => draftDisplayAt(right).localeCompare(draftDisplayAt(left)));
+}
+
+function mergeDrafts(existingDrafts: UploadDraft[], incomingDrafts: UploadDraft[]) {
+  const merged: UploadDraft[] = existingDrafts.map((draft) => ({
+    ...draft,
+    items: [...draft.items]
+  }));
+
+  for (const incoming of incomingDrafts) {
+    const isSingleVideo = incoming.items.length === 1 && incoming.items[0].mediaType.startsWith("video/");
+    if (isSingleVideo) {
+      merged.push(incoming);
+      continue;
+    }
+
+    const targetDrafts = merged
+      .filter((draft) => draft.timeMode === "captured_at" && draft.manualDate === incoming.manualDate && draft.items.every((item) => !item.mediaType.startsWith("video/")))
+      .sort((left, right) => left.items.length - right.items.length);
+
+    for (const item of incoming.items) {
+      const target = targetDrafts.find((draft) => draft.items.length < 9);
+      if (target) {
+        target.items.push(item);
+      } else {
+        const nextDraft: UploadDraft = {
+          ...incoming,
+          id: createClientId("draft"),
+          items: [item]
+        };
+        merged.push(nextDraft);
+        targetDrafts.push(nextDraft);
+      }
+    }
+  }
+
+  for (const draft of merged) {
+    draft.items.sort((left, right) => left.capturedAt.localeCompare(right.capturedAt));
+  }
+  return merged.sort((left, right) => draftDisplayAt(right).localeCompare(draftDisplayAt(left)));
+}
+
+function draftDisplayAt(draft: UploadDraft) {
+  switch (draft.timeMode) {
+    case "uploaded_at":
+      return new Date().toISOString();
+    case "manual":
+      return new Date(`${draft.manualDate}T12:00:00`).toISOString();
+    default:
+      return [...draft.items].sort((left, right) => left.capturedAt.localeCompare(right.capturedAt))[0]?.capturedAt ?? new Date().toISOString();
+  }
+}
+
+function visibilityLabel(value: TimelineVisibility) {
+  return value === "managers" ? "仅管理员和所有者" : "相册成员可见";
+}
+
+function timeModeLabel(value: TimelineTimeMode) {
+  switch (value) {
+    case "uploaded_at":
+      return "按当前时间";
+    case "manual":
+      return "手动选择日期";
+    default:
+      return "按拍摄时间";
+  }
+}
+
+function revokeDrafts(items: UploadDraft[]) {
+  for (const draft of items) {
+    for (const item of draft.items) {
+      URL.revokeObjectURL(item.previewUrl);
+    }
+  }
+}
+
+export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled, disabledReason, onClose, onUploaded }: UploadDraftSheetProps) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const appendInputRef = useRef<HTMLInputElement | null>(null);
+  const editAppendInputRef = useRef<HTMLInputElement | null>(null);
+  const apiBaseUrl = getApiBaseUrl();
+  const [drafts, setDrafts] = useState<UploadDraft[]>([]);
+  const [selectedDraftId, setSelectedDraftId] = useState("");
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [batchSettingsOpen, setBatchSettingsOpen] = useState(false);
+  const [batchVisibility, setBatchVisibility] = useState<TimelineVisibility>("members");
+  const [batchTimeMode, setBatchTimeMode] = useState<TimelineTimeMode>("captured_at");
+  const [batchManualDate, setBatchManualDate] = useState("");
+  const [status, setStatus] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const selectedDraft = drafts.find((item) => item.id === selectedDraftId) ?? drafts[0] ?? null;
+  const totalFiles = useMemo(() => drafts.reduce((sum, draft) => sum + draft.items.length, 0), [drafts]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    if (drafts.length > 0 && !selectedDraftId) {
+      setSelectedDraftId(drafts[0].id);
+    }
+  }, [drafts, open, selectedDraftId]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open]);
+
+  if (!open) {
+    return null;
+  }
+
+  function resetDrafts() {
+    revokeDrafts(drafts);
+    setDrafts([]);
+    setSelectedDraftId("");
+    setEditorOpen(false);
+    setBatchSettingsOpen(false);
+    setStatus(null);
+    setUploading(false);
+  }
+
+  function closeSheet() {
+    resetDrafts();
+    onClose();
+  }
+
+  function updateDraft(draftId: string, recipe: (draft: UploadDraft) => UploadDraft) {
+    setDrafts((current) => current.map((draft) => draft.id === draftId ? recipe(draft) : draft));
+  }
+
+  function appendFiles(files: File[]) {
+    if (files.length === 0) {
+      return;
+    }
+    const nextDrafts = buildDrafts(files);
+    setDrafts((current) => {
+      const merged = mergeDrafts(current, nextDrafts);
+      if (!selectedDraftId && merged[0]) {
+        setSelectedDraftId(merged[0].id);
+      }
+      return merged;
+    });
+    setStatus(null);
+  }
+
+  function removeDraftItem(draftId: string, itemId: string) {
+    setDrafts((current) => {
+      const next = current
+        .map((draft) => {
+          if (draft.id !== draftId) {
+            return draft;
+          }
+          const removedItem = draft.items.find((item) => item.id === itemId);
+          if (removedItem) {
+            URL.revokeObjectURL(removedItem.previewUrl);
+          }
+          return { ...draft, items: draft.items.filter((item) => item.id !== itemId) };
+        })
+        .filter((draft) => draft.items.length > 0);
+      const nextSelected = next.find((draft) => draft.id === selectedDraftId) ? selectedDraftId : next[0]?.id ?? "";
+      setSelectedDraftId(nextSelected);
+      if (!nextSelected) {
+        setEditorOpen(false);
+      }
+      return next;
+    });
+  }
+
+  function appendToSelectedDraft(files: File[]) {
+    if (!selectedDraft || files.length === 0) {
+      return;
+    }
+    const nextItems = files.map((file) => ({
+      id: createClientId("media"),
+      file,
+      previewUrl: URL.createObjectURL(file),
+      capturedAt: toCapturedAt(file),
+      mediaType: file.type || "application/octet-stream"
+    }));
+    const hasVideo = selectedDraft.items.some((item) => item.mediaType.startsWith("video/"));
+    const incomingVideo = nextItems.some((item) => item.mediaType.startsWith("video/"));
+    if (hasVideo || incomingVideo) {
+      nextItems.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+      setStatus("视频记录暂不支持继续追加，请新建一条记录。");
+      return;
+    }
+    if (selectedDraft.items.length + nextItems.length > 9) {
+      nextItems.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+      setStatus("一条记录最多 9 张照片。");
+      return;
+    }
+    updateDraft(selectedDraft.id, (draft) => ({
+      ...draft,
+      items: [...draft.items, ...nextItems]
+    }));
+    setStatus(null);
+  }
+
+  async function uploadFile(entryId: string, uploadBatchId: string, item: DraftMedia) {
+    const createResponse = await fetch(`${apiBaseUrl}/api/v1/upload-sessions`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        albumId,
+        entryId,
+        uploadBatchId,
+        fileName: item.file.name,
+        mediaType: item.mediaType,
+        capturedAt: item.capturedAt
+      })
+    });
+    const createPayload = await createResponse.json() as { id?: string; error?: string };
+    if (!createResponse.ok || !createPayload.id) {
+      throw new Error(createPayload.error ?? `创建 ${item.file.name} 的上传任务失败。`);
+    }
+
+    const formData = new FormData();
+    formData.append("file", item.file);
+    const uploadResponse = await fetch(`${apiBaseUrl}/api/v1/upload-sessions/${createPayload.id}/content`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${authToken}`
+      },
+      body: formData
+    });
+    const uploadPayload = await uploadResponse.json() as { error?: string };
+    if (!uploadResponse.ok) {
+      throw new Error(uploadPayload.error ?? `上传 ${item.file.name} 失败。`);
+    }
+  }
+
+  async function handleUploadAll() {
+    if (disabled) {
+      setStatus(disabledReason ?? "当前不可上传。");
+      return;
+    }
+    if (drafts.length === 0) {
+      setStatus("请先选择要上传的照片或视频。");
+      return;
+    }
+    setUploading(true);
+    setStatus(null);
+    try {
+      for (const [draftIndex, draft] of drafts.entries()) {
+        setStatus(`正在创建记录 ${draftIndex + 1} / ${drafts.length}`);
+        const entry = await createTimelineEntry(authToken, {
+          albumId,
+          caption: draft.caption,
+          visibility: draft.visibility,
+          timeMode: draft.timeMode,
+          displayAt: draftDisplayAt(draft)
+        });
+        const uploadBatchId = createClientId("batch");
+        for (const [itemIndex, item] of draft.items.entries()) {
+          setStatus(`正在上传 ${draftIndex + 1}.${itemIndex + 1} / ${drafts.length}.${draft.items.length}`);
+          await uploadFile(entry.id, uploadBatchId, item);
+        }
+      }
+      setStatus("上传任务已创建，媒体会继续由 NAS 处理。");
+      onUploaded?.();
+      setTimeout(() => {
+        closeSheet();
+      }, 300);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "上传失败。");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div className="draftSheetOverlay">
+      <section className="draftSheet">
+        <header className="draftSheetHeader">
+          {editorOpen ? (
+            <>
+              <button className="draftTopAction" onClick={() => setEditorOpen(false)} type="button">取消</button>
+              <h2>{babyName ? `${babyName}新变化` : "编辑记录"}</h2>
+              <button className="draftTopPrimary" onClick={() => setEditorOpen(false)} type="button">保存</button>
+            </>
+          ) : (
+            <>
+              <button className="draftTopAction" onClick={closeSheet} type="button">取消</button>
+              <h2>{babyName ? `${babyName}新变化` : "本次上传"}</h2>
+              <span className="draftTopSpacer" />
+            </>
+          )}
+        </header>
+
+        <input
+          hidden
+          accept="image/*,video/*"
+          multiple
+          onChange={(event) => {
+            const files = Array.from(event.target.files ?? []);
+            if (files.length === 0) {
+              return;
+            }
+            const nextDrafts = buildDrafts(files);
+            revokeDrafts(drafts);
+            setDrafts(nextDrafts);
+            setSelectedDraftId(nextDrafts[0]?.id ?? "");
+            setEditorOpen(false);
+            setStatus(null);
+            event.currentTarget.value = "";
+          }}
+          ref={fileInputRef}
+          type="file"
+        />
+        <input
+          hidden
+          accept="image/*,video/*"
+          multiple
+          onChange={(event) => {
+            appendFiles(Array.from(event.target.files ?? []));
+            event.currentTarget.value = "";
+          }}
+          ref={appendInputRef}
+          type="file"
+        />
+        <input
+          hidden
+          accept="image/*,video/*"
+          multiple
+          onChange={(event) => {
+            appendToSelectedDraft(Array.from(event.target.files ?? []));
+            event.currentTarget.value = "";
+          }}
+          ref={editAppendInputRef}
+          type="file"
+        />
+
+        {drafts.length === 0 ? (
+          <div className="draftEmptyState">
+            {disabled ? (
+              <>
+                <p className="helperText">{disabledReason ?? "当前不可上传。"}</p>
+                <button className="secondaryButton" onClick={closeSheet} type="button">返回</button>
+              </>
+            ) : (
+              <>
+                <p className="helperText">照片会按拍摄日期自动拆成多条记录；同一天最多 9 张照片，视频会单独成一条记录。</p>
+                <button onClick={() => fileInputRef.current?.click()} type="button">选择照片或视频</button>
+              </>
+            )}
+          </div>
+        ) : (
+          <>
+            {!editorOpen ? (
+              <div className="draftPage">
+                <section className="draftListPage">
+                  <div className="draftListCards">
+                    {drafts.map((draft, index) => (
+                      <article className="draftListCard panel" key={draft.id}>
+                        <div className="draftListCardTop">
+                          <strong>{draftDayLabel(draft.manualDate)}</strong>
+                          <button
+                            className="draftEditInline"
+                            onClick={() => {
+                              setSelectedDraftId(draft.id);
+                              setEditorOpen(true);
+                            }}
+                            type="button"
+                          >
+                            编辑
+                          </button>
+                        </div>
+                        <div className="draftListThumbs">
+                          {draft.items.slice(0, 4).map((item) => <img alt={item.file.name} key={item.id} src={item.previewUrl} />)}
+                        </div>
+                        <textarea
+                          className="draftListCaption"
+                          onChange={(event) => updateDraft(draft.id, (current) => ({ ...current, caption: event.target.value }))}
+                          placeholder="添加照片说明..."
+                          value={draft.caption}
+                        />
+                        <p className="helperText">{visibilityLabel(draft.visibility)} · {timeModeLabel(draft.timeMode)}</p>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              </div>
+            ) : selectedDraft ? (
+              <div className="draftPage">
+                <section className="draftEditorPage panel">
+                  <div className="panelStack">
+                    <div className="sectionHeading">
+                      <div>
+                        <p className="eyebrow">记录编辑</p>
+                        <h2>{selectedDraft.items.length} 个文件</h2>
+                      </div>
+                      <span className="draftEditMeta">{selectedDraft.items.length} 张</span>
+                    </div>
+
+                    <div className={`draftEditorMedia draftEditorMedia${Math.min(selectedDraft.items.length, 4)}`}>
+                      {selectedDraft.items.map((item) => (
+                        <div className="draftEditorMediaCard" key={item.id}>
+                          <img alt={item.file.name} src={item.previewUrl} />
+                          <div className="draftMediaActions">
+                            <button className="draftRemoveButton" onClick={() => removeDraftItem(selectedDraft.id, item.id)} type="button">移除</button>
+                          </div>
+                        </div>
+                      ))}
+                      <button className="draftAddTile" onClick={() => editAppendInputRef.current?.click()} type="button">添加</button>
+                    </div>
+
+                    <label>
+                      介绍文字
+                      <textarea className="draftTextarea" onChange={(event) => updateDraft(selectedDraft.id, (draft) => ({ ...draft, caption: event.target.value }))} placeholder="写一点这次记录的说明" value={selectedDraft.caption} />
+                    </label>
+
+                    <div className="draftSettingList">
+                      <label className="draftSettingRow">
+                        <span>谁可以看</span>
+                        <select value={selectedDraft.visibility} onChange={(event) => updateDraft(selectedDraft.id, (draft) => ({ ...draft, visibility: event.target.value as TimelineVisibility }))}>
+                          <option value="members">所有家人</option>
+                          <option value="managers">仅管理员和所有者</option>
+                        </select>
+                      </label>
+
+                      <label className="draftSettingRow">
+                        <span>记录时间</span>
+                        <select value={selectedDraft.timeMode} onChange={(event) => updateDraft(selectedDraft.id, (draft) => ({ ...draft, timeMode: event.target.value as TimelineTimeMode }))}>
+                          <option value="captured_at">按拍摄时间</option>
+                          <option value="uploaded_at">按当前时间</option>
+                          <option value="manual">手动选择日期</option>
+                        </select>
+                      </label>
+
+                      {selectedDraft.timeMode === "manual" ? (
+                        <label className="draftSettingRow">
+                          <span>日期</span>
+                          <input type="date" value={selectedDraft.manualDate} onChange={(event) => updateDraft(selectedDraft.id, (draft) => ({ ...draft, manualDate: event.target.value }))} />
+                        </label>
+                      ) : null}
+                    </div>
+                  </div>
+                </section>
+              </div>
+            ) : null}
+
+            {batchSettingsOpen ? (
+              <div className="draftBatchModal" onClick={() => setBatchSettingsOpen(false)}>
+                <section className="draftBatchTools panel" onClick={(event) => event.stopPropagation()}>
+                  <div className="panelStack">
+                    <div className="sectionHeading">
+                      <div>
+                        <p className="eyebrow">批量设置</p>
+                        <h2>统一设置这批记录</h2>
+                      </div>
+                      <button className="secondaryButton" onClick={() => setBatchSettingsOpen(false)} type="button">收起</button>
+                    </div>
+                    <div className="formGrid">
+                      <label>
+                        可见范围
+                        <select value={batchVisibility} onChange={(event) => setBatchVisibility(event.target.value as TimelineVisibility)}>
+                          <option value="members">相册成员可见</option>
+                          <option value="managers">仅管理员和所有者</option>
+                        </select>
+                      </label>
+                      <label>
+                        时间策略
+                        <select value={batchTimeMode} onChange={(event) => setBatchTimeMode(event.target.value as TimelineTimeMode)}>
+                          <option value="captured_at">按拍摄时间</option>
+                          <option value="uploaded_at">按当前时间</option>
+                          <option value="manual">手动选择日期</option>
+                        </select>
+                      </label>
+                      {batchTimeMode === "manual" ? (
+                        <label>
+                          日期
+                          <input type="date" value={batchManualDate} onChange={(event) => setBatchManualDate(event.target.value)} />
+                        </label>
+                      ) : null}
+                    </div>
+                    <button
+                      onClick={() => {
+                        setDrafts((current) => current.map((draft) => ({
+                          ...draft,
+                          visibility: batchVisibility,
+                          timeMode: batchTimeMode,
+                          manualDate: batchTimeMode === "manual" && batchManualDate ? batchManualDate : draft.manualDate
+                        })));
+                        setBatchSettingsOpen(false);
+                      }}
+                      type="button"
+                    >
+                      应用到全部记录
+                    </button>
+                  </div>
+                </section>
+              </div>
+            ) : null}
+
+            <footer className="draftFloatingBar">
+              <button className="secondaryButton" onClick={() => setBatchSettingsOpen(true)} type="button">批量设置</button>
+              <button disabled={uploading || disabled} onClick={() => void handleUploadAll()} type="button">{uploading ? "保存中..." : "保存"}</button>
+            </footer>
+            {status ? <p className="statusNote">{status}</p> : <p className="helperText">系统会先创建记录，再把每个文件送入主控缓存和 NAS 处理链。</p>}
+          </>
+        )}
+      </section>
+    </div>
+  );
+}

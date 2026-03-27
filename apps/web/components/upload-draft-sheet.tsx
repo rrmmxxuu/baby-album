@@ -24,6 +24,17 @@ type UploadDraft = {
   items: DraftMedia[];
 };
 
+type UploadProgressState = {
+  title: string;
+  detail: string;
+  currentFileName: string;
+  transferredBytes: number;
+  totalBytes: number;
+  completedFiles: number;
+  totalFiles: number;
+  bytesPerSecond: number;
+};
+
 interface UploadDraftSheetProps {
   albumId: string;
   authToken: string;
@@ -213,6 +224,37 @@ function revokeDrafts(items: UploadDraft[]) {
   }
 }
 
+function formatBytes(value: number) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "0 B";
+  }
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let size = value;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  return `${size.toFixed(size >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+function formatTransferRate(bytesPerSecond: number) {
+  if (!Number.isFinite(bytesPerSecond) || bytesPerSecond <= 0) {
+    return "--";
+  }
+  return `${formatBytes(bytesPerSecond)}/s`;
+}
+
+function progressPercent(progress: UploadProgressState) {
+  if (progress.totalBytes > 0) {
+    return Math.min(100, Math.round((progress.transferredBytes / progress.totalBytes) * 100));
+  }
+  if (progress.totalFiles > 0) {
+    return Math.min(100, Math.round((progress.completedFiles / progress.totalFiles) * 100));
+  }
+  return 0;
+}
+
 export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled, disabledReason, editingEntry, onClose, onUploaded, onDeleted }: UploadDraftSheetProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const appendInputRef = useRef<HTMLInputElement | null>(null);
@@ -227,6 +269,7 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
   const [batchManualDate, setBatchManualDate] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgressState | null>(null);
   const isEditMode = Boolean(editingEntry);
 
   const selectedDraft = drafts.find((item) => item.id === selectedDraftId) ?? drafts[0] ?? null;
@@ -245,6 +288,7 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
       setBatchSettingsOpen(false);
       setStatus(null);
       setUploading(false);
+      setUploadProgress(null);
       return;
     }
     setDrafts([]);
@@ -253,6 +297,7 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
     setBatchSettingsOpen(false);
     setStatus(null);
     setUploading(false);
+    setUploadProgress(null);
   }, [albumId, authToken, editingEntry, open]);
 
   useEffect(() => {
@@ -287,6 +332,7 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
     setBatchSettingsOpen(false);
     setStatus(null);
     setUploading(false);
+    setUploadProgress(null);
   }
 
   function closeSheet() {
@@ -368,7 +414,7 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
     setStatus(null);
   }
 
-  async function uploadFile(entryId: string, uploadBatchId: string, item: DraftMedia) {
+  async function uploadFile(entryId: string, uploadBatchId: string, item: DraftMedia, onProgress?: (progress: { loaded: number; total: number; bytesPerSecond: number }) => void) {
     if (!item.file) {
       return;
     }
@@ -394,17 +440,46 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
 
     const formData = new FormData();
     formData.append("file", item.file);
-    const uploadResponse = await fetch(`${apiBaseUrl}/api/v1/upload-sessions/${createPayload.id}/content`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${authToken}`
-      },
-      body: formData
+    await new Promise<void>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const startedAt = performance.now();
+      xhr.open("POST", `${apiBaseUrl}/api/v1/upload-sessions/${createPayload.id}/content`);
+      xhr.setRequestHeader("Authorization", `Bearer ${authToken}`);
+      xhr.upload.onprogress = (event) => {
+        const total = event.lengthComputable && event.total > 0 ? event.total : item.file?.size ?? 0;
+        const elapsed = Math.max((performance.now() - startedAt) / 1000, 0.001);
+        onProgress?.({
+          loaded: event.loaded,
+          total,
+          bytesPerSecond: event.loaded / elapsed
+        });
+      };
+      xhr.onerror = () => reject(new Error(`上传 ${item.fileName} 失败。`));
+      xhr.onload = () => {
+        const responseText = xhr.responseText?.trim();
+        let payload: { error?: string } = {};
+        if (responseText) {
+          try {
+            payload = JSON.parse(responseText) as { error?: string };
+          } catch {
+            payload = {};
+          }
+        }
+        if (xhr.status >= 200 && xhr.status < 300) {
+          const total = item.file?.size ?? 0;
+          const elapsed = Math.max((performance.now() - startedAt) / 1000, 0.001);
+          onProgress?.({
+            loaded: total,
+            total,
+            bytesPerSecond: total / elapsed
+          });
+          resolve();
+          return;
+        }
+        reject(new Error(payload.error ?? `上传 ${item.fileName} 失败。`));
+      };
+      xhr.send(formData);
     });
-    const uploadPayload = await uploadResponse.json() as { error?: string };
-    if (!uploadResponse.ok) {
-      throw new Error(uploadPayload.error ?? `上传 ${item.fileName} 失败。`);
-    }
   }
 
   async function handleUploadAll() {
@@ -420,11 +495,34 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
       setStatus("每条记录至少保留一个文件。");
       return;
     }
+    const pendingItems = isEditMode && selectedDraft
+      ? selectedDraft.items.filter((item) => !item.existingMediaId && item.file)
+      : drafts.flatMap((draft) => draft.items.filter((item) => item.file));
+    const totalBytes = pendingItems.reduce((sum, item) => sum + (item.file?.size ?? 0), 0);
+    const totalFiles = pendingItems.length;
     setUploading(true);
     setStatus(null);
+    setUploadProgress({
+      title: isEditMode ? "正在保存动态" : "准备上传",
+      detail: isEditMode ? "正在同步说明和可见范围" : "正在创建上传任务",
+      currentFileName: "",
+      transferredBytes: 0,
+      totalBytes,
+      completedFiles: 0,
+      totalFiles,
+      bytesPerSecond: 0
+    });
     try {
+      let uploadedBytes = 0;
+      let uploadedFiles = 0;
       if (isEditMode && editingEntry && selectedDraft) {
-        setStatus("正在保存这条动态");
+        setUploadProgress((current) => current ? {
+          ...current,
+          title: "正在保存动态",
+          detail: "正在同步说明和可见范围",
+          currentFileName: "",
+          bytesPerSecond: 0
+        } : current);
         const entry = await updateTimelineEntry(authToken, editingEntry.id, {
           albumId,
           caption: selectedDraft.caption,
@@ -441,12 +539,46 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
         const newItems = selectedDraft.items.filter((item) => !item.existingMediaId);
         const uploadBatchId = createClientId("batch");
         for (const [itemIndex, item] of newItems.entries()) {
-          setStatus(`正在补传 ${itemIndex + 1} / ${newItems.length}`);
-          await uploadFile(entry.id, uploadBatchId, item);
+          const fileSize = item.file?.size ?? 0;
+          setUploadProgress((current) => current ? {
+            ...current,
+            title: "正在补传媒体",
+            detail: `正在补传 ${itemIndex + 1} / ${newItems.length}`,
+            currentFileName: item.fileName,
+            transferredBytes: uploadedBytes,
+            completedFiles: uploadedFiles,
+            bytesPerSecond: 0
+          } : current);
+          await uploadFile(entry.id, uploadBatchId, item, (progress) => {
+            setUploadProgress((current) => current ? {
+              ...current,
+              title: "正在补传媒体",
+              detail: `正在补传 ${itemIndex + 1} / ${newItems.length}`,
+              currentFileName: item.fileName,
+              transferredBytes: uploadedBytes + progress.loaded,
+              totalBytes: Math.max(current.totalBytes, uploadedBytes + progress.total),
+              completedFiles: uploadedFiles,
+              bytesPerSecond: progress.bytesPerSecond
+            } : current);
+          });
+          uploadedBytes += fileSize;
+          uploadedFiles += 1;
+          setUploadProgress((current) => current ? {
+            ...current,
+            transferredBytes: uploadedBytes,
+            completedFiles: uploadedFiles,
+            bytesPerSecond: 0
+          } : current);
         }
       } else {
         for (const [draftIndex, draft] of drafts.entries()) {
-          setStatus(`正在创建记录 ${draftIndex + 1} / ${drafts.length}`);
+          setUploadProgress((current) => current ? {
+            ...current,
+            title: "正在创建记录",
+            detail: `正在创建记录 ${draftIndex + 1} / ${drafts.length}`,
+            currentFileName: "",
+            bytesPerSecond: 0
+          } : current);
           const entry = await createTimelineEntry(authToken, {
             albumId,
             caption: draft.caption,
@@ -456,18 +588,55 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
           });
           const uploadBatchId = createClientId("batch");
           for (const [itemIndex, item] of draft.items.entries()) {
-            setStatus(`正在上传 ${draftIndex + 1}.${itemIndex + 1} / ${drafts.length}.${draft.items.length}`);
-            await uploadFile(entry.id, uploadBatchId, item);
+            const fileSize = item.file?.size ?? 0;
+            setUploadProgress((current) => current ? {
+              ...current,
+              title: "正在上传媒体",
+              detail: `正在上传 ${draftIndex + 1}.${itemIndex + 1} / ${drafts.length}.${draft.items.length}`,
+              currentFileName: item.fileName,
+              transferredBytes: uploadedBytes,
+              completedFiles: uploadedFiles,
+              bytesPerSecond: 0
+            } : current);
+            await uploadFile(entry.id, uploadBatchId, item, (progress) => {
+              setUploadProgress((current) => current ? {
+                ...current,
+                title: "正在上传媒体",
+                detail: `正在上传 ${draftIndex + 1}.${itemIndex + 1} / ${drafts.length}.${draft.items.length}`,
+                currentFileName: item.fileName,
+                transferredBytes: uploadedBytes + progress.loaded,
+                totalBytes: Math.max(current.totalBytes, uploadedBytes + progress.total),
+                completedFiles: uploadedFiles,
+                bytesPerSecond: progress.bytesPerSecond
+              } : current);
+            });
+            uploadedBytes += fileSize;
+            uploadedFiles += 1;
+            setUploadProgress((current) => current ? {
+              ...current,
+              transferredBytes: uploadedBytes,
+              completedFiles: uploadedFiles,
+              bytesPerSecond: 0
+            } : current);
           }
         }
       }
-      setStatus(isEditMode ? "动态已更新，媒体会继续由 NAS 处理。" : "上传任务已创建，媒体会继续由 NAS 处理。");
+      setUploadProgress((current) => current ? {
+        ...current,
+        title: isEditMode ? "已保存" : "上传已提交",
+        detail: isEditMode ? "动态已更新，媒体会继续由 NAS 处理。" : "上传任务已创建，媒体会继续由 NAS 处理。",
+        currentFileName: "",
+        transferredBytes: totalBytes,
+        completedFiles: totalFiles,
+        bytesPerSecond: 0
+      } : current);
       onUploaded?.();
       setTimeout(() => {
         closeSheet();
-      }, 300);
+      }, 420);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "上传失败。");
+      setUploadProgress(null);
     } finally {
       setUploading(false);
     }
@@ -743,9 +912,27 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
                 <button disabled={uploading || disabled} onClick={() => void handleUploadAll()} type="button">{uploading ? "保存中..." : "保存"}</button>
               </footer>
             ) : null}
-            {status ? <p className="statusNote">{status}</p> : <p className="helperText">{isEditMode ? "你可以修改说明、权限、记录时间，并继续增删图片。" : "系统会先创建记录，再把每个文件送入主控缓存和 NAS 处理链。"}</p>}
+            {status ? <p className="statusNote">{status}</p> : null}
           </>
         )}
+        {uploadProgress ? (
+          <div className="draftUploadDialogOverlay">
+            <div aria-live="polite" className="draftUploadDialog" role="status">
+              <p className="eyebrow">上传</p>
+              <h3>{uploadProgress.title}</h3>
+              <p className="draftUploadDialogDetail">{uploadProgress.detail}</p>
+              {uploadProgress.currentFileName ? <p className="draftUploadDialogFile">{uploadProgress.currentFileName}</p> : null}
+              <div className="draftUploadMeter">
+                <span className="draftUploadMeterFill" style={{ width: `${progressPercent(uploadProgress)}%` }} />
+              </div>
+              <div className="draftUploadStats">
+                <span>{progressPercent(uploadProgress)}%</span>
+                <span>{formatBytes(uploadProgress.transferredBytes)} / {formatBytes(uploadProgress.totalBytes || uploadProgress.transferredBytes)}</span>
+                <span>{formatTransferRate(uploadProgress.bytesPerSecond)}</span>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </section>
     </div>
   );

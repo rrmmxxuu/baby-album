@@ -783,12 +783,14 @@ img.settingsCardAvatar {
 .draftListCaption {
   min-height: 56px;
   resize: none;
-  border: 0;
-  padding: 0;
-  background: transparent;
+  border: 1px solid rgba(60, 60, 67, 0.08);
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.62);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
   font: inherit;
   color: var(--ink);
-  text-align: right;
+  text-align: left;
 }
 
 .draftEditorMedia {
@@ -834,6 +836,12 @@ img.settingsCardAvatar {
   border-radius: 12px;
   background: #f0ede7;
   color: #8d8377;
+  padding: 12px;
+  line-height: 1.2;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-align: center;
 }
 
 .draftEditMeta {
@@ -851,11 +859,12 @@ img.settingsCardAvatar {
   min-height: 110px;
   resize: vertical;
   border-radius: 16px;
-  border: 1px solid var(--line);
+  border: 1px solid rgba(60, 60, 67, 0.08);
   padding: 14px 16px;
-  background: rgba(255, 255, 255, 0.76);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
   font: inherit;
-  text-align: right;
+  text-align: left;
 }
 
 .draftTextareaStandalone {
@@ -894,16 +903,96 @@ img.settingsCardAvatar {
 
 .draftFloatingBar {
   position: sticky;
-  bottom: 0;
+  bottom: calc(10px + env(safe-area-inset-bottom));
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  padding-top: 8px;
-  background: linear-gradient(180deg, rgba(255, 250, 243, 0), rgba(255, 250, 243, 0.96) 24%);
+  padding: 10px 0 calc(6px + env(safe-area-inset-bottom));
+  background: linear-gradient(180deg, rgba(255, 250, 243, 0), rgba(255, 250, 243, 0.94) 22%, rgba(255, 250, 243, 0.98) 100%);
 }
 
 .draftFloatingBar button {
   min-width: 132px;
+}
+
+.draftUploadDialogOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(17, 17, 17, 0.14);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.draftUploadDialog {
+  width: min(360px, calc(100vw - 40px));
+  display: grid;
+  gap: 12px;
+  padding: 20px 18px;
+  border-radius: 26px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background: rgba(248, 248, 252, 0.92);
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.16);
+}
+
+.draftUploadDialog h3,
+.draftUploadDialogDetail,
+.draftUploadDialogFile {
+  margin: 0;
+}
+
+.draftUploadDialog h3 {
+  color: #1c1c1e;
+  font-family: "SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 1.35rem;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+}
+
+.draftUploadDialogDetail {
+  color: #3a3a3c;
+  line-height: 1.4;
+}
+
+.draftUploadDialogFile {
+  color: #6d6d72;
+  font-size: 0.9rem;
+  word-break: break-all;
+}
+
+.draftUploadMeter {
+  position: relative;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(60, 60, 67, 0.12);
+}
+
+.draftUploadMeterFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #0a84ff 0%, #5ac8fa 100%);
+}
+
+.draftUploadStats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  color: #6d6d72;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.draftUploadStats span:nth-child(2) {
+  text-align: center;
+}
+
+.draftUploadStats span:last-child {
+  text-align: right;
 }
 
 .draftBatchModal {
@@ -1326,11 +1415,27 @@ img.settingsCardAvatar {
 
   .draftFloatingBar {
     gap: 8px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
   }
 
   .draftFloatingBar button {
     flex: 1;
     min-width: 0;
+  }
+
+  .draftUploadDialog {
+    width: min(100%, 340px);
+  }
+
+  .draftUploadStats {
+    grid-template-columns: 1fr;
+  }
+
+  .draftUploadStats span,
+  .draftUploadStats span:nth-child(2),
+  .draftUploadStats span:last-child {
+    text-align: left;
   }
 
   .settingsCardButton {
@@ -1849,6 +1954,47 @@ label {
   flex: 1;
 }
 
+.settingsStatusChip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 6px 11px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  border: 1px solid rgba(60, 60, 67, 0.08);
+  background: rgba(120, 120, 128, 0.12);
+  color: #636366;
+}
+
+.settingsStatusChipLarge {
+  min-height: 34px;
+  padding: 8px 14px;
+}
+
+.settingsStatusChipOnline {
+  background: rgba(52, 199, 89, 0.16);
+  color: #137333;
+}
+
+.settingsStatusChipOffline {
+  background: rgba(255, 159, 10, 0.16);
+  color: #935900;
+}
+
+.settingsStatusChipPending {
+  background: rgba(0, 122, 255, 0.12);
+  color: #0057b8;
+}
+
+.settingsStatusChipIdle {
+  background: rgba(120, 120, 128, 0.12);
+  color: #636366;
+}
+
 .settingsChevron {
   color: #aeaeb2;
   font-size: 1.05rem;
@@ -1916,6 +2062,126 @@ label {
   color: #1c1c1e;
 }
 
+.storageFlowHero {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+}
+
+.storageFlowHeroTop,
+.storageSectionHeader,
+.storagePairingMeta {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.storageFlowHeroCopy {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.storageFlowHeroCopy h3,
+.storageSectionHeader strong,
+.storageEmptyState strong {
+  margin: 0;
+  color: #1c1c1e;
+  font-family: "SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 1.24rem;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+}
+
+.storageFlowHeroCopy p,
+.storageInfoItem,
+.storagePairingMeta p {
+  margin: 0;
+}
+
+.storageFlowSummary {
+  gap: 0;
+}
+
+.storageAlbumPicker {
+  min-width: min(180px, 100%);
+}
+
+.storageAlbumPicker select {
+  min-height: 36px;
+  text-align: right;
+}
+
+.storageStepList,
+.storageInfoList {
+  display: grid;
+  gap: 12px;
+}
+
+.storageStepCard,
+.storageInfoItem {
+  border-radius: 18px;
+  border: 1px solid rgba(60, 60, 67, 0.08);
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.storageStepCard {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 15px;
+}
+
+.storageStepCardCurrent {
+  background: rgba(0, 122, 255, 0.08);
+  border-color: rgba(0, 122, 255, 0.16);
+}
+
+.storageStepCardActive {
+  background: rgba(255, 159, 10, 0.08);
+  border-color: rgba(255, 159, 10, 0.16);
+}
+
+.storageStepCardDone {
+  background: rgba(52, 199, 89, 0.08);
+  border-color: rgba(52, 199, 89, 0.16);
+}
+
+.storageStepIndex {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  flex: 0 0 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 122, 255, 0.12);
+  color: #007aff;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.storageStepCardDone .storageStepIndex {
+  background: rgba(52, 199, 89, 0.16);
+  color: #137333;
+}
+
+.storageStepCardActive .storageStepIndex {
+  background: rgba(255, 159, 10, 0.16);
+  color: #935900;
+}
+
+.storageStepBody {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.storageStepBody strong {
+  color: #1c1c1e;
+}
+
 .storageNodeHeader {
   display: grid;
   gap: 8px;
@@ -1957,6 +2223,22 @@ label {
 .storageMetricsGrid {
   margin-top: 0;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.storageInfoItem {
+  padding: 13px 14px;
+  color: #3a3a3c;
+  line-height: 1.45;
+}
+
+.storageEmptyState {
+  display: grid;
+  gap: 6px;
+}
+
+.storagePairingCard {
+  display: grid;
+  gap: 14px;
 }
 
 .draftSheetOverlay {
@@ -2098,6 +2380,21 @@ label {
     align-items: flex-start;
     flex-direction: column;
     gap: 4px;
+  }
+
+  .storageFlowHeroTop,
+  .storageSectionHeader,
+  .storagePairingMeta {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .storageAlbumPicker {
+    width: 100%;
+  }
+
+  .storageAlbumPicker select {
+    text-align: left;
   }
 
   .storageMetricsGrid {

@@ -106,7 +106,6 @@ function AppShellInner() {
     setBabyProfileBirthDate(appState?.activeAlbum?.baby?.birthDate ? toDateInputValue(appState.activeAlbum.baby.birthDate) : "");
     setMyRelationDraft(appState?.activeAlbum?.membership.relation ?? "");
     setBabyAvatarFile(null);
-    setStoragePairing(null);
   }, [appState]);
 
   useEffect(() => {
@@ -334,7 +333,7 @@ function AppShellInner() {
     try {
       const pairing = await createStorageNodePairing(authToken, appState.activeAlbum.album.id);
       setStoragePairing(pairing);
-      setNotice("已生成储存节点配对码。请在 24 小时内用于首次部署 agent。");
+      setNotice(appState.activeAlbum.storageNode ? "已生成替换配对码。新设备接入后会切换为当前主节点。" : "已生成储存节点配对码。请在 24 小时内用于首次部署 agent。");
     } catch (err) {
       setError(err instanceof Error ? err.message : "生成储存节点配对码失败。");
     }
@@ -469,6 +468,25 @@ function AppShellInner() {
   const timelineDays = useMemo(() => buildTimelineFeed(albumTimeline, activeBaby?.birthDate), [albumTimeline, activeBaby?.birthDate]);
   const canUploadMedia = Boolean(activeAlbum && activeAlbum.membership.role !== "viewer" && storageNode);
   const transferCandidates = albumMembers.filter((member) => member.userId !== currentUser?.id);
+  const activeStoragePairing = storagePairing && storagePairing.albumId === activeAlbum?.album.id ? storagePairing : null;
+  const storageStatus = activeStoragePairing ? "pairing" : storageNode ? storageNode.status : "unpaired";
+  const storageStatusSummary = activeStoragePairing
+    ? `配对码待使用，${formatDateTime(activeStoragePairing.expiresAt)} 前有效`
+    : storageNode
+      ? storageNode.status === "online"
+        ? `${storageNode.name} 在线，可继续处理新上传内容`
+        : `${storageNode.name} 当前离线，恢复后会继续处理媒体`
+      : canManageStorage
+        ? "尚未接入储存设备，完成首次配对后即可上传和处理媒体"
+        : "尚未接入储存设备，请联系 owner 完成首次配对";
+  const storageFlowTitle = storageNode ? "更换、接回或补配储存设备" : "接入第一台储存设备";
+  const storageUploadSummary = !storageNode
+    ? "暂不可上传"
+    : storageNode.status === "online"
+      ? "可正常上传并处理"
+      : "可继续上传，处理会在节点恢复后继续";
+  const storagePairingModeLabel = storageNode ? "替换主节点" : "首次接入";
+  const storagePairingActionLabel = storageNode ? "生成替换码" : "生成配对码";
   const hasPendingPreview = useMemo(
     () => albumTimeline.some((entry) => entry.items.some((item) => item.previewStatus !== "ready")),
     [albumTimeline]
@@ -705,12 +723,14 @@ function AppShellInner() {
                       </span>
                       <span className="settingsChevron">›</span>
                     </button>
-                    <button className="settingsMenuItem panel" disabled={!canManageStorage} onClick={() => setSettingsScreen("storage")} type="button">
+                    <button className="settingsMenuItem panel" onClick={() => setSettingsScreen("storage")} type="button">
                       <span className="settingsMenuBody">
                         <span className="settingsMenuPrimary">储存节点管理</span>
-                        <span className="settingsMenuMeta">{canManageStorage ? "查看 NAS 状态并生成配对码" : "仅 owner 可以管理储存节点"}</span>
+                        <span className="settingsMenuMeta">{storageStatusSummary}</span>
                       </span>
-                      <span className="settingsChevron">{canManageStorage ? "›" : "仅 owner"}</span>
+                      <span className={`settingsStatusChip settingsStatusChip${storageStatus === "online" ? "Online" : storageStatus === "offline" ? "Offline" : storageStatus === "pairing" ? "Pending" : "Idle"}`}>
+                        {storageStatus === "online" ? "在线" : storageStatus === "offline" ? "离线" : storageStatus === "pairing" ? "待配对" : "未接入"}
+                      </span>
                     </button>
                     <button className="settingsMenuItem settingsMenuDanger panel" onClick={handleLogout} type="button">
                       <span className="settingsMenuBody">
@@ -897,27 +917,88 @@ function AppShellInner() {
 
               {settingsScreen === "storage" ? (
                 <article className="panelStack settingsDetailPage">
-                  <SettingsHeader eyebrow="储存节点管理" onBack={() => setSettingsScreen("menu")} title={activeBaby?.name ?? activeAlbum.album.name} />
-                  <article className="panelStack panel">
-                    <p className="settingsCardTitle">当前宝宝</p>
-                    <label>
-                      <select value={activeAlbum.album.id} onChange={(event) => void refreshApp(event.target.value)}>
-                        {albumOptions.map((item) => (
-                          <option key={item.album.id} value={item.album.id}>{item.baby?.name ?? item.album.name}</option>
-                        ))}
-                      </select>
-                    </label>
+                  <SettingsHeader eyebrow="储存节点管理" onBack={() => setSettingsScreen("menu")} title="相册储存" />
+                  <article className="panel storageFlowHero">
+                    <div className="storageFlowHeroTop">
+                      <div className="storageFlowHeroCopy">
+                        <p className="settingsCardTitle">当前相册</p>
+                        <h3>{activeBaby?.name ?? activeAlbum.album.name}</h3>
+                        <p className="helperText">{storageStatusSummary}</p>
+                      </div>
+                      <span className={`settingsStatusChip settingsStatusChipLarge settingsStatusChip${storageStatus === "online" ? "Online" : storageStatus === "offline" ? "Offline" : storageStatus === "pairing" ? "Pending" : "Idle"}`}>
+                        {storageStatus === "online" ? "在线" : storageStatus === "offline" ? "离线" : storageStatus === "pairing" ? "待配对" : "未接入"}
+                      </span>
+                    </div>
+                    <div className="settingsInfoList storageFlowSummary">
+                      <div className="settingsInfoRow">
+                        <span className="helperText">上传处理</span>
+                        <strong>{storageUploadSummary}</strong>
+                      </div>
+                      <div className="settingsInfoRow">
+                        <span className="helperText">当前主节点</span>
+                        <strong>{storageNode ? storageNode.name : "尚未绑定"}</strong>
+                      </div>
+                      <div className="settingsInfoRow">
+                        <span className="helperText">切换相册</span>
+                        <label className="storageAlbumPicker">
+                          <select value={activeAlbum.album.id} onChange={(event) => void refreshApp(event.target.value)}>
+                            {albumOptions.map((item) => (
+                              <option key={item.album.id} value={item.album.id}>{item.baby?.name ?? item.album.name}</option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                    </div>
                   </article>
+
                   <article className="panelStack panel">
-                    <p className="settingsCardTitle">储存节点</p>
+                    <div className="storageSectionHeader">
+                      <div>
+                        <p className="settingsCardTitle">使用流程</p>
+                        <strong>{storageFlowTitle}</strong>
+                      </div>
+                      {canManageStorage ? <button onClick={() => void handleCreateStoragePairing()} type="button">{storagePairingActionLabel}</button> : null}
+                    </div>
+                    <div className="storageStepList">
+                      <article className={`storageStepCard ${activeStoragePairing ? "storageStepCardActive" : storageNode ? "storageStepCardDone" : "storageStepCardCurrent"}`}>
+                        <span className="storageStepIndex">1</span>
+                        <div className="storageStepBody">
+                          <strong>{storagePairingActionLabel}</strong>
+                          <p className="helperText">{canManageStorage ? `owner 生成 8 位短码，用于${storagePairingModeLabel}。` : "由相册 owner 生成 8 位短码后再继续。"} </p>
+                        </div>
+                      </article>
+                      <article className={`storageStepCard ${activeStoragePairing ? "storageStepCardCurrent" : storageNode ? "storageStepCardDone" : ""}`}>
+                        <span className="storageStepIndex">2</span>
+                        <div className="storageStepBody">
+                          <strong>在设备上完成配对</strong>
+                          <p className="helperText">{storageNode ? "让新设备使用这个短码接入；接入成功后它会成为当前主节点。" : "在 NAS 或小主机上启动 agent，并输入这个短码完成首次接入。"} </p>
+                        </div>
+                      </article>
+                      <article className={`storageStepCard ${storageNode ? "storageStepCardCurrent" : ""}`}>
+                        <span className="storageStepIndex">3</span>
+                        <div className="storageStepBody">
+                          <strong>{storageNode ? "等待媒体继续处理" : "开始上传媒体"}</strong>
+                          <p className="helperText">{storageNode ? "节点在线后，新上传会继续进入处理队列；替换主节点时，历史媒体会在后台自动补齐。" : "节点上线后，这个相册里的照片和视频上传入口会自动解锁。"} </p>
+                        </div>
+                      </article>
+                    </div>
+                    {!canManageStorage ? <p className="helperText">你可以查看当前储存状态，但只有 owner 可以生成配对码或替换主节点。</p> : null}
+                  </article>
+
+                  <article className="panelStack panel">
+                    <div className="storageSectionHeader">
+                      <div>
+                        <p className="settingsCardTitle">当前主节点</p>
+                        <strong>{storageNode ? storageNode.name : "还没有接入储存设备"}</strong>
+                      </div>
+                    </div>
                     {storageNode ? (
                       <>
                         <div className="storageNodeHeader">
                           <div>
-                            <p><strong>{storageNode.name}</strong></p>
                             <div className="storageNodeStatusRow">
                               <span className={`storageNodeDot ${storageNode.status === "online" ? "storageNodeDotOnline" : "storageNodeDotOffline"}`} />
-                              <span className="storageNodeStatusLabel">{storageNode.status === "online" ? "在线" : "离线"}</span>
+                              <span className="storageNodeStatusLabel">{storageNode.status === "online" ? "在线，正在处理新内容" : "离线，恢复后会继续处理"}</span>
                             </div>
                             <p className="helperText storageNodeHeartbeat">最近心跳：{formatDateTime(storageNode.lastSeenAt)}</p>
                           </div>
@@ -932,14 +1013,44 @@ function AppShellInner() {
                             <strong>{formatBytes(storageNode.totalBytes)}</strong>
                           </article>
                         </div>
+                        <div className="storageInfoList">
+                          <p className="storageInfoItem">上传会先进入云端原始存储，再由当前主节点处理预览和本地落盘。</p>
+                          <p className="storageInfoItem">{storageNode.status === "online" ? "当前节点在线，新的照片和视频会正常进入处理链路。" : "当前节点离线时仍可保留已有内容浏览；新上传内容会在节点恢复后继续处理。"}</p>
+                        </div>
                       </>
-                    ) : <p className="helperText">这个宝宝还没有绑定储存节点。</p>}
+                    ) : (
+                      <div className="storageEmptyState">
+                        <strong>还没有接入储存设备</strong>
+                        <p className="helperText">完成首次配对后，这个相册才会开始处理照片和视频上传。</p>
+                      </div>
+                    )}
                   </article>
+
                   <article className="panelStack panel">
-                    <p className="settingsCardTitle">配对码</p>
-                    {canManageStorage ? <button onClick={() => void handleCreateStoragePairing()} type="button">生成配对码</button> : <p className="helperText">只有 owner 可以管理储存节点。</p>}
-                    {storagePairing ? <p className="inviteLink">{storagePairing.code}</p> : null}
-                    {storagePairing ? <p className="helperText">配对码为 8 位短码，仅 owner 可生成。</p> : null}
+                    <div className="storageSectionHeader">
+                      <div>
+                        <p className="settingsCardTitle">当前配对码</p>
+                        <strong>{activeStoragePairing ? "等待设备接入" : "暂无待使用配对码"}</strong>
+                      </div>
+                      {canManageStorage ? <button className="secondaryButton" onClick={() => void handleCreateStoragePairing()} type="button">{activeStoragePairing ? "重新生成" : storagePairingActionLabel}</button> : null}
+                    </div>
+                    {activeStoragePairing ? (
+                      <>
+                        <div className="storagePairingCard">
+                          <div className="storagePairingMeta">
+                            <span className="settingsStatusChip settingsStatusChipPending">{storagePairingModeLabel}</span>
+                            <p className="helperText">有效期至 {formatDateTime(activeStoragePairing.expiresAt)}</p>
+                          </div>
+                          <p className="inviteLink">{activeStoragePairing.code}</p>
+                          <div className="storageInfoList">
+                            <p className="storageInfoItem">在储存设备的 agent 配对步骤中输入这 8 位短码即可完成接入。</p>
+                            <p className="storageInfoItem">{storageNode ? "新设备接入成功后会切换成当前主节点，旧节点上的已完成媒体会在后台自动补齐到新主节点。" : "首次接入成功后，上传入口会自动恢复可用。"} </p>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="helperText">{canManageStorage ? "需要时再生成一个短码即可。新的短码适用于当前相册，24 小时后自动失效。" : "当前没有待使用配对码。若要接入或更换设备，请联系 owner 生成。"}</p>
+                    )}
                   </article>
                 </article>
               ) : null}

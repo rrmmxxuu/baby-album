@@ -1,0 +1,28 @@
+package httpapi
+
+func (s *Server) routes() {
+	s.mux.HandleFunc("/healthz", s.handleHealth)
+	s.mux.HandleFunc("/api/v1/healthz", s.handleHealth)
+	s.mux.HandleFunc("/api/v1/auth/register", s.handleAuthRegister)
+	s.mux.HandleFunc("/api/v1/auth/login", s.handleAuthLogin)
+	s.mux.HandleFunc("/api/v1/auth/logout", s.handleAuthLogout)
+	s.mux.HandleFunc("/api/v1/auth/app", s.handleAuthApp)
+	s.mux.HandleFunc("/api/v1/albums", s.handleAlbums)
+	s.mux.HandleFunc("/api/v1/albums/", s.handleAlbumActions)
+	s.mux.HandleFunc("/api/v1/families", s.handleAlbums)
+	s.mux.HandleFunc("/api/v1/families/", s.handleFamilyActions)
+	s.mux.HandleFunc("/api/v1/invites/", s.handleInviteActions)
+	s.mux.HandleFunc("/api/v1/bootstrap", s.handleBootstrap)
+	s.mux.HandleFunc("/api/v1/timeline", s.handleTimeline)
+	s.mux.HandleFunc("/api/v1/timeline-entries", s.handleTimelineEntries)
+	s.mux.HandleFunc("/api/v1/timeline-entries/", s.handleTimelineEntryActions)
+	s.mux.HandleFunc("/api/v1/members", s.handleMembers)
+	s.mux.HandleFunc("/api/v1/upload-sessions", s.handleUploadSessions)
+	s.mux.HandleFunc("/api/v1/upload-sessions/", s.handleUploadSessionActions)
+	s.mux.HandleFunc("/api/v1/media/", s.handleMediaActions)
+	s.mux.HandleFunc("/api/v1/babies/", s.handleBabyAssets)
+	s.mux.HandleFunc("/api/v1/storage-nodes/register", s.handleNodeRegister)
+	s.mux.HandleFunc("/api/v1/storage-nodes/heartbeat", s.handleNodeHeartbeat)
+	s.mux.HandleFunc("/api/v1/agents/jobs", s.handleAgentJobs)
+	s.mux.HandleFunc("/api/v1/agents/jobs/", s.handleAgentJobActions)
+}

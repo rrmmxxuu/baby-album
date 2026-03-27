@@ -83,6 +83,16 @@ export interface MediaAsset {
 export type TimelineVisibility = "members" | "managers";
 export type TimelineTimeMode = "captured_at" | "uploaded_at" | "manual";
 
+export interface TimelineComment {
+  id: string;
+  albumId: string;
+  entryId: string;
+  userId: string;
+  displayName: string;
+  content: string;
+  createdAt: string;
+}
+
 export interface TimelineEntry {
   id: string;
   albumId: string;
@@ -96,6 +106,7 @@ export interface TimelineEntry {
   uploadedAt: string;
   createdAt: string;
   items: MediaAsset[];
+  comments: TimelineComment[];
 }
 
 export interface User {

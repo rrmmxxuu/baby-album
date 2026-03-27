@@ -1,4 +1,4 @@
-import type { AlbumInvite, AppStatePayload, AuthPayload, Role, StorageNodePairing, TimelineEntry, TimelinePagePayload, TimelineTimeMode, TimelineVisibility } from "./types";
+import type { AlbumInvite, AppStatePayload, AuthPayload, Role, StorageNodePairing, TimelineComment, TimelineEntry, TimelinePagePayload, TimelineTimeMode, TimelineVisibility } from "./types";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
 
@@ -174,6 +174,15 @@ export async function updateTimelineEntry(token: string, entryId: string, input:
     body: JSON.stringify(input)
   });
   return parseResponse<TimelineEntry>(response);
+}
+
+export async function createTimelineComment(token: string, entryId: string, input: { albumId: string; content: string }): Promise<TimelineComment> {
+  const response = await fetch(`${apiBaseUrl}/api/v1/timeline-entries/${encodeURIComponent(entryId)}/comments`, {
+    method: "POST",
+    headers: buildHeaders(token, { "Content-Type": "application/json" }),
+    body: JSON.stringify(input)
+  });
+  return parseResponse<TimelineComment>(response);
 }
 
 export async function deleteTimelineEntry(token: string, albumId: string, entryId: string): Promise<void> {

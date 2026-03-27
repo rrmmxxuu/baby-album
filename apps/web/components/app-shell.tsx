@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { UploadDraftSheet } from "./upload-draft-sheet";
-import { acceptInvite, createAlbum, createInvite, createStorageNodePairing, getBabyAvatarUrl, getOriginalUrl, getPreviewUrl, leaveAlbum, loadAppState, loadInvite, loadTimelinePage, loginUser, logoutUser, registerUser, updateBabyProfile, updateMemberRelation, updateMemberRole, uploadBabyAvatar } from "../lib/api";
+import { acceptInvite, createAlbum, createInvite, createStorageNodePairing, createTimelineComment, getBabyAvatarUrl, getOriginalUrl, getPreviewUrl, leaveAlbum, loadAppState, loadInvite, loadTimelinePage, loginUser, logoutUser, registerUser, updateBabyProfile, updateMemberRelation, updateMemberRole, uploadBabyAvatar } from "../lib/api";
 import type { AlbumInvite, AlbumMember, AppStatePayload, MediaAsset, Role, StorageNodePairing, TimelineEntry } from "../lib/types";
 
 type TabKey = "photos" | "settings";
@@ -71,6 +71,9 @@ function AppShellInner() {
   const [pullStartY, setPullStartY] = useState<number | null>(null);
   const [pullOffset, setPullOffset] = useState(0);
   const [pullReady, setPullReady] = useState(false);
+  const [commentComposerEntryId, setCommentComposerEntryId] = useState("");
+  const [commentSubmittingEntryId, setCommentSubmittingEntryId] = useState("");
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
 
   const [registerName, setRegisterName] = useState("");
   const [registerEmail, setRegisterEmail] = useState("");
@@ -194,6 +197,12 @@ function AppShellInner() {
   }, [activeTab]);
 
   useEffect(() => {
+    setCommentComposerEntryId("");
+    setCommentSubmittingEntryId("");
+    setCommentDrafts({});
+  }, [appState?.activeAlbum?.album.id]);
+
+  useEffect(() => {
     if (!authToken || !appState?.activeAlbum) {
       return;
     }
@@ -214,15 +223,29 @@ function AppShellInner() {
   }, [appState, activeTab, authToken]);
 
   useEffect(() => {
-    if (!lightbox) {
+    if (!lightbox && !draftSheetOpen) {
       return;
     }
-    const previousOverflow = document.body.style.overflow;
+    const scrollY = window.scrollY;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousBodyPosition = document.body.style.position;
+    const previousBodyTop = document.body.style.top;
+    const previousBodyWidth = document.body.style.width;
+    document.documentElement.style.overflow = "hidden";
     document.body.style.overflow = "hidden";
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = "100%";
     return () => {
-      document.body.style.overflow = previousOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+      document.body.style.overflow = previousBodyOverflow;
+      document.body.style.position = previousBodyPosition;
+      document.body.style.top = previousBodyTop;
+      document.body.style.width = previousBodyWidth;
+      window.scrollTo(0, scrollY);
     };
-  }, [lightbox]);
+  }, [draftSheetOpen, lightbox]);
 
   useEffect(() => {
     if (!lightbox) {
@@ -657,6 +680,36 @@ function AppShellInner() {
     setDraftSheetOpen(true);
   }
 
+  function toggleCommentComposer(entryId: string) {
+    setCommentComposerEntryId((current) => current === entryId ? "" : entryId);
+  }
+
+  async function handleCreateComment(entryId: string) {
+    if (!authToken || !activeAlbum) {
+      return;
+    }
+    const content = (commentDrafts[entryId] ?? "").trim();
+    if (!content) {
+      setError("请输入评论内容。");
+      return;
+    }
+    setError(null);
+    setCommentSubmittingEntryId(entryId);
+    try {
+      const comment = await createTimelineComment(authToken, entryId, {
+        albumId: activeAlbum.album.id,
+        content
+      });
+      setTimelineEntries((current) => current.map((entry) => entry.id === entryId ? { ...entry, comments: [...entry.comments, comment] } : entry));
+      setCommentDrafts((current) => ({ ...current, [entryId]: "" }));
+      setCommentComposerEntryId("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "发表评论失败。");
+    } finally {
+      setCommentSubmittingEntryId("");
+    }
+  }
+
   function openLightbox(next: LightboxState) {
     setLightboxClosing(false);
     setLightbox(next);
@@ -704,12 +757,22 @@ function AppShellInner() {
   const activeBaby = activeAlbum?.baby ?? activeAlbum?.babies?.[0] ?? null;
   const albumTimeline = timelineEntries;
   const albumMembers = activeAlbum?.members ?? [];
+  const relationLabels = useMemo(() => {
+    const labels: Record<string, string> = {};
+    for (const member of albumMembers) {
+      const relation = member.relation?.trim();
+      if (relation) {
+        labels[member.userId] = relation;
+      }
+    }
+    return labels;
+  }, [albumMembers]);
   const albumInvites = activeAlbum?.invites ?? [];
   const storageNode = activeAlbum?.storageNode ?? null;
   const canManageInvites = activeAlbum?.membership.role === "owner" || activeAlbum?.membership.role === "admin";
   const canManageBabyProfile = activeAlbum?.membership.role === "owner" || activeAlbum?.membership.role === "admin";
   const canManageStorage = activeAlbum?.membership.role === "owner";
-  const timelineDays = useMemo(() => buildTimelineFeed(albumTimeline, activeBaby?.birthDate), [albumTimeline, activeBaby?.birthDate]);
+  const timelineDays = useMemo(() => buildTimelineFeed(albumTimeline, activeBaby?.birthDate, relationLabels), [albumTimeline, activeBaby?.birthDate, relationLabels]);
   const canUploadMedia = Boolean(activeAlbum && activeAlbum.membership.role !== "viewer" && storageNode);
   const transferCandidates = albumMembers.filter((member) => member.userId !== currentUser?.id);
   const activeStoragePairing = storagePairing && storagePairing.albumId === activeAlbum?.album.id ? storagePairing : null;
@@ -1021,7 +1084,7 @@ function AppShellInner() {
                           {day.babyAgeLabel ? <span className="momentBabyDay">宝宝第 {day.babyAgeLabel}</span> : null}
                         </header>
                         <div className="momentBatchList">
-                          {day.batches.map((batch) => <MomentCard albumId={activeAlbum.album.id} authToken={authToken} batch={batch} canEdit={canEditTimelineEntry(activeAlbum.membership.role, currentUser?.id, batch)} key={`${day.day}-${batch.batchId}`} onEdit={() => handleOpenEditEntry(batch.batchId)} onOpen={(index) => openLightbox({ albumId: activeAlbum.album.id, batch, index })} />)}
+                          {day.batches.map((batch) => <MomentCard albumId={activeAlbum.album.id} authToken={authToken} batch={batch} canEdit={canEditTimelineEntry(activeAlbum.membership.role, currentUser?.id, batch)} commentComposerOpen={commentComposerEntryId === batch.entry.id} commentDraft={commentDrafts[batch.entry.id] ?? ""} commentSubmitting={commentSubmittingEntryId === batch.entry.id} key={`${day.day}-${batch.batchId}`} onCommentDraftChange={(value) => setCommentDrafts((current) => ({ ...current, [batch.entry.id]: value }))} onCommentSubmit={() => void handleCreateComment(batch.entry.id)} onCommentToggle={() => toggleCommentComposer(batch.entry.id)} onEdit={() => handleOpenEditEntry(batch.batchId)} onOpen={(index) => openLightbox({ albumId: activeAlbum.album.id, batch, index })} />)}
                         </div>
                       </article>
                     ))}
@@ -1472,8 +1535,21 @@ function BabyAvatar({ baby, albumId, token, className, previewFile }: { baby?: {
   return <div aria-hidden="true" className={className}>{babyAvatarText(baby?.name)}</div>;
 }
 
-function MomentCard({ authToken, albumId, batch, canEdit, onEdit, onOpen }: { authToken: string; albumId: string; batch: TimelineBatch; canEdit: boolean; onEdit: () => void; onOpen: (index: number) => void }) {
+function MomentCard({ authToken, albumId, batch, canEdit, commentComposerOpen, commentDraft, commentSubmitting, onCommentDraftChange, onCommentSubmit, onCommentToggle, onEdit, onOpen }: { authToken: string; albumId: string; batch: TimelineBatch; canEdit: boolean; commentComposerOpen: boolean; commentDraft: string; commentSubmitting: boolean; onCommentDraftChange: (value: string) => void; onCommentSubmit: () => void; onCommentToggle: () => void; onEdit: () => void; onOpen: (index: number) => void }) {
   const isVideoBatch = batch.items.length === 1 && batch.items[0].mediaType.startsWith("video/");
+  const commentInputRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    if (!commentComposerOpen) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      commentInputRef.current?.focus();
+      commentInputRef.current?.setSelectionRange(commentDraft.length, commentDraft.length);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [commentComposerOpen, commentDraft.length]);
+
   return (
     <article className="momentCard">
       {isVideoBatch ? (
@@ -1489,8 +1565,36 @@ function MomentCard({ authToken, albumId, batch, canEdit, onEdit, onOpen }: { au
           <p className="momentMeta">{batch.uploadedByName || "家人"} 上传于 {formatRelativeUploadTime(batch.uploadedAt)}</p>
           {batch.visibility === "managers" ? <p className="momentMeta">仅管理员和所有者可见</p> : null}
         </div>
-        {canEdit ? <button className="momentEditButton" onClick={onEdit} type="button">编辑</button> : null}
+        <div className="momentActionGroup">
+          <button className={`momentCommentButton${commentComposerOpen ? " momentCommentButtonActive" : ""}`} onClick={onCommentToggle} type="button">评论</button>
+          {canEdit ? <button className="momentEditButton" onClick={onEdit} type="button">编辑</button> : null}
+        </div>
       </div>
+      {batch.entry.comments.length > 0 ? (
+        <div className="momentComments">
+          {batch.entry.comments.map((comment) => (
+            <article className="momentCommentItem" key={comment.id}>
+              <div className="momentCommentHeader">
+                <strong>{comment.displayName}</strong>
+                <span>{formatRelativeUploadTime(comment.createdAt)}</span>
+              </div>
+              <p>{comment.content}</p>
+            </article>
+          ))}
+        </div>
+      ) : null}
+      {commentComposerOpen ? (
+        <form className="momentCommentComposer" onSubmit={(event) => {
+          event.preventDefault();
+          onCommentSubmit();
+        }}>
+          <textarea autoFocus onChange={(event) => onCommentDraftChange(event.target.value)} placeholder="写下评论..." ref={commentInputRef} value={commentDraft} />
+          <div className="momentCommentComposerActions">
+            <button className="momentCommentActionButton" onClick={onCommentToggle} type="button">取消</button>
+            <button className="momentCommentActionButton momentCommentActionButtonPrimary" disabled={commentSubmitting} type="submit">{commentSubmitting ? "发送中..." : "发送"}</button>
+          </div>
+        </form>
+      ) : null}
     </article>
   );
 }
@@ -1661,7 +1765,7 @@ function RelationInput({ label, listId, onChange, placeholder, value }: { label:
   );
 }
 
-function buildTimelineFeed(items: TimelineEntry[], birthDate?: string) {
+function buildTimelineFeed(items: TimelineEntry[], birthDate?: string, relationLabels?: Record<string, string>) {
   const days = new Map<string, TimelineBatch[]>();
   for (const entry of items) {
     if (!entry.items || entry.items.length === 0) {
@@ -1672,7 +1776,7 @@ function buildTimelineFeed(items: TimelineEntry[], birthDate?: string) {
       batchId: entry.id,
       uploadedBy: entry.uploadedBy,
       uploadedAt: entry.uploadedAt,
-      uploadedByName: entry.uploadedByName,
+      uploadedByName: relationLabels?.[entry.uploadedBy] ?? "家人",
       caption: entry.caption,
       visibility: entry.visibility,
       timeMode: entry.timeMode,

@@ -65,6 +65,12 @@ type UpdateTimelineEntryInput struct {
 	DisplayAt  time.Time
 }
 
+type CreateTimelineCommentInput struct {
+	AlbumID string
+	EntryID string
+	Content string
+}
+
 type UploadContentInput struct {
 	ByteSize int64
 	BlobKey  string
@@ -209,6 +215,7 @@ type Repository interface {
 	Members(albumID, userID string) ([]domain.AlbumMember, error)
 	MediaByID(albumID, userID, mediaID string) (domain.MediaAsset, error)
 	CreateTimelineEntry(userID string, input CreateTimelineEntryInput) (domain.TimelineEntry, error)
+	CreateTimelineComment(userID string, input CreateTimelineCommentInput) (domain.TimelineComment, error)
 	UpdateTimelineEntry(userID string, input UpdateTimelineEntryInput) (domain.TimelineEntry, error)
 	DeleteTimelineEntry(userID, albumID, entryID string) error
 	DeleteTimelineEntryMedia(userID, albumID, entryID, mediaID string) error
@@ -298,6 +305,14 @@ func normalizeAlbumWorkspace(value AlbumWorkspace) AlbumWorkspace {
 	if value.Timeline == nil {
 		value.Timeline = []domain.TimelineEntry{}
 	}
+	for index := range value.Timeline {
+		if value.Timeline[index].Items == nil {
+			value.Timeline[index].Items = []domain.MediaAsset{}
+		}
+		if value.Timeline[index].Comments == nil {
+			value.Timeline[index].Comments = []domain.TimelineComment{}
+		}
+	}
 	if value.Members == nil {
 		value.Members = []domain.AlbumMember{}
 	}
@@ -314,6 +329,14 @@ func normalizeAlbumWorkspace(value AlbumWorkspace) AlbumWorkspace {
 func normalizeTimelinePage(value TimelinePage) TimelinePage {
 	if value.Items == nil {
 		value.Items = []domain.TimelineEntry{}
+	}
+	for index := range value.Items {
+		if value.Items[index].Items == nil {
+			value.Items[index].Items = []domain.MediaAsset{}
+		}
+		if value.Items[index].Comments == nil {
+			value.Items[index].Comments = []domain.TimelineComment{}
+		}
 	}
 	return value
 }
@@ -339,6 +362,11 @@ func applyMemberLabels(timeline []domain.TimelineEntry, members []domain.AlbumMe
 		for itemIndex := range timeline[entryIndex].Items {
 			if label := labels[timeline[entryIndex].Items[itemIndex].UploadedBy]; label != "" {
 				timeline[entryIndex].Items[itemIndex].UploadedByName = label
+			}
+		}
+		for commentIndex := range timeline[entryIndex].Comments {
+			if label := labels[timeline[entryIndex].Comments[commentIndex].UserID]; label != "" {
+				timeline[entryIndex].Comments[commentIndex].DisplayName = label
 			}
 		}
 	}

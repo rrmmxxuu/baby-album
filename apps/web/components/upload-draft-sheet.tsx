@@ -35,6 +35,9 @@ type UploadProgressState = {
   bytesPerSecond: number;
 };
 
+type DraftScene = "list" | "detail";
+type DraftModal = "batchSettings" | null;
+
 const SHEET_EXIT_MS = 260;
 
 interface UploadDraftSheetProps {
@@ -265,8 +268,8 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
   const apiBaseUrl = getApiBaseUrl();
   const [drafts, setDrafts] = useState<UploadDraft[]>([]);
   const [selectedDraftId, setSelectedDraftId] = useState("");
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [batchSettingsOpen, setBatchSettingsOpen] = useState(false);
+  const [scene, setScene] = useState<DraftScene>("list");
+  const [activeModal, setActiveModal] = useState<DraftModal>(null);
   const [batchVisibility, setBatchVisibility] = useState<TimelineVisibility>("members");
   const [batchTimeMode, setBatchTimeMode] = useState<TimelineTimeMode>("captured_at");
   const [batchManualDate, setBatchManualDate] = useState("");
@@ -276,6 +279,7 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
   const [shouldRender, setShouldRender] = useState(open);
   const [visible, setVisible] = useState(false);
   const isEditMode = Boolean(editingEntry);
+  const currentScene: DraftScene = isEditMode ? "detail" : scene;
 
   const selectedDraft = drafts.find((item) => item.id === selectedDraftId) ?? drafts[0] ?? null;
   const totalFiles = useMemo(() => drafts.reduce((sum, draft) => sum + draft.items.length, 0), [drafts]);
@@ -293,8 +297,8 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
       const initialDraft = buildDraftFromEntry(editingEntry, albumId, authToken);
       setDrafts([initialDraft]);
       setSelectedDraftId(initialDraft.id);
-      setEditorOpen(true);
-      setBatchSettingsOpen(false);
+      setScene("detail");
+      setActiveModal(null);
       setStatus(null);
       setUploading(false);
       setUploadProgress(null);
@@ -302,8 +306,8 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
     }
     setDrafts([]);
     setSelectedDraftId("");
-    setEditorOpen(false);
-    setBatchSettingsOpen(false);
+    setScene("list");
+    setActiveModal(null);
     setStatus(null);
     setUploading(false);
     setUploadProgress(null);
@@ -320,8 +324,8 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
       revokeDrafts(draftsRef.current);
       setDrafts([]);
       setSelectedDraftId("");
-      setEditorOpen(false);
-      setBatchSettingsOpen(false);
+      setScene("list");
+      setActiveModal(null);
       setStatus(null);
       setUploading(false);
       setUploadProgress(null);
@@ -339,17 +343,6 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
     }
   }, [drafts, open, selectedDraftId]);
 
-  useEffect(() => {
-    if (!shouldRender) {
-      return;
-    }
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [shouldRender]);
-
   if (!shouldRender) {
     return null;
   }
@@ -360,6 +353,11 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
 
   function updateDraft(draftId: string, recipe: (draft: UploadDraft) => UploadDraft) {
     setDrafts((current) => current.map((draft) => draft.id === draftId ? recipe(draft) : draft));
+  }
+
+  function openDraftDetail(draftId: string) {
+    setSelectedDraftId(draftId);
+    setScene("detail");
   }
 
   function appendFiles(files: File[]) {
@@ -391,10 +389,14 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
           return { ...draft, items: draft.items.filter((item) => item.id !== itemId) };
         })
         .filter((draft) => draft.items.length > 0);
+      const removedSelectedDraft = draftId === selectedDraftId && !next.some((draft) => draft.id === selectedDraftId);
       const nextSelected = next.find((draft) => draft.id === selectedDraftId) ? selectedDraftId : next[0]?.id ?? "";
       setSelectedDraftId(nextSelected);
+      if (removedSelectedDraft && !isEditMode) {
+        setScene("list");
+      }
       if (!nextSelected) {
-        setEditorOpen(false);
+        setScene("list");
       }
       return next;
     });
@@ -682,16 +684,16 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
 
   return (
     <div className={`draftSheetOverlay${visible ? " draftSheetOverlayOpen" : ""}${open ? "" : " draftSheetOverlayClosing"}`}>
-      <section className={`draftSheet${visible ? " draftSheetOpen" : ""}${open ? "" : " draftSheetClosing"}`}>
+      <section className={`draftSheet${visible ? " draftSheetOpen" : ""}${open ? "" : " draftSheetClosing"}${!isEditMode && currentScene === "list" ? " draftSheetWithFloatingBar" : ""}`}>
         <header className="draftSheetHeader">
-          {editorOpen ? (
+          {currentScene === "detail" ? (
             <>
               <button className="draftTopAction" onClick={() => {
                 if (isEditMode) {
                   closeSheet();
                   return;
                 }
-                setEditorOpen(false);
+                setScene("list");
               }} type="button">取消</button>
               <h2>{isEditMode ? "编辑动态" : babyName ? `${babyName}新变化` : "编辑记录"}</h2>
               <button className="draftTopPrimary" onClick={() => {
@@ -699,8 +701,8 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
                   void handleUploadAll();
                   return;
                 }
-                setEditorOpen(false);
-              }} type="button">保存</button>
+                setScene("list");
+              }} type="button">{isEditMode ? "保存" : "完成"}</button>
             </>
           ) : (
             <>
@@ -724,7 +726,8 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
             revokeDrafts(drafts);
             setDrafts(nextDrafts);
             setSelectedDraftId(nextDrafts[0]?.id ?? "");
-            setEditorOpen(false);
+            setScene("list");
+            setActiveModal(null);
             setStatus(null);
             event.currentTarget.value = "";
           }}
@@ -759,7 +762,7 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
             {isEditMode ? (
               <>
                 <p className="helperText">这条动态里已经没有媒体了，可以直接删除，或者重新添加照片后再保存。</p>
-                <button onClick={() => editAppendInputRef.current?.click()} type="button">添加照片或视频</button>
+                <button className="draftChooserButton" onClick={() => editAppendInputRef.current?.click()} type="button">添加照片或视频</button>
               </>
             ) : disabled ? (
               <>
@@ -769,14 +772,14 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
             ) : (
               <>
                 <p className="helperText">照片会按拍摄日期自动拆成多条记录；同一天最多 9 张照片，视频会单独成一条记录。</p>
-                <button onClick={() => fileInputRef.current?.click()} type="button">选择照片或视频</button>
+                <button className="draftChooserButton" onClick={() => fileInputRef.current?.click()} type="button">选择照片或视频</button>
               </>
             )}
           </div>
         ) : (
           <>
-            {!editorOpen && !isEditMode ? (
-              <div className="draftPage">
+            {currentScene === "list" && !isEditMode ? (
+              <div className="draftPage draftScene draftSceneList">
                 <section className="draftListPage">
                   <div className="draftListCards">
                     {drafts.map((draft) => (
@@ -786,15 +789,14 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
                           <button
                             className="draftEditInline"
                             onClick={() => {
-                              setSelectedDraftId(draft.id);
-                              setEditorOpen(true);
+                              openDraftDetail(draft.id);
                             }}
                             type="button"
                           >
                             编辑
                           </button>
                         </div>
-                        <div className="draftListThumbs">
+                        <div className="draftListThumbs draftPreviewSurface">
                           {draft.items.slice(0, 4).map((item) => <img alt={item.fileName} key={item.id} src={item.previewUrl} />)}
                         </div>
                         <textarea
@@ -810,7 +812,7 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
                 </section>
               </div>
             ) : selectedDraft ? (
-              <div className="draftPage">
+              <div className="draftPage draftScene draftSceneDetail">
                 <section className="draftEditorPage panel">
                   <div className="panelStack">
                     <div className="sectionHeading">
@@ -823,7 +825,7 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
 
                     <div className={`draftEditorMedia draftEditorMedia${Math.min(selectedDraft.items.length, 4)}`}>
                       {selectedDraft.items.map((item) => (
-                        <div className="draftEditorMediaCard" key={item.id}>
+                        <div className="draftEditorMediaCard draftPreviewSurface" key={item.id}>
                           <img alt={item.fileName} src={item.previewUrl} />
                           <div className="draftMediaActions">
                             <button className="draftRemoveButton" onClick={() => removeDraftItem(selectedDraft.id, item.id)} type="button">移除</button>
@@ -871,20 +873,19 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
               </div>
             ) : null}
 
-            {batchSettingsOpen && !isEditMode ? (
-              <div className="draftBatchModal" onClick={() => setBatchSettingsOpen(false)}>
-                <section className="draftBatchTools panel" onClick={(event) => event.stopPropagation()}>
-                  <div className="panelStack">
-                    <div className="sectionHeading">
-                      <div>
-                        <p className="eyebrow">批量设置</p>
-                        <h2>统一设置这批记录</h2>
+            {activeModal === "batchSettings" && !isEditMode ? (
+                <div className="draftBatchModal" onClick={() => setActiveModal(null)}>
+                  <section className="draftBatchTools panel" onClick={(event) => event.stopPropagation()}>
+                    <div className="panelStack">
+                      <div className="sectionHeading">
+                        <div>
+                          <p className="eyebrow">批量设置</p>
+                          <h2>统一设置这批记录</h2>
+                        </div>
                       </div>
-                      <button className="secondaryButton" onClick={() => setBatchSettingsOpen(false)} type="button">收起</button>
-                    </div>
-                    <div className="formGrid">
-                      <label>
-                        可见范围
+                      <div className="formGrid">
+                        <label>
+                          可见范围
                         <select value={batchVisibility} onChange={(event) => setBatchVisibility(event.target.value as TimelineVisibility)}>
                           <option value="members">相册成员可见</option>
                           <option value="managers">仅管理员和所有者</option>
@@ -904,32 +905,29 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
                           <input type="date" value={batchManualDate} onChange={(event) => setBatchManualDate(event.target.value)} />
                         </label>
                       ) : null}
+                      </div>
+                      <div className="draftBatchActions">
+                        <button className="secondaryButton" onClick={() => setActiveModal(null)} type="button">返回</button>
+                        <button
+                          onClick={() => {
+                            setDrafts((current) => current.map((draft) => ({
+                              ...draft,
+                              visibility: batchVisibility,
+                              timeMode: batchTimeMode,
+                              manualDate: batchTimeMode === "manual" && batchManualDate ? batchManualDate : draft.manualDate
+                            })));
+                            setActiveModal(null);
+                          }}
+                          type="button"
+                        >
+                          应用到全部记录
+                        </button>
+                      </div>
                     </div>
-                    <button
-                      onClick={() => {
-                        setDrafts((current) => current.map((draft) => ({
-                          ...draft,
-                          visibility: batchVisibility,
-                          timeMode: batchTimeMode,
-                          manualDate: batchTimeMode === "manual" && batchManualDate ? batchManualDate : draft.manualDate
-                        })));
-                        setBatchSettingsOpen(false);
-                      }}
-                      type="button"
-                    >
-                      应用到全部记录
-                    </button>
-                  </div>
-                </section>
-              </div>
+                  </section>
+                </div>
             ) : null}
 
-            {!isEditMode ? (
-              <footer className="draftFloatingBar">
-                <button className="secondaryButton" onClick={() => setBatchSettingsOpen(true)} type="button">批量设置</button>
-                <button disabled={uploading || disabled} onClick={() => void handleUploadAll()} type="button">{uploading ? "保存中..." : "保存"}</button>
-              </footer>
-            ) : null}
             {status ? <p className="statusNote">{status}</p> : null}
           </>
         )}
@@ -952,6 +950,12 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
           </div>
         ) : null}
       </section>
+      {!isEditMode && currentScene === "list" ? (
+        <footer className="draftFloatingBar">
+          <button className="secondaryButton" onClick={() => setActiveModal("batchSettings")} type="button">批量设置</button>
+          <button disabled={uploading || disabled} onClick={() => void handleUploadAll()} type="button">{uploading ? "保存中..." : "保存"}</button>
+        </footer>
+      ) : null}
     </div>
   );
 }

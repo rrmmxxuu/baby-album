@@ -85,9 +85,7 @@ code {
 .bootSplashBackdrop {
   position: absolute;
   inset: 0;
-  background:
-    radial-gradient(circle at top center, rgba(196, 224, 255, 0.5), transparent 32%),
-    linear-gradient(180deg, #ffffff 0%, #f7fbff 42%, #edf4fb 100%);
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 46%, #eef4fb 100%);
 }
 
 .bootSplashPanel {
@@ -97,10 +95,10 @@ code {
   gap: 18px;
   width: min(320px, 100%);
   padding: 34px 28px 28px;
-  border: 1px solid rgba(89, 138, 198, 0.16);
+  border: 1px solid rgba(89, 138, 198, 0.12);
   border-radius: 32px;
   background: rgba(255, 255, 255, 0.78);
-  box-shadow: 0 28px 60px rgba(88, 123, 168, 0.14);
+  box-shadow: 0 20px 44px rgba(88, 123, 168, 0.08);
   backdrop-filter: blur(16px);
 }
 
@@ -116,9 +114,7 @@ code {
   font-family: Georgia, "Times New Roman", serif;
   font-size: 2rem;
   font-weight: 700;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.88),
-    0 12px 28px rgba(88, 123, 168, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.88);
 }
 
 .bootSplashCopy {
@@ -711,8 +707,16 @@ img.settingsCardAvatar {
   align-content: center;
 }
 
+.momentActionGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.momentCommentButton,
 .momentEditButton {
   align-self: center;
+  min-height: 32px;
   padding: 6px 10px;
   border-radius: 999px;
   background: #f2ede5;
@@ -721,10 +725,92 @@ img.settingsCardAvatar {
   white-space: nowrap;
 }
 
+.momentCommentButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.momentCommentButtonActive {
+  background: #eadfce;
+  color: #5e4837;
+}
+
 .momentCaption {
   margin: 0;
   color: #4d3a2e;
   line-height: 1.5;
+}
+
+.momentComments {
+  display: grid;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.momentCommentItem {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.58);
+  border: 1px solid rgba(47, 37, 29, 0.08);
+}
+
+.momentCommentItem p,
+.momentCommentHeader strong,
+.momentCommentHeader span {
+  margin: 0;
+}
+
+.momentCommentHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.momentCommentHeader strong {
+  color: #4d3a2e;
+  font-size: 0.9rem;
+}
+
+.momentCommentHeader span {
+  color: #8d8377;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.momentCommentItem p {
+  color: #5b4739;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.momentCommentComposer {
+  display: grid;
+  gap: 10px;
+  padding-top: 2px;
+}
+
+.momentCommentComposer textarea {
+  width: 100%;
+  min-height: 76px;
+  resize: vertical;
+  border-radius: 16px;
+  border: 1px solid rgba(60, 60, 67, 0.12);
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  font: inherit;
+  color: var(--ink);
+}
+
+.momentCommentComposerActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .floatingAddButton {
@@ -760,9 +846,15 @@ img.settingsCardAvatar {
   gap: 16px;
   padding: 18px 18px calc(18px + env(safe-area-inset-bottom));
   background: #fbf6ef;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   opacity: 0;
   transform: translate3d(0, 28px, 0) scale(0.985);
   transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease;
+}
+
+.draftSheetWithFloatingBar {
+  padding-bottom: calc(132px + env(safe-area-inset-bottom));
 }
 
 .draftSheetOverlayOpen {
@@ -836,9 +928,14 @@ img.settingsCardAvatar {
   min-height: 0;
 }
 
+.draftScene {
+  display: grid;
+  gap: 16px;
+}
+
 .draftPage {
   min-height: 0;
-  overflow-y: auto;
+  overflow: visible;
   padding-bottom: 8px;
 }
 
@@ -887,8 +984,15 @@ img.settingsCardAvatar {
   font-size: 0.84rem;
 }
 
+.draftPreviewSurface,
 .draftListThumbs {
   display: grid;
+  border-radius: 12px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.draftListThumbs {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 4px;
 }
@@ -899,6 +1003,8 @@ img.settingsCardAvatar {
   aspect-ratio: 1 / 1;
   object-fit: cover;
   border-radius: 12px;
+  background: #f2f2f7;
+  box-shadow: none;
 }
 
 .draftListCopy {
@@ -942,6 +1048,10 @@ img.settingsCardAvatar {
 
 .draftEditorMediaCard {
   position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+  background: transparent;
+  box-shadow: none;
 }
 
 .draftMediaActions {
@@ -971,14 +1081,16 @@ img.settingsCardAvatar {
   place-items: center;
   aspect-ratio: 1 / 1;
   border-radius: 12px;
-  background: #f0ede7;
-  color: #8d8377;
+  background: rgba(242, 242, 247, 0.94);
+  color: #6d6d72;
   padding: 12px;
   line-height: 1.2;
   font-size: 0.95rem;
   font-weight: 700;
   letter-spacing: -0.01em;
   text-align: center;
+  border: 1px dashed rgba(60, 60, 67, 0.18);
+  box-shadow: none;
 }
 
 .draftEditMeta {
@@ -1010,8 +1122,17 @@ img.settingsCardAvatar {
 }
 
 .draftDeleteButton {
-  background: #fff1ef;
-  color: #b24a36;
+  background: rgba(242, 242, 247, 0.94);
+  color: #d13b30;
+  border: 1px solid rgba(60, 60, 67, 0.12);
+  box-shadow: none;
+}
+
+.draftChooserButton {
+  background: rgba(242, 242, 247, 0.94);
+  color: #1c1c1e;
+  border: 1px solid rgba(60, 60, 67, 0.12);
+  box-shadow: none;
 }
 
 .draftSettingList {
@@ -1039,17 +1160,26 @@ img.settingsCardAvatar {
 }
 
 .draftFloatingBar {
-  position: sticky;
+  position: fixed;
+  left: 50%;
   bottom: calc(10px + env(safe-area-inset-bottom));
+  z-index: 38;
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 36px));
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   gap: 12px;
-  padding: 10px 0 calc(6px + env(safe-area-inset-bottom));
-  background: linear-gradient(180deg, rgba(255, 250, 243, 0), rgba(255, 250, 243, 0.94) 22%, rgba(255, 250, 243, 0.98) 100%);
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  border-radius: 22px;
+  background: rgba(248, 248, 252, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 18px 38px rgba(17, 17, 17, 0.08);
 }
 
 .draftFloatingBar button {
-  min-width: 132px;
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .draftUploadDialogOverlay {
@@ -1137,7 +1267,7 @@ img.settingsCardAvatar {
   inset: 0;
   z-index: 5;
   display: grid;
-  align-items: end;
+  place-items: center;
   padding: 16px;
   background: rgba(32, 22, 16, 0.24);
 }
@@ -1145,6 +1275,16 @@ img.settingsCardAvatar {
 .draftBatchTools {
   width: min(560px, 100%);
   margin: 0 auto;
+}
+
+.draftBatchActions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.draftBatchActions button {
+  flex: 1 1 0;
 }
 
 .lightboxOverlay {
@@ -1685,7 +1825,7 @@ button {
   color: #ffffff;
   font-weight: 600;
   letter-spacing: -0.01em;
-  box-shadow: 0 10px 24px rgba(0, 122, 255, 0.22);
+  box-shadow: none;
 }
 
 button:disabled {
@@ -1859,7 +1999,9 @@ label {
 }
 
 .secondaryButton,
+.momentCommentButton,
 .momentEditButton,
+.momentCommentActionButton,
 .draftEditInline,
 .lightboxClose {
   background: rgba(120, 120, 128, 0.12);
@@ -1867,7 +2009,9 @@ label {
   box-shadow: none;
 }
 
+.momentCommentButton,
 .momentEditButton,
+.momentCommentActionButton,
 .draftEditInline {
   min-height: 32px;
   padding: 6px 14px;
@@ -1875,6 +2019,12 @@ label {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+.momentCommentActionButtonPrimary {
+  background: linear-gradient(180deg, #0a84ff 0%, #007aff 100%);
+  color: #ffffff;
+  box-shadow: 0 10px 24px rgba(0, 122, 255, 0.22);
 }
 
 .secondaryButton {
@@ -1902,9 +2052,9 @@ label {
   border: 1px solid rgba(255, 255, 255, 0.82);
   background:
     radial-gradient(circle at top right, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0) 30%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.58)),
-    linear-gradient(145deg, rgba(0, 122, 255, 0.08), rgba(90, 200, 250, 0.12), rgba(255, 255, 255, 0.18));
-  box-shadow: 0 24px 60px rgba(30, 41, 59, 0.08);
+    linear-gradient(180deg, rgba(248, 251, 255, 0.92), rgba(255, 255, 255, 0.72)),
+    linear-gradient(145deg, rgba(232, 242, 255, 0.32), rgba(255, 255, 255, 0.18));
+  box-shadow: 0 24px 60px rgba(85, 52, 28, 0.06);
 }
 
 .momentsHero {
@@ -1913,9 +2063,7 @@ label {
 }
 
 .momentsHeroBackdrop {
-  background:
-    radial-gradient(circle at top left, rgba(10, 132, 255, 0.14), transparent 30%),
-    radial-gradient(circle at bottom right, rgba(90, 200, 250, 0.14), transparent 34%);
+  background: none;
 }
 
 .pullRefreshIndicator {
@@ -1993,23 +2141,34 @@ label {
   border-radius: 24px;
   border: 1px solid rgba(255, 255, 255, 0.72);
   background: rgba(255, 255, 255, 0.78);
-  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 16px 34px rgba(85, 52, 28, 0.05);
   transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 240ms ease, background-color 240ms ease;
 }
 
 .momentThumb,
 .thumb {
   border-radius: 18px;
+  overflow: hidden;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0)),
-    linear-gradient(145deg, #d6ecff, #bfdbfe 48%, #dbeafe 100%);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.04)),
+    linear-gradient(145deg, #f4f4f8, #ebebf0 50%, #f4f4f8 100%);
+  box-shadow: none;
+  filter: none;
   transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 240ms ease, filter 240ms ease;
 }
 
 .momentThumbFallback,
 .thumbFallback {
-  color: #2458a6;
+  color: #6d6d72;
   letter-spacing: 0.02em;
+  background:
+    radial-gradient(circle at 50% 40%, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0) 28%),
+    linear-gradient(145deg, #f4f4f8, #ebebf0 50%, #f4f4f8 100%);
+}
+
+.momentThumbImage {
+  background: #f2f2f7;
+  box-shadow: none;
 }
 
 .momentCaption {
@@ -2027,7 +2186,7 @@ label {
   border-radius: 999px;
   background:
     linear-gradient(180deg, #0a84ff 0%, #007aff 100%);
-  box-shadow: 0 22px 40px rgba(0, 122, 255, 0.28);
+  box-shadow: none;
   transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 240ms ease, opacity 220ms ease;
 }
 
@@ -2152,16 +2311,13 @@ label {
   padding: 20px;
   background:
     radial-gradient(circle at top right, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0) 32%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.7)),
-    linear-gradient(145deg, rgba(0, 122, 255, 0.05), rgba(90, 200, 250, 0.06), rgba(255, 255, 255, 0.18));
+    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.74));
 }
 
 .settingsHeroBackdrop {
   position: absolute;
   inset: 0;
-  background:
-    radial-gradient(circle at top left, rgba(10, 132, 255, 0.08), transparent 34%),
-    radial-gradient(circle at bottom right, rgba(90, 200, 250, 0.06), transparent 32%);
+  background: none;
 }
 
 .settingsHeroBody {
@@ -2559,6 +2715,8 @@ label {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(242, 242, 247, 0.94)),
     #f2f2f7;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .draftSheetHeader,
@@ -2601,7 +2759,7 @@ label {
 }
 
 .draftAddTile {
-  background: rgba(255, 255, 255, 0.82);
+  background: rgba(242, 242, 247, 0.94);
   border: 1px dashed rgba(60, 60, 67, 0.18);
 }
 
@@ -2664,6 +2822,7 @@ label {
 .settingsMenuItem:active,
 .settingsCardButton:active,
 .momentThumb:active,
+.momentCommentButton:active,
 .momentEditButton:active,
 .floatingAddButton:active,
 .bottomNav button:active,
@@ -2744,6 +2903,7 @@ label {
   .momentCard,
   .momentThumb,
   .momentThumbImage,
+  .momentCommentButton,
   .momentEditButton,
   .floatingAddButton,
   .momentsPullLayer,

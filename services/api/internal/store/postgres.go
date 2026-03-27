@@ -62,6 +62,7 @@ func (s *PostgresStore) migrate() error {
 		`insert into storage_node_bindings (family_id, node_id, mode, status, created_at, updated_at) select items.family_id, items.id, 'primary', case when items.position = 1 then 'active' else 'draining' end, items.last_seen_at, items.last_seen_at from (select sn.family_id, sn.id, sn.last_seen_at, row_number() over (partition by sn.family_id order by sn.id asc) as position from storage_nodes sn) as items on conflict (family_id, node_id) do nothing`,
 		`create table if not exists storage_node_pairings (code text primary key, family_id text not null references families(id), created_by text not null references users(id), created_at timestamptz not null, expires_at timestamptz not null, used_at timestamptz)`,
 		`create table if not exists timeline_entries (id text primary key, family_id text not null references families(id), caption text not null default '', visibility text not null default 'members', time_mode text not null default 'captured_at', display_at timestamptz not null, timeline_day text not null, uploaded_by text not null default '', uploaded_by_name text not null default '', uploaded_at timestamptz not null, created_at timestamptz not null)`,
+		`create table if not exists timeline_comments (id text primary key, family_id text not null references families(id), entry_id text not null references timeline_entries(id), user_id text not null references users(id), display_name text not null, content text not null, created_at timestamptz not null)`,
 		`create table if not exists media_assets (id text primary key, family_id text not null references families(id), entry_id text not null default '', upload_batch_id text not null default '', uploaded_by text not null default '', uploaded_by_name text not null default '', file_name text not null, media_type text not null, captured_at timestamptz not null, uploaded_at timestamptz not null, timeline_day text not null, status text not null, source text not null, width integer not null default 0, height integer not null default 0, preview_status text not null default 'pending', preview_blob_key text not null default '', original_blob_key text not null default '', processed_at timestamptz, original_path text not null default '')`,
 		`create table if not exists media_placements (media_id text not null references media_assets(id), family_id text not null references families(id), node_id text not null references storage_nodes(id), kind text not null default 'primary', status text not null default 'pending', local_path text not null default '', created_at timestamptz not null, updated_at timestamptz not null, last_verified_at timestamptz, primary key (media_id, node_id))`,
 		`create index if not exists idx_media_placements_family_node_status on media_placements (family_id, node_id, status)`,
@@ -90,6 +91,7 @@ func (s *PostgresStore) migrate() error {
 		`create index if not exists idx_babies_family on babies (family_id, created_at asc)`,
 		`create index if not exists idx_family_invites_family on family_invites (family_id, created_at desc)`,
 		`create index if not exists idx_timeline_entries_family_display on timeline_entries (family_id, display_at desc, uploaded_at desc)`,
+		`create index if not exists idx_timeline_comments_entry_created on timeline_comments (entry_id, created_at asc, id asc)`,
 		`create index if not exists idx_media_assets_family_captured on media_assets (family_id, captured_at desc)`,
 		`create index if not exists idx_media_assets_entry on media_assets (entry_id, captured_at asc)`,
 		`create index if not exists idx_agent_jobs_node_status_created on agent_jobs (node_id, status, created_at asc)`,
@@ -428,6 +430,9 @@ func (s *PostgresStore) TimelinePage(familyID, userID string, input TimelinePage
 	if err := mediaRows.Err(); err != nil {
 		return TimelinePage{}, err
 	}
+	if err := s.attachComments(items, entryIndexes); err != nil {
+		return TimelinePage{}, err
+	}
 
 	page := TimelinePage{Items: items, HasMore: hasMore}
 	if hasMore {
@@ -498,11 +503,50 @@ func (s *PostgresStore) CreateTimelineEntry(userID string, input CreateTimelineE
 		UploadedAt:     now,
 		CreatedAt:      now,
 		Items:          []domain.MediaAsset{},
+		Comments:       []domain.TimelineComment{},
 	}
 	if _, err := s.db.Exec(`insert into timeline_entries (id, family_id, caption, visibility, time_mode, display_at, timeline_day, uploaded_by, uploaded_by_name, uploaded_at, created_at) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, entry.ID, entry.FamilyID, entry.Caption, entry.Visibility, entry.TimeMode, entry.DisplayAt, entry.TimelineDay, entry.UploadedBy, entry.UploadedByName, entry.UploadedAt, entry.CreatedAt); err != nil {
 		return domain.TimelineEntry{}, err
 	}
 	return entry, nil
+}
+
+func (s *PostgresStore) CreateTimelineComment(userID string, input CreateTimelineCommentInput) (domain.TimelineComment, error) {
+	if err := s.authorize(input.AlbumID, userID, domain.RoleViewer); err != nil {
+		return domain.TimelineComment{}, err
+	}
+	content := strings.TrimSpace(input.Content)
+	if content == "" {
+		return domain.TimelineComment{}, ErrConflict
+	}
+	if _, err := s.timelineEntryByID(input.AlbumID, input.EntryID); err != nil {
+		return domain.TimelineComment{}, err
+	}
+	user, err := s.userByID(userID)
+	if err != nil {
+		return domain.TimelineComment{}, err
+	}
+	member, err := s.memberForUser(input.AlbumID, userID)
+	if err != nil {
+		return domain.TimelineComment{}, err
+	}
+	displayName := strings.TrimSpace(member.Relation)
+	if displayName == "" {
+		displayName = user.DisplayName
+	}
+	comment := domain.TimelineComment{
+		ID:          newID("comment"),
+		FamilyID:    input.AlbumID,
+		EntryID:     input.EntryID,
+		UserID:      user.ID,
+		DisplayName: displayName,
+		Content:     content,
+		CreatedAt:   time.Now().UTC(),
+	}
+	if _, err := s.db.Exec(`insert into timeline_comments (id, family_id, entry_id, user_id, display_name, content, created_at) values ($1,$2,$3,$4,$5,$6,$7)`, comment.ID, comment.FamilyID, comment.EntryID, comment.UserID, comment.DisplayName, comment.Content, comment.CreatedAt); err != nil {
+		return domain.TimelineComment{}, err
+	}
+	return comment, nil
 }
 
 func (s *PostgresStore) UpdateTimelineEntry(userID string, input UpdateTimelineEntryInput) (domain.TimelineEntry, error) {
@@ -540,10 +584,16 @@ func (s *PostgresStore) DeleteTimelineEntry(userID, albumID, entryID string) err
 		return err
 	}
 	defer tx.Rollback()
+	if _, err := tx.Exec(`delete from timeline_comments where family_id = $1 and entry_id = $2`, albumID, entryID); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(`delete from agent_jobs where family_id = $1 and media_id in (select id from media_assets where family_id = $1 and entry_id = $2)`, albumID, entryID); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`delete from upload_sessions where family_id = $1 and entry_id = $2`, albumID, entryID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`delete from media_placements where family_id = $1 and media_id in (select id from media_assets where family_id = $1 and entry_id = $2)`, albumID, entryID); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`delete from media_assets where family_id = $1 and entry_id = $2`, albumID, entryID); err != nil {
@@ -574,6 +624,9 @@ func (s *PostgresStore) DeleteTimelineEntryMedia(userID, albumID, entryID, media
 	}
 	_ = result
 	if _, err := tx.Exec(`delete from upload_sessions where family_id = $1 and media_id = $2`, albumID, mediaID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`delete from media_placements where family_id = $1 and media_id = $2`, albumID, mediaID); err != nil {
 		return err
 	}
 	deleteResult, err := tx.Exec(`delete from media_assets where family_id = $1 and entry_id = $2 and id = $3`, albumID, entryID, mediaID)
@@ -1550,7 +1603,44 @@ func (s *PostgresStore) timelineEntryByID(albumID, entryID string) (domain.Timel
 		return domain.TimelineEntry{}, err
 	}
 	entry.Items = []domain.MediaAsset{}
+	entry.Comments = []domain.TimelineComment{}
 	return entry, nil
+}
+
+func (s *PostgresStore) attachComments(items []domain.TimelineEntry, entryIndexes map[string]int) error {
+	if len(items) == 0 {
+		return nil
+	}
+	queryArgs := make([]any, 0, len(items)+1)
+	queryArgs = append(queryArgs, items[0].FamilyID)
+	placeholders := make([]string, 0, len(items))
+	for index, entry := range items {
+		placeholders = append(placeholders, fmt.Sprintf("$%d", index+2))
+		queryArgs = append(queryArgs, entry.ID)
+	}
+	rows, err := s.db.Query(
+		fmt.Sprintf(
+			`select id, family_id, entry_id, user_id, display_name, content, created_at from timeline_comments where family_id = $1 and entry_id in (%s) order by created_at asc, id asc`,
+			strings.Join(placeholders, ","),
+		),
+		queryArgs...,
+	)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		comment, scanErr := scanTimelineComment(rows)
+		if scanErr != nil {
+			return scanErr
+		}
+		index, ok := entryIndexes[comment.EntryID]
+		if !ok {
+			continue
+		}
+		items[index].Comments = append(items[index].Comments, comment)
+	}
+	return rows.Err()
 }
 
 func (s *PostgresStore) authorize(familyID, userID string, minRole domain.Role) error {
@@ -1643,6 +1733,14 @@ func scanTimelineEntry(row scanner) (domain.TimelineEntry, error) {
 	}
 	item.Visibility = domain.TimelineEntryVisibility(visibility)
 	item.TimeMode = domain.TimelineEntryTimeMode(timeMode)
+	return item, nil
+}
+
+func scanTimelineComment(row scanner) (domain.TimelineComment, error) {
+	var item domain.TimelineComment
+	if err := row.Scan(&item.ID, &item.FamilyID, &item.EntryID, &item.UserID, &item.DisplayName, &item.Content, &item.CreatedAt); err != nil {
+		return domain.TimelineComment{}, err
+	}
 	return item, nil
 }
 

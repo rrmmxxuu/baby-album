@@ -95,6 +95,8 @@ func (s *Server) handleTimelineEntryActions(w http.ResponseWriter, r *http.Reque
 		s.handleTimelineEntryUpdate(w, r, userID, entryID)
 	case len(parts) == 1 && r.Method == http.MethodDelete:
 		s.handleTimelineEntryDelete(w, r, userID, entryID)
+	case len(parts) == 2 && parts[1] == "comments" && r.Method == http.MethodPost:
+		s.handleTimelineEntryCommentCreate(w, r, userID, entryID)
 	case len(parts) == 3 && parts[1] == "media" && r.Method == http.MethodDelete:
 		s.handleTimelineEntryMediaDelete(w, r, userID, entryID, parts[2])
 	default:
@@ -145,6 +147,27 @@ func (s *Server) handleTimelineEntryDelete(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": true})
+}
+
+func (s *Server) handleTimelineEntryCommentCreate(w http.ResponseWriter, r *http.Request, userID, entryID string) {
+	var input struct {
+		AlbumID string `json:"albumId"`
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	comment, err := s.store.CreateTimelineComment(userID, store.CreateTimelineCommentInput{
+		AlbumID: input.AlbumID,
+		EntryID: entryID,
+		Content: input.Content,
+	})
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, comment)
 }
 
 func (s *Server) handleTimelineEntryMediaDelete(w http.ResponseWriter, r *http.Request, userID, entryID, mediaID string) {

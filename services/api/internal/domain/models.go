@@ -129,6 +129,16 @@ const (
 	EntryTimeManual   TimelineEntryTimeMode = "manual"
 )
 
+type TimelineComment struct {
+	ID          string    `json:"id"`
+	FamilyID    string    `json:"albumId"`
+	EntryID     string    `json:"entryId"`
+	UserID      string    `json:"userId"`
+	DisplayName string    `json:"displayName"`
+	Content     string    `json:"content"`
+	CreatedAt   time.Time `json:"createdAt"`
+}
+
 type TimelineEntry struct {
 	ID             string                  `json:"id"`
 	FamilyID       string                  `json:"albumId"`
@@ -142,6 +152,7 @@ type TimelineEntry struct {
 	UploadedAt     time.Time               `json:"uploadedAt"`
 	CreatedAt      time.Time               `json:"createdAt"`
 	Items          []MediaAsset            `json:"items"`
+	Comments       []TimelineComment       `json:"comments"`
 }
 
 type MediaAsset struct {

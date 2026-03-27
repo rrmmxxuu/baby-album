@@ -58,6 +58,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/v1/bootstrap", s.handleBootstrap)
 	s.mux.HandleFunc("/api/v1/timeline", s.handleTimeline)
 	s.mux.HandleFunc("/api/v1/timeline-entries", s.handleTimelineEntries)
+	s.mux.HandleFunc("/api/v1/timeline-entries/", s.handleTimelineEntryActions)
 	s.mux.HandleFunc("/api/v1/members", s.handleMembers)
 	s.mux.HandleFunc("/api/v1/upload-sessions", s.handleUploadSessions)
 	s.mux.HandleFunc("/api/v1/upload-sessions/", s.handleUploadSessionActions)
@@ -81,7 +82,7 @@ func (s *Server) withMiddleware(next http.Handler) http.Handler {
 			}
 			w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-User-ID, X-Node-Token")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Max-Age", "600")
 		}
 		if r.Method == http.MethodOptions {
@@ -191,6 +192,7 @@ func (s *Server) handleAlbums(w http.ResponseWriter, r *http.Request) {
 		Timezone  string  `json:"timezone"`
 		BabyName  string  `json:"babyName"`
 		BirthDate *string `json:"birthDate"`
+		Relation  string  `json:"relation"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
@@ -205,7 +207,7 @@ func (s *Server) handleAlbums(w http.ResponseWriter, r *http.Request) {
 		}
 		birthDate = &value
 	}
-	album, err := s.store.CreateAlbum(userID, store.CreateAlbumInput{Name: input.Name, Timezone: input.Timezone, BabyName: input.BabyName, BirthDate: birthDate})
+	album, err := s.store.CreateAlbum(userID, store.CreateAlbumInput{Name: input.Name, Timezone: input.Timezone, BabyName: input.BabyName, BirthDate: birthDate, Relation: input.Relation})
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -381,6 +383,25 @@ func (s *Server) handleCollectionActions(w http.ResponseWriter, r *http.Request,
 		}
 		writeJSON(w, http.StatusOK, member)
 		return
+	case len(parts) == 4 && parts[1] == "members" && parts[3] == "relation":
+		if r.Method != http.MethodPost {
+			writeMethodNotAllowed(w)
+			return
+		}
+		var input struct {
+			Relation string `json:"relation"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+			return
+		}
+		member, err := s.store.UpdateMemberRelation(userID, store.UpdateAlbumMemberRelationInput{AlbumID: familyID, MemberUserID: parts[2], Relation: input.Relation})
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, member)
+		return
 	default:
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 	}
@@ -396,14 +417,12 @@ func (s *Server) handleFamilyInvites(w http.ResponseWriter, r *http.Request, use
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"items": items})
 	case http.MethodPost:
-		var input struct {
-			Role string `json:"role"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		var input map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil && !errors.Is(err, io.EOF) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 			return
 		}
-		invite, err := s.store.CreateInvite(userID, store.CreateAlbumInviteInput{AlbumID: familyID, Role: domain.Role(input.Role)})
+		invite, err := s.store.CreateInvite(userID, store.CreateAlbumInviteInput{AlbumID: familyID})
 		if err != nil {
 			writeStoreError(w, err)
 			return
@@ -445,7 +464,14 @@ func (s *Server) handleInviteActions(w http.ResponseWriter, r *http.Request) {
 			writeStoreError(w, err)
 			return
 		}
-		invite, err := s.store.AcceptInvite(userID, code)
+		var input struct {
+			Relation string `json:"relation"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil && !errors.Is(err, io.EOF) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+			return
+		}
+		invite, err := s.store.AcceptInvite(userID, store.AcceptInviteInput{Code: code, Relation: input.Relation})
 		if err != nil {
 			writeStoreError(w, err)
 			return
@@ -548,6 +574,78 @@ func (s *Server) handleTimelineEntries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, entry)
+}
+
+func (s *Server) handleTimelineEntryActions(w http.ResponseWriter, r *http.Request) {
+	userID, err := s.actorID(r)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1/timeline-entries/")
+	path = strings.Trim(path, "/")
+	if path == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "entry id is required"})
+		return
+	}
+	parts := strings.Split(path, "/")
+	entryID := parts[0]
+	switch {
+	case len(parts) == 1 && r.Method == http.MethodPost:
+		var input struct {
+			AlbumID    string `json:"albumId"`
+			Caption    string `json:"caption"`
+			Visibility string `json:"visibility"`
+			TimeMode   string `json:"timeMode"`
+			DisplayAt  string `json:"displayAt"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+			return
+		}
+		displayAt, err := time.Parse(time.RFC3339, input.DisplayAt)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "displayAt must be RFC3339"})
+			return
+		}
+		entry, err := s.store.UpdateTimelineEntry(userID, store.UpdateTimelineEntryInput{
+			AlbumID:    input.AlbumID,
+			EntryID:    entryID,
+			Caption:    input.Caption,
+			Visibility: domain.TimelineEntryVisibility(input.Visibility),
+			TimeMode:   domain.TimelineEntryTimeMode(input.TimeMode),
+			DisplayAt:  displayAt,
+		})
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, entry)
+	case len(parts) == 1 && r.Method == http.MethodDelete:
+		albumID := strings.TrimSpace(r.URL.Query().Get("albumId"))
+		if albumID == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "albumId is required"})
+			return
+		}
+		if err := s.store.DeleteTimelineEntry(userID, albumID, entryID); err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"deleted": true})
+	case len(parts) == 3 && parts[1] == "media" && r.Method == http.MethodDelete:
+		albumID := strings.TrimSpace(r.URL.Query().Get("albumId"))
+		if albumID == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "albumId is required"})
+			return
+		}
+		if err := s.store.DeleteTimelineEntryMedia(userID, albumID, entryID, parts[2]); err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"deleted": true})
+	default:
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+	}
 }
 
 func (s *Server) handleUploadSessions(w http.ResponseWriter, r *http.Request) {

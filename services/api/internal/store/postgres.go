@@ -47,7 +47,7 @@ func (s *PostgresStore) migrate() error {
 		`create table if not exists auth_sessions (token text primary key, user_id text not null references users(id), created_at timestamptz not null, expires_at timestamptz not null)`,
 		`create index if not exists idx_auth_sessions_user on auth_sessions (user_id)`,
 		`create table if not exists families (id text primary key, name text not null, timezone text not null)`,
-		`create table if not exists family_members (user_id text not null references users(id), family_id text not null references families(id), role text not null, display_name text not null, primary key (family_id, user_id))`,
+		`create table if not exists family_members (user_id text not null references users(id), family_id text not null references families(id), role text not null, display_name text not null, relation text not null default '', primary key (family_id, user_id))`,
 		`create table if not exists babies (id text primary key, family_id text not null references families(id), name text not null, birth_date date, avatar_blob_key text not null default '', avatar_updated_at timestamptz, created_at timestamptz not null)`,
 		`alter table babies add column if not exists avatar_blob_key text not null default ''`,
 		`alter table babies add column if not exists avatar_updated_at timestamptz`,
@@ -78,6 +78,7 @@ func (s *PostgresStore) migrate() error {
 		`update upload_sessions set entry_id = upload_batch_id where entry_id = ''`,
 		`create table if not exists agent_jobs (id text primary key, node_id text not null references storage_nodes(id), family_id text not null references families(id), media_id text not null references media_assets(id), type text not null, status text not null, created_at timestamptz not null, updated_at timestamptz not null)`,
 		`create index if not exists idx_family_members_user on family_members (user_id)`,
+		`alter table family_members add column if not exists relation text not null default ''`,
 		`create index if not exists idx_babies_family on babies (family_id, created_at asc)`,
 		`create index if not exists idx_family_invites_family on family_invites (family_id, created_at desc)`,
 		`create index if not exists idx_timeline_entries_family_display on timeline_entries (family_id, display_at desc, uploaded_at desc)`,
@@ -131,13 +132,13 @@ func (s *PostgresStore) seed() error {
 		return err
 	}
 	members := []domain.FamilyMember{
-		{UserID: "user-owner", FamilyID: "family-demo", Role: domain.RoleOwner, DisplayName: "Ramon"},
-		{UserID: "user-admin", FamilyID: "family-demo", Role: domain.RoleAdmin, DisplayName: "Grandma"},
-		{UserID: "user-member", FamilyID: "family-demo", Role: domain.RoleMember, DisplayName: "Dad"},
-		{UserID: "user-viewer", FamilyID: "family-demo", Role: domain.RoleViewer, DisplayName: "Auntie"},
+		{UserID: "user-owner", FamilyID: "family-demo", Role: domain.RoleOwner, DisplayName: "Ramon", Relation: "爸爸"},
+		{UserID: "user-admin", FamilyID: "family-demo", Role: domain.RoleAdmin, DisplayName: "Grandma", Relation: "奶奶"},
+		{UserID: "user-member", FamilyID: "family-demo", Role: domain.RoleMember, DisplayName: "Dad", Relation: "妈妈"},
+		{UserID: "user-viewer", FamilyID: "family-demo", Role: domain.RoleViewer, DisplayName: "Auntie", Relation: "阿姨"},
 	}
 	for _, member := range members {
-		if _, err := tx.Exec(`insert into family_members (user_id, family_id, role, display_name) values ($1, $2, $3, $4)`, member.UserID, member.FamilyID, member.Role, member.DisplayName); err != nil {
+		if _, err := tx.Exec(`insert into family_members (user_id, family_id, role, display_name, relation) values ($1, $2, $3, $4, $5)`, member.UserID, member.FamilyID, member.Role, member.DisplayName, member.Relation); err != nil {
 			return err
 		}
 	}
@@ -363,7 +364,7 @@ func (s *PostgresStore) Members(familyID, userID string) ([]domain.AlbumMember, 
 	if err := s.authorize(familyID, userID, domain.RoleViewer); err != nil {
 		return nil, err
 	}
-	rows, err := s.db.Query(`select user_id, family_id, role, display_name from family_members where family_id = $1 order by display_name asc`, familyID)
+	rows, err := s.db.Query(`select user_id, family_id, role, display_name, relation from family_members where family_id = $1 order by display_name asc`, familyID)
 	if err != nil {
 		return nil, err
 	}
@@ -372,7 +373,7 @@ func (s *PostgresStore) Members(familyID, userID string) ([]domain.AlbumMember, 
 	for rows.Next() {
 		var item domain.AlbumMember
 		var role string
-		if err := rows.Scan(&item.UserID, &item.FamilyID, &role, &item.DisplayName); err != nil {
+		if err := rows.Scan(&item.UserID, &item.FamilyID, &role, &item.DisplayName, &item.Relation); err != nil {
 			return nil, err
 		}
 		item.Role = domain.Role(role)
@@ -428,15 +429,104 @@ func (s *PostgresStore) CreateTimelineEntry(userID string, input CreateTimelineE
 	return entry, nil
 }
 
+func (s *PostgresStore) UpdateTimelineEntry(userID string, input UpdateTimelineEntryInput) (domain.TimelineEntry, error) {
+	if !validTimelineVisibility(input.Visibility) || !validTimelineTimeMode(input.TimeMode) {
+		return domain.TimelineEntry{}, ErrConflict
+	}
+	entry, err := s.timelineEntryByID(input.AlbumID, input.EntryID)
+	if err != nil {
+		return domain.TimelineEntry{}, err
+	}
+	if err := s.authorizeTimelineEntryEdit(userID, entry); err != nil {
+		return domain.TimelineEntry{}, err
+	}
+	entry.Caption = strings.TrimSpace(input.Caption)
+	entry.Visibility = input.Visibility
+	entry.TimeMode = input.TimeMode
+	entry.DisplayAt = input.DisplayAt.UTC()
+	entry.TimelineDay = input.DisplayAt.UTC().Format("2006-01-02")
+	if _, err := s.db.Exec(`update timeline_entries set caption = $1, visibility = $2, time_mode = $3, display_at = $4, timeline_day = $5 where id = $6 and family_id = $7`, entry.Caption, entry.Visibility, entry.TimeMode, entry.DisplayAt, entry.TimelineDay, entry.ID, entry.FamilyID); err != nil {
+		return domain.TimelineEntry{}, err
+	}
+	return entry, nil
+}
+
+func (s *PostgresStore) DeleteTimelineEntry(userID, albumID, entryID string) error {
+	entry, err := s.timelineEntryByID(albumID, entryID)
+	if err != nil {
+		return err
+	}
+	if err := s.authorizeTimelineEntryEdit(userID, entry); err != nil {
+		return err
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`delete from agent_jobs where family_id = $1 and media_id in (select id from media_assets where family_id = $1 and entry_id = $2)`, albumID, entryID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`delete from upload_sessions where family_id = $1 and entry_id = $2`, albumID, entryID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`delete from media_assets where family_id = $1 and entry_id = $2`, albumID, entryID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`delete from timeline_entries where family_id = $1 and id = $2`, albumID, entryID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *PostgresStore) DeleteTimelineEntryMedia(userID, albumID, entryID, mediaID string) error {
+	entry, err := s.timelineEntryByID(albumID, entryID)
+	if err != nil {
+		return err
+	}
+	if err := s.authorizeTimelineEntryEdit(userID, entry); err != nil {
+		return err
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	result, err := tx.Exec(`delete from agent_jobs where family_id = $1 and media_id = $2`, albumID, mediaID)
+	if err != nil {
+		return err
+	}
+	_ = result
+	if _, err := tx.Exec(`delete from upload_sessions where family_id = $1 and media_id = $2`, albumID, mediaID); err != nil {
+		return err
+	}
+	deleteResult, err := tx.Exec(`delete from media_assets where family_id = $1 and entry_id = $2 and id = $3`, albumID, entryID, mediaID)
+	if err != nil {
+		return err
+	}
+	affected, err := deleteResult.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return ErrNotFound
+	}
+	return tx.Commit()
+}
+
 func (s *PostgresStore) CreateAlbum(userID string, input CreateAlbumInput) (domain.Album, error) {
 	name := strings.TrimSpace(input.Name)
 	timezone := strings.TrimSpace(input.Timezone)
 	babyName := strings.TrimSpace(input.BabyName)
+	relation := strings.TrimSpace(input.Relation)
 	if name == "" {
 		return domain.Family{}, fmt.Errorf("family name is required")
 	}
 	if babyName == "" {
 		return domain.Family{}, fmt.Errorf("baby name is required")
+	}
+	if relation == "" {
+		return domain.Family{}, fmt.Errorf("relation is required")
 	}
 	if timezone == "" {
 		timezone = "Asia/Shanghai"
@@ -454,7 +544,7 @@ func (s *PostgresStore) CreateAlbum(userID string, input CreateAlbumInput) (doma
 	if _, err := tx.Exec(`insert into families (id, name, timezone) values ($1, $2, $3)`, family.ID, family.Name, family.Timezone); err != nil {
 		return domain.Family{}, err
 	}
-	if _, err := tx.Exec(`insert into family_members (user_id, family_id, role, display_name) values ($1, $2, $3, $4)`, user.ID, family.ID, domain.RoleOwner, user.DisplayName); err != nil {
+	if _, err := tx.Exec(`insert into family_members (user_id, family_id, role, display_name, relation) values ($1, $2, $3, $4, $5)`, user.ID, family.ID, domain.RoleOwner, user.DisplayName, relation); err != nil {
 		return domain.Family{}, err
 	}
 	baby := domain.BabyProfile{ID: newID("baby"), FamilyID: family.ID, Name: babyName, CreatedAt: time.Now().UTC()}
@@ -581,7 +671,7 @@ func (s *PostgresStore) LeaveAlbum(userID string, input LeaveAlbumInput) error {
 
 	var actor domain.AlbumMember
 	var role string
-	err = tx.QueryRow(`select user_id, family_id, role, display_name from family_members where family_id = $1 and user_id = $2 for update`, input.AlbumID, userID).Scan(&actor.UserID, &actor.FamilyID, &role, &actor.DisplayName)
+	err = tx.QueryRow(`select user_id, family_id, role, display_name, relation from family_members where family_id = $1 and user_id = $2 for update`, input.AlbumID, userID).Scan(&actor.UserID, &actor.FamilyID, &role, &actor.DisplayName, &actor.Relation)
 	if err == sql.ErrNoRows {
 		return ErrForbidden
 	}
@@ -647,10 +737,30 @@ func (s *PostgresStore) UpdateMemberRole(userID string, input UpdateAlbumMemberR
 	return member, nil
 }
 
-func (s *PostgresStore) CreateInvite(userID string, input CreateAlbumInviteInput) (domain.AlbumInvite, error) {
-	if !validRole(input.Role) || input.Role == domain.RoleOwner {
-		return domain.AlbumInvite{}, ErrForbidden
+func (s *PostgresStore) UpdateMemberRelation(userID string, input UpdateAlbumMemberRelationInput) (domain.AlbumMember, error) {
+	relation := strings.TrimSpace(input.Relation)
+	if relation == "" {
+		return domain.AlbumMember{}, fmt.Errorf("relation is required")
 	}
+	actor, err := s.memberForUser(input.AlbumID, userID)
+	if err != nil {
+		return domain.AlbumMember{}, err
+	}
+	if userID != input.MemberUserID && actor.Role != domain.RoleOwner && actor.Role != domain.RoleAdmin {
+		return domain.AlbumMember{}, ErrForbidden
+	}
+	member, err := s.memberForUser(input.AlbumID, input.MemberUserID)
+	if err != nil {
+		return domain.AlbumMember{}, err
+	}
+	if _, err := s.db.Exec(`update family_members set relation = $1 where family_id = $2 and user_id = $3`, relation, input.AlbumID, input.MemberUserID); err != nil {
+		return domain.AlbumMember{}, err
+	}
+	member.Relation = relation
+	return member, nil
+}
+
+func (s *PostgresStore) CreateInvite(userID string, input CreateAlbumInviteInput) (domain.AlbumInvite, error) {
 	actor, err := s.memberForUser(input.AlbumID, userID)
 	if err != nil {
 		return domain.AlbumInvite{}, err
@@ -658,10 +768,7 @@ func (s *PostgresStore) CreateInvite(userID string, input CreateAlbumInviteInput
 	if actor.Role != domain.RoleOwner && actor.Role != domain.RoleAdmin {
 		return domain.AlbumInvite{}, ErrForbidden
 	}
-	if actor.Role == domain.RoleAdmin && input.Role == domain.RoleAdmin {
-		return domain.AlbumInvite{}, ErrForbidden
-	}
-	invite := domain.AlbumInvite{ID: newID("invite"), FamilyID: input.AlbumID, Code: newInviteCode(), Role: input.Role, Status: domain.InvitePending, CreatedBy: userID, CreatedAt: time.Now().UTC()}
+	invite := domain.AlbumInvite{ID: newID("invite"), FamilyID: input.AlbumID, Code: newInviteCode(), Role: domain.RoleViewer, Status: domain.InvitePending, CreatedBy: userID, CreatedAt: time.Now().UTC()}
 	if _, err := s.db.Exec(`insert into family_invites (id, family_id, code, role, status, created_by, created_at) values ($1, $2, $3, $4, $5, $6, $7)`, invite.ID, invite.FamilyID, invite.Code, invite.Role, invite.Status, invite.CreatedBy, invite.CreatedAt); err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "duplicate") {
 			return domain.AlbumInvite{}, ErrConflict
@@ -703,7 +810,11 @@ func (s *PostgresStore) InviteByCode(code string) (domain.AlbumInvite, error) {
 	return item, nil
 }
 
-func (s *PostgresStore) AcceptInvite(userID, code string) (domain.AlbumInvite, error) {
+func (s *PostgresStore) AcceptInvite(userID string, input AcceptInviteInput) (domain.AlbumInvite, error) {
+	relation := strings.TrimSpace(input.Relation)
+	if relation == "" {
+		return domain.AlbumInvite{}, fmt.Errorf("relation is required")
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return domain.AlbumInvite{}, err
@@ -714,7 +825,7 @@ func (s *PostgresStore) AcceptInvite(userID, code string) (domain.AlbumInvite, e
 	var status string
 	var acceptedAt sql.NullTime
 	var acceptedBy sql.NullString
-	err = tx.QueryRow(`select id, family_id, code, role, status, created_by, created_at, accepted_at, accepted_by from family_invites where code = $1 for update`, code).Scan(&invite.ID, &invite.FamilyID, &invite.Code, &role, &status, &invite.CreatedBy, &invite.CreatedAt, &acceptedAt, &acceptedBy)
+	err = tx.QueryRow(`select id, family_id, code, role, status, created_by, created_at, accepted_at, accepted_by from family_invites where code = $1 for update`, input.Code).Scan(&invite.ID, &invite.FamilyID, &invite.Code, &role, &status, &invite.CreatedBy, &invite.CreatedAt, &acceptedAt, &acceptedBy)
 	if err == sql.ErrNoRows {
 		return domain.AlbumInvite{}, ErrNotFound
 	}
@@ -737,17 +848,17 @@ func (s *PostgresStore) AcceptInvite(userID, code string) (domain.AlbumInvite, e
 	if memberCount > 0 {
 		return domain.AlbumInvite{}, ErrConflict
 	}
-	if _, err := tx.Exec(`insert into family_members (user_id, family_id, role, display_name) values ($1, $2, $3, $4)`, user.ID, invite.FamilyID, invite.Role, user.DisplayName); err != nil {
+	if _, err := tx.Exec(`insert into family_members (user_id, family_id, role, display_name, relation) values ($1, $2, $3, $4, $5)`, user.ID, invite.FamilyID, invite.Role, user.DisplayName, relation); err != nil {
 		return domain.AlbumInvite{}, err
 	}
 	now := time.Now().UTC()
-	if _, err := tx.Exec(`update family_invites set status = $1, accepted_at = $2, accepted_by = $3 where code = $4`, domain.InviteAccepted, now, user.ID, code); err != nil {
+	if _, err := tx.Exec(`update family_invites set status = $1, accepted_at = $2, accepted_by = $3 where code = $4`, domain.InviteAccepted, now, user.ID, input.Code); err != nil {
 		return domain.AlbumInvite{}, err
 	}
 	if err := tx.Commit(); err != nil {
 		return domain.AlbumInvite{}, err
 	}
-	return s.InviteByCode(code)
+	return s.InviteByCode(input.Code)
 }
 
 func (s *PostgresStore) CreateUploadSession(userID string, input UploadSessionInput) (domain.UploadSession, error) {
@@ -1103,7 +1214,7 @@ func (s *PostgresStore) babyByID(familyID, babyID string) (domain.BabyProfile, e
 }
 
 func (s *PostgresStore) albumsForUser(userID string) ([]AlbumSummary, error) {
-	rows, err := s.db.Query(`select f.id, f.name, f.timezone, fm.user_id, fm.family_id, fm.role, fm.display_name from family_members fm join families f on f.id = fm.family_id where fm.user_id = $1 order by f.name asc`, userID)
+	rows, err := s.db.Query(`select f.id, f.name, f.timezone, fm.user_id, fm.family_id, fm.role, fm.display_name, fm.relation from family_members fm join families f on f.id = fm.family_id where fm.user_id = $1 order by f.name asc`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -1112,7 +1223,7 @@ func (s *PostgresStore) albumsForUser(userID string) ([]AlbumSummary, error) {
 	for rows.Next() {
 		var summary AlbumSummary
 		var role string
-		if err := rows.Scan(&summary.Album.ID, &summary.Album.Name, &summary.Album.Timezone, &summary.Membership.UserID, &summary.Membership.FamilyID, &role, &summary.Membership.DisplayName); err != nil {
+		if err := rows.Scan(&summary.Album.ID, &summary.Album.Name, &summary.Album.Timezone, &summary.Membership.UserID, &summary.Membership.FamilyID, &role, &summary.Membership.DisplayName, &summary.Membership.Relation); err != nil {
 			return nil, err
 		}
 		summary.Membership.Role = domain.Role(role)
@@ -1153,7 +1264,7 @@ func (s *PostgresStore) userByID(userID string) (domain.User, error) {
 func (s *PostgresStore) memberForUser(familyID, userID string) (domain.AlbumMember, error) {
 	var member domain.AlbumMember
 	var role string
-	err := s.db.QueryRow(`select user_id, family_id, role, display_name from family_members where family_id = $1 and user_id = $2`, familyID, userID).Scan(&member.UserID, &member.FamilyID, &role, &member.DisplayName)
+	err := s.db.QueryRow(`select user_id, family_id, role, display_name, relation from family_members where family_id = $1 and user_id = $2`, familyID, userID).Scan(&member.UserID, &member.FamilyID, &role, &member.DisplayName, &member.Relation)
 	if err == sql.ErrNoRows {
 		return domain.AlbumMember{}, ErrForbidden
 	}
@@ -1226,6 +1337,19 @@ func (s *PostgresStore) ensureTimelineEntry(albumID, entryID string) error {
 	return nil
 }
 
+func (s *PostgresStore) timelineEntryByID(albumID, entryID string) (domain.TimelineEntry, error) {
+	row := s.db.QueryRow(`select id, family_id, caption, visibility, time_mode, display_at, timeline_day, uploaded_by, uploaded_by_name, uploaded_at, created_at from timeline_entries where family_id = $1 and id = $2`, albumID, entryID)
+	entry, err := scanTimelineEntry(row)
+	if err == sql.ErrNoRows {
+		return domain.TimelineEntry{}, ErrNotFound
+	}
+	if err != nil {
+		return domain.TimelineEntry{}, err
+	}
+	entry.Items = []domain.MediaAsset{}
+	return entry, nil
+}
+
 func (s *PostgresStore) authorize(familyID, userID string, minRole domain.Role) error {
 	member, err := s.memberForUser(familyID, userID)
 	if err != nil {
@@ -1235,6 +1359,17 @@ func (s *PostgresStore) authorize(familyID, userID string, minRole domain.Role) 
 		return ErrForbidden
 	}
 	return nil
+}
+
+func (s *PostgresStore) authorizeTimelineEntryEdit(userID string, entry domain.TimelineEntry) error {
+	member, err := s.memberForUser(entry.FamilyID, userID)
+	if err != nil {
+		return err
+	}
+	if member.Role == domain.RoleOwner || member.Role == domain.RoleAdmin || entry.UploadedBy == userID {
+		return nil
+	}
+	return ErrForbidden
 }
 
 func (s *PostgresStore) storageNodePairingByCode(code string) (domain.StorageNodePairing, error) {

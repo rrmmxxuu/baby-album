@@ -99,7 +99,7 @@ func TestInMemoryStorageNodePairingAndCapacity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RegisterUser returned error: %v", err)
 	}
-	album, err := repo.CreateAlbum(owner.User.ID, CreateAlbumInput{Name: "Mia Family", Timezone: "Asia/Shanghai", BabyName: "Peanut"})
+	album, err := repo.CreateAlbum(owner.User.ID, CreateAlbumInput{Name: "Mia Family", Timezone: "Asia/Shanghai", BabyName: "Peanut", Relation: "妈妈"})
 	if err != nil {
 		t.Fatalf("CreateFamily returned error: %v", err)
 	}
@@ -146,11 +146,11 @@ func TestInMemoryOnboardingInviteFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RegisterUser owner returned error: %v", err)
 	}
-	album, err := repo.CreateAlbum(owner.User.ID, CreateAlbumInput{Name: "Mia Family", Timezone: "Asia/Shanghai", BabyName: "Peanut"})
+	album, err := repo.CreateAlbum(owner.User.ID, CreateAlbumInput{Name: "Mia Family", Timezone: "Asia/Shanghai", BabyName: "Peanut", Relation: "妈妈"})
 	if err != nil {
 		t.Fatalf("CreateFamily returned error: %v", err)
 	}
-	invite, err := repo.CreateInvite(owner.User.ID, CreateAlbumInviteInput{AlbumID: album.ID, Role: domain.RoleMember})
+	invite, err := repo.CreateInvite(owner.User.ID, CreateAlbumInviteInput{AlbumID: album.ID})
 	if err != nil {
 		t.Fatalf("CreateInvite returned error: %v", err)
 	}
@@ -158,7 +158,7 @@ func TestInMemoryOnboardingInviteFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RegisterUser guest returned error: %v", err)
 	}
-	accepted, err := repo.AcceptInvite(guest.User.ID, invite.Code)
+	accepted, err := repo.AcceptInvite(guest.User.ID, AcceptInviteInput{Code: invite.Code, Relation: "叔叔"})
 	if err != nil {
 		t.Fatalf("AcceptInvite returned error: %v", err)
 	}

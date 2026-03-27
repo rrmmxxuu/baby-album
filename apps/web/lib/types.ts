@@ -12,6 +12,7 @@ export interface AlbumMember {
   albumId: string;
   role: Role;
   displayName: string;
+  relation?: string;
 }
 
 export interface BabyProfile {

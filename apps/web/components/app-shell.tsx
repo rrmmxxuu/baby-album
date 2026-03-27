@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { UploadDraftSheet } from "./upload-draft-sheet";
-import { acceptInvite, createAlbum, createInvite, createStorageNodePairing, getBabyAvatarUrl, getOriginalUrl, getPreviewUrl, leaveAlbum, loadAppState, loadInvite, loginUser, logoutUser, registerUser, updateBabyProfile, updateMemberRole, uploadBabyAvatar } from "../lib/api";
+import { acceptInvite, createAlbum, createInvite, createStorageNodePairing, getBabyAvatarUrl, getOriginalUrl, getPreviewUrl, leaveAlbum, loadAppState, loadInvite, loginUser, logoutUser, registerUser, updateBabyProfile, updateMemberRelation, updateMemberRole, uploadBabyAvatar } from "../lib/api";
 import type { AlbumInvite, AlbumMember, AppStatePayload, MediaAsset, Role, StorageNodePairing, TimelineEntry } from "../lib/types";
 
 type TabKey = "photos" | "settings";
@@ -12,6 +12,7 @@ type SettingsScreen = "menu" | "account" | "babies" | "addBaby" | "babyDetail" |
 
 const TOKEN_STORAGE_KEY = "baby-album.authToken";
 const ALBUM_STORAGE_KEY = "baby-album.albumId";
+const RELATION_OPTIONS = ["爸爸", "妈妈", "爷爷", "奶奶", "外公", "外婆", "阿姨", "叔叔", "哥哥", "姐姐"];
 
 function AppShellInner() {
   const searchParams = useSearchParams();
@@ -30,12 +31,16 @@ function AppShellInner() {
   const [ownerTransferTarget, setOwnerTransferTarget] = useState("");
   const [lightbox, setLightbox] = useState<LightboxState | null>(null);
   const [draftSheetOpen, setDraftSheetOpen] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<TimelineEntry | null>(null);
   const [settingsScreen, setSettingsScreen] = useState<SettingsScreen>("menu");
   const [settingsMemberId, setSettingsMemberId] = useState("");
   const [babyProfileName, setBabyProfileName] = useState("");
   const [babyProfileBirthDate, setBabyProfileBirthDate] = useState("");
   const [createBabyAvatarFile, setCreateBabyAvatarFile] = useState<File | null>(null);
   const [babyAvatarFile, setBabyAvatarFile] = useState<File | null>(null);
+  const [createRelation, setCreateRelation] = useState("");
+  const [inviteRelation, setInviteRelation] = useState("");
+  const [myRelationDraft, setMyRelationDraft] = useState("");
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +52,6 @@ function AppShellInner() {
   const [loginPassword, setLoginPassword] = useState("");
   const [babyName, setBabyName] = useState("");
   const [babyBirthDate, setBabyBirthDate] = useState("");
-  const [inviteRole, setInviteRole] = useState<Role>("member");
 
   useEffect(() => {
     setHydrated(true);
@@ -100,6 +104,7 @@ function AppShellInner() {
     }
     setBabyProfileName(appState?.activeAlbum?.baby?.name ?? "");
     setBabyProfileBirthDate(appState?.activeAlbum?.baby?.birthDate ? toDateInputValue(appState.activeAlbum.baby.birthDate) : "");
+    setMyRelationDraft(appState?.activeAlbum?.membership.relation ?? "");
     setBabyAvatarFile(null);
     setStoragePairing(null);
   }, [appState]);
@@ -245,12 +250,17 @@ function AppShellInner() {
       if (!name) {
         throw new Error("请先填写宝宝姓名。");
       }
+      const relation = createRelation.trim();
+      if (!relation) {
+        throw new Error("请先填写你与宝宝的关系。");
+      }
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Shanghai";
       const album = await createAlbum(authToken, {
         name: `${name}的宝宝相册`,
         timezone,
         babyName: name,
-        birthDate: babyBirthDate ? new Date(`${babyBirthDate}T00:00:00Z`).toISOString() : undefined
+        birthDate: babyBirthDate ? new Date(`${babyBirthDate}T00:00:00Z`).toISOString() : undefined,
+        relation
       });
       if (createBabyAvatarFile) {
         const next = await loadAppState(authToken, album.id);
@@ -261,6 +271,7 @@ function AppShellInner() {
       }
       setBabyName("");
       setBabyBirthDate("");
+      setCreateRelation("");
       setCreateBabyAvatarFile(null);
       setSelectedAlbumId(album.id);
       window.localStorage.setItem(ALBUM_STORAGE_KEY, album.id);
@@ -283,9 +294,14 @@ function AppShellInner() {
     setError(null);
     setNotice(null);
     try {
-      const accepted = await acceptInvite(authToken, inviteCode);
+      const relation = inviteRelation.trim();
+      if (!relation) {
+        throw new Error("请先填写你与宝宝的关系。");
+      }
+      const accepted = await acceptInvite(authToken, inviteCode, relation);
       setSelectedAlbumId(accepted.albumId);
       window.localStorage.setItem(ALBUM_STORAGE_KEY, accepted.albumId);
+      setInviteRelation("");
       setNotice(`已加入 ${accepted.albumName ?? "宝宝相册"}。`);
       await refreshApp(accepted.albumId);
     } catch (err) {
@@ -301,7 +317,7 @@ function AppShellInner() {
     setError(null);
     setNotice(null);
     try {
-      const created = await createInvite(authToken, appState.activeAlbum.album.id, inviteRole);
+      const created = await createInvite(authToken, appState.activeAlbum.album.id);
       setNotice(`已生成邀请码：${created.code}`);
       await refreshApp(appState.activeAlbum.album.id);
     } catch (err) {
@@ -370,6 +386,27 @@ function AppShellInner() {
     }
   }
 
+  async function handleUpdateMyRelation(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!authToken || !activeAlbum || !currentUser) {
+      return;
+    }
+    const relation = myRelationDraft.trim();
+    if (!relation) {
+      setError("请先填写你与宝宝的关系。");
+      return;
+    }
+    setError(null);
+    setNotice(null);
+    try {
+      await updateMemberRelation(authToken, activeAlbum.album.id, currentUser.id, relation);
+      setNotice("关系称呼已更新。");
+      await refreshApp(activeAlbum.album.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "更新关系称呼失败。");
+    }
+  }
+
   async function handleLeaveAlbum() {
     if (!authToken || !appState?.activeAlbum) {
       return;
@@ -403,6 +440,15 @@ function AppShellInner() {
     setDraftSheetOpen(true);
   }
 
+  function handleOpenEditEntry(entryId: string) {
+    const entry = activeAlbum?.timeline.find((item) => item.id === entryId) ?? null;
+    if (!entry) {
+      return;
+    }
+    setEditingEntry(entry);
+    setDraftSheetOpen(true);
+  }
+
   function refreshTimelineSoon(targetAlbumId: string) {
     void refreshApp(targetAlbumId);
     window.setTimeout(() => void refreshApp(targetAlbumId), 2000);
@@ -423,6 +469,20 @@ function AppShellInner() {
   const timelineDays = useMemo(() => buildTimelineFeed(albumTimeline, activeBaby?.birthDate), [albumTimeline, activeBaby?.birthDate]);
   const canUploadMedia = Boolean(activeAlbum && activeAlbum.membership.role !== "viewer" && storageNode);
   const transferCandidates = albumMembers.filter((member) => member.userId !== currentUser?.id);
+  const hasPendingPreview = useMemo(
+    () => albumTimeline.some((entry) => entry.items.some((item) => item.previewStatus !== "ready")),
+    [albumTimeline]
+  );
+
+  useEffect(() => {
+    if (!authToken || !activeAlbum || !hasPendingPreview) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void refreshApp(activeAlbum.album.id);
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [activeAlbum, authToken, hasPendingPreview]);
 
   return (
     <main className="appShell">
@@ -516,6 +576,7 @@ function AppShellInner() {
               邀请码
               <input value={inviteCodeInput} onChange={(event) => setInviteCodeInput(event.target.value)} placeholder="请输入邀请码" />
             </label>
+            <RelationInput label="你与宝宝的关系" listId="invite-relation-empty" onChange={setInviteRelation} placeholder="例如：妈妈" value={inviteRelation} />
             {invite ? <InviteCard invite={invite} origin={origin} mode="accept" /> : <p className="helperText">如果家人已经创建了宝宝相册，可以先让对方发你邀请码。</p>}
             <button onClick={() => void handleAcceptInvite()} type="button">加入已有相册</button>
           </article>
@@ -536,6 +597,7 @@ function AppShellInner() {
                 出生日期
                 <input type="date" value={babyBirthDate} onChange={(event) => setBabyBirthDate(event.target.value)} />
               </label>
+              <RelationInput label="你与宝宝的关系" listId="create-relation-empty" onChange={setCreateRelation} placeholder="例如：爸爸" value={createRelation} />
               <label>
                 宝宝头像
                 <input accept="image/*" onChange={(event) => setCreateBabyAvatarFile(event.target.files?.[0] ?? null)} type="file" />
@@ -583,7 +645,7 @@ function AppShellInner() {
                       {day.babyAgeLabel ? <span className="momentBabyDay">宝宝第 {day.babyAgeLabel}</span> : null}
                     </header>
                     <div className="momentBatchList">
-                      {day.batches.map((batch) => <MomentCard albumId={activeAlbum.album.id} authToken={authToken} batch={batch} key={`${day.day}-${batch.batchId}`} onOpen={(index) => setLightbox({ albumId: activeAlbum.album.id, batch, index })} />)}
+                      {day.batches.map((batch) => <MomentCard albumId={activeAlbum.album.id} authToken={authToken} batch={batch} canEdit={canEditTimelineEntry(activeAlbum.membership.role, currentUser?.id, batch)} key={`${day.day}-${batch.batchId}`} onEdit={() => handleOpenEditEntry(batch.batchId)} onOpen={(index) => setLightbox({ albumId: activeAlbum.album.id, batch, index })} />)}
                     </div>
                   </article>
                 ))}
@@ -610,7 +672,7 @@ function AppShellInner() {
                     <p className="settingsCardTitle">当前登录</p>
                     <p><strong>{currentUser?.displayName}</strong></p>
                     <p className="helperText">{currentUser?.email}</p>
-                    <p className="helperText">当前在 {activeBaby?.name ?? activeAlbum.album.name} 中的角色：{roleLabel(activeAlbum.membership.role)}</p>
+                    <p className="helperText">当前在 {activeBaby?.name ?? activeAlbum.album.name} 中与你的关系称呼：{memberRelationLabel(activeAlbum.membership)}</p>
                   </article>
                   <article className="panelStack panel">
                     <p className="settingsCardTitle">退出登录</p>
@@ -637,7 +699,7 @@ function AppShellInner() {
                         <BabyAvatar albumId={item.album.id} baby={item.baby ?? null} className="settingsCardAvatar" token={authToken} />
                         <span className="settingsCardBody">
                           <span className="settingsMenuPrimary">{item.baby?.name ?? item.album.name}</span>
-                          <span className="settingsMenuMeta">{roleLabel(item.membership.role)}</span>
+                          <span className="settingsMenuMeta">{memberRelationLabel(item.membership)}</span>
                         </span>
                         <span className="settingsMenuMeta">›</span>
                       </button>
@@ -656,12 +718,14 @@ function AppShellInner() {
                     <p className="settingsCardTitle">自己新建</p>
                     <label>宝宝姓名<input value={babyName} onChange={(event) => setBabyName(event.target.value)} /></label>
                     <label>出生日期<input type="date" value={babyBirthDate} onChange={(event) => setBabyBirthDate(event.target.value)} /></label>
+                    <RelationInput label="你与宝宝的关系" listId="create-relation-settings" onChange={setCreateRelation} placeholder="例如：爸爸" value={createRelation} />
                     <label>宝宝头像<input accept="image/*" onChange={(event) => setCreateBabyAvatarFile(event.target.files?.[0] ?? null)} type="file" /></label>
                     <button type="submit">创建宝宝</button>
                   </form>
                   <article className="panelStack panel">
                     <p className="settingsCardTitle">邀请码加入</p>
                     <label>邀请码<input value={inviteCodeInput} onChange={(event) => setInviteCodeInput(event.target.value)} /></label>
+                    <RelationInput label="你与宝宝的关系" listId="invite-relation-settings" onChange={setInviteRelation} placeholder="例如：阿姨" value={inviteRelation} />
                     <button onClick={() => void handleAcceptInvite()} type="button">加入宝宝</button>
                   </article>
                 </article>
@@ -672,7 +736,10 @@ function AppShellInner() {
                   <div className="sectionHeading"><button className="secondaryButton" onClick={() => setSettingsScreen("babies")} type="button">返回</button><div><p className="eyebrow">宝宝管理</p><h2>{activeBaby?.name ?? activeAlbum.album.name}</h2></div></div>
                   <article className="panelStack panel">
                     <p className="settingsCardTitle">我的角色</p>
-                    <p className="helperText">你在这个宝宝家庭中的角色：{roleLabel(activeAlbum.membership.role)}</p>
+                    <form className="formGrid" onSubmit={handleUpdateMyRelation}>
+                      <RelationInput label="你与宝宝的关系" listId="my-relation" onChange={setMyRelationDraft} placeholder="例如：妈妈" value={myRelationDraft} />
+                      <button type="submit">保存称呼</button>
+                    </form>
                   </article>
                   {activeBaby ? (
                     <form className="formGrid panelStack panel" onSubmit={handleUpdateBabyProfile}>
@@ -697,7 +764,7 @@ function AppShellInner() {
                           <span className="settingsCardAvatar" aria-hidden="true">{babyAvatarText(member.displayName)}</span>
                           <span className="settingsCardBody">
                             <span className="settingsMenuPrimary">{member.displayName}</span>
-                            <span className="settingsMenuMeta">{roleLabel(member.role)}</span>
+                            <span className="settingsMenuMeta">{memberRelationLabel(member)}</span>
                           </span>
                           <span className="settingsMenuMeta">›</span>
                         </button>
@@ -709,16 +776,9 @@ function AppShellInner() {
                     {canManageInvites ? (
                       <>
                         <form className="inlineForm" onSubmit={handleCreateInvite}>
-                        <label>
-                          邀请权限
-                          <select value={inviteRole} onChange={(event) => setInviteRole(event.target.value as Role)}>
-                            <option value="viewer">仅查看</option>
-                            <option value="member">可上传</option>
-                            <option value="admin">管理员</option>
-                          </select>
-                        </label>
-                        <button type="submit">生成邀请码</button>
+                          <button type="submit">生成邀请码</button>
                         </form>
+                        <p className="helperText">邀请码默认让对方以最低可用权限加入。</p>
                         <div className="stackList">
                           {albumInvites.map((item) => <InviteCard invite={item} key={item.id} mode="code" origin={origin} />)}
                         </div>
@@ -752,6 +812,7 @@ function AppShellInner() {
                     <article className="panelStack panel" key={member.userId}>
                       <p className="settingsCardTitle">成员信息</p>
                       <p><strong>{member.displayName}</strong></p>
+                      <p className="helperText">与宝宝的关系：{memberRelationLabel(member)}</p>
                       <p className="helperText">用户 ID：{member.userId}</p>
                       <p className="helperText">当前权限：{roleLabel(member.role)}</p>
                       {Boolean(activeAlbum.membership.role === "owner" && currentUser && member.userId !== currentUser.id && member.role !== "owner") ? (
@@ -808,7 +869,10 @@ function AppShellInner() {
       {loading ? <p className="helperText loadingRow">正在同步最新状态...</p> : null}
 
       {lightbox ? <LightboxViewer authToken={authToken} lightbox={lightbox} onClose={() => setLightbox(null)} onNavigate={(direction) => setLightbox((current) => current ? moveLightbox(current, direction) : current)} /> : null}
-      {authToken && activeAlbum ? <UploadDraftSheet albumId={activeAlbum.album.id} authToken={authToken} babyName={activeBaby?.name} disabled={!canUploadMedia} disabledReason={!storageNode ? "上传前需要先完成 NAS 配对。" : "当前身份没有上传权限。"} onClose={() => setDraftSheetOpen(false)} onUploaded={() => refreshTimelineSoon(activeAlbum.album.id)} open={draftSheetOpen} /> : null}
+      {authToken && activeAlbum ? <UploadDraftSheet albumId={activeAlbum.album.id} authToken={authToken} babyName={activeBaby?.name} disabled={!canUploadMedia && !editingEntry} disabledReason={!storageNode ? "上传前需要先完成 NAS 配对。" : "当前身份没有上传权限。"} editingEntry={editingEntry} onClose={() => {
+        setDraftSheetOpen(false);
+        setEditingEntry(null);
+      }} onDeleted={() => refreshTimelineSoon(activeAlbum.album.id)} onUploaded={() => refreshTimelineSoon(activeAlbum.album.id)} open={draftSheetOpen} /> : null}
 
       {authToken && activeAlbum && !draftSheetOpen ? (
         <nav className="bottomNav">
@@ -822,10 +886,15 @@ function AppShellInner() {
 
 type TimelineBatch = {
   batchId: string;
+  uploadedBy: string;
   uploadedAt: string;
   uploadedByName: string;
   caption: string;
   visibility: TimelineEntry["visibility"];
+  timeMode: TimelineEntry["timeMode"];
+  displayAt: string;
+  timelineDay: string;
+  entry: TimelineEntry;
   items: MediaAsset[];
 };
 
@@ -863,7 +932,7 @@ function BabyAvatar({ baby, albumId, token, className, previewFile }: { baby?: {
   return <div aria-hidden="true" className={className}>{babyAvatarText(baby?.name)}</div>;
 }
 
-function MomentCard({ authToken, albumId, batch, onOpen }: { authToken: string; albumId: string; batch: TimelineBatch; onOpen: (index: number) => void }) {
+function MomentCard({ authToken, albumId, batch, canEdit, onEdit, onOpen }: { authToken: string; albumId: string; batch: TimelineBatch; canEdit: boolean; onEdit: () => void; onOpen: (index: number) => void }) {
   const isVideoBatch = batch.items.length === 1 && batch.items[0].mediaType.startsWith("video/");
   return (
     <article className="momentCard">
@@ -875,8 +944,13 @@ function MomentCard({ authToken, albumId, batch, onOpen }: { authToken: string; 
         </div>
       )}
       {batch.caption ? <p className="momentCaption">{batch.caption}</p> : null}
-      <p className="momentMeta">{batch.uploadedByName || "家人"} 上传于 {formatRelativeUploadTime(batch.uploadedAt)}</p>
-      {batch.visibility === "managers" ? <p className="momentMeta">仅管理员和所有者可见</p> : null}
+      <div className="momentCardFooter">
+        <div className="momentMetaGroup">
+          <p className="momentMeta">{batch.uploadedByName || "家人"} 上传于 {formatRelativeUploadTime(batch.uploadedAt)}</p>
+          {batch.visibility === "managers" ? <p className="momentMeta">仅管理员和所有者可见</p> : null}
+        </div>
+        {canEdit ? <button className="momentEditButton" onClick={onEdit} type="button">编辑</button> : null}
+      </div>
     </article>
   );
 }
@@ -906,6 +980,7 @@ function MomentThumb({ authToken, albumId, item, large, onOpen }: { authToken: s
 function LightboxViewer({ authToken, lightbox, onClose, onNavigate }: { authToken: string; lightbox: LightboxState; onClose: () => void; onNavigate: (direction: -1 | 1) => void }) {
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const currentItem = lightbox.batch.items[lightbox.index];
+  const isVideo = currentItem.mediaType.startsWith("video/");
   const originalUrl = getOriginalUrl(currentItem.id, lightbox.albumId, authToken);
   const previewUrl = getPreviewUrl(currentItem.id, lightbox.albumId, authToken, currentItem.processedAt ?? currentItem.uploadedAt);
   const hasMultiple = lightbox.batch.items.length > 1;
@@ -942,7 +1017,16 @@ function LightboxViewer({ authToken, lightbox, onClose, onNavigate }: { authToke
           onTouchStart={(event) => setTouchStartX(event.touches[0].clientX)}
         >
           {hasMultiple ? <button className="lightboxArrow lightboxArrowLeft" onClick={() => onNavigate(-1)} type="button">‹</button> : null}
-          {currentItem.previewStatus === "ready" ? (
+          {isVideo ? (
+            <video
+              autoPlay
+              className="lightboxVideo"
+              controls
+              playsInline
+              poster={currentItem.previewStatus === "ready" ? previewUrl : undefined}
+              src={originalUrl}
+            />
+          ) : currentItem.previewStatus === "ready" ? (
             <img alt={currentItem.fileName} className="lightboxImage" onError={() => setDisplayUrl(previewUrl)} src={displayUrl} />
           ) : (
             <div className="lightboxFallback">{currentItem.mediaType.startsWith("video") ? "视频预览待生成" : "照片预览待生成"}</div>
@@ -996,6 +1080,18 @@ function InviteCard({ invite, mode, origin }: { invite: AlbumInvite; mode: "prev
   );
 }
 
+function RelationInput({ label, listId, onChange, placeholder, value }: { label: string; listId: string; onChange: (value: string) => void; placeholder: string; value: string }) {
+  return (
+    <label>
+      {label}
+      <input list={listId} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} value={value} />
+      <datalist id={listId}>
+        {RELATION_OPTIONS.map((item) => <option key={item} value={item} />)}
+      </datalist>
+    </label>
+  );
+}
+
 function buildTimelineFeed(items: TimelineEntry[], birthDate?: string) {
   const days = new Map<string, TimelineBatch[]>();
   for (const entry of items) {
@@ -1005,10 +1101,15 @@ function buildTimelineFeed(items: TimelineEntry[], birthDate?: string) {
     const day = days.get(entry.timelineDay) ?? [];
     day.push({
       batchId: entry.id,
+      uploadedBy: entry.uploadedBy,
       uploadedAt: entry.uploadedAt,
       uploadedByName: entry.uploadedByName,
       caption: entry.caption,
       visibility: entry.visibility,
+      timeMode: entry.timeMode,
+      displayAt: entry.displayAt,
+      timelineDay: entry.timelineDay,
+      entry,
       items: [...entry.items].sort((left, right) => new Date(left.capturedAt).getTime() - new Date(right.capturedAt).getTime())
     });
     days.set(entry.timelineDay, day);
@@ -1022,6 +1123,18 @@ function buildTimelineFeed(items: TimelineEntry[], birthDate?: string) {
       itemsCount: batches.reduce((sum, batch) => sum + batch.items.length, 0),
       batches: batches.sort((left, right) => new Date(right.uploadedAt).getTime() - new Date(left.uploadedAt).getTime())
     } satisfies TimelineDayGroup));
+}
+
+function canEditTimelineEntry(role: Role, currentUserId: string | undefined, batch: TimelineBatch) {
+  if (role === "owner" || role === "admin") {
+    return true;
+  }
+  return Boolean(currentUserId) && currentUserId === batch.uploadedBy;
+}
+
+function memberRelationLabel(member?: Pick<AlbumMember, "relation"> | null) {
+  const relation = member?.relation?.trim();
+  return relation || "未设置关系";
 }
 
 function roleLabel(role: Role) {

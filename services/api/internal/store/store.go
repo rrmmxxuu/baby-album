@@ -42,6 +42,15 @@ type CreateTimelineEntryInput struct {
 	DisplayAt  time.Time
 }
 
+type UpdateTimelineEntryInput struct {
+	AlbumID    string
+	EntryID    string
+	Caption    string
+	Visibility domain.TimelineEntryVisibility
+	TimeMode   domain.TimelineEntryTimeMode
+	DisplayAt  time.Time
+}
+
 type UploadContentInput struct {
 	ByteSize int64
 	BlobKey  string
@@ -102,6 +111,7 @@ type CreateAlbumInput struct {
 	Timezone  string
 	BabyName  string
 	BirthDate *time.Time
+	Relation  string
 }
 
 type CreateBabyInput struct {
@@ -134,9 +144,19 @@ type UpdateAlbumMemberRoleInput struct {
 	Role         domain.Role
 }
 
+type UpdateAlbumMemberRelationInput struct {
+	AlbumID      string
+	MemberUserID string
+	Relation     string
+}
+
 type CreateAlbumInviteInput struct {
 	AlbumID string
-	Role    domain.Role
+}
+
+type AcceptInviteInput struct {
+	Code     string
+	Relation string
 }
 
 type AlbumSummary struct {
@@ -175,6 +195,9 @@ type Repository interface {
 	Members(albumID, userID string) ([]domain.AlbumMember, error)
 	MediaByID(albumID, userID, mediaID string) (domain.MediaAsset, error)
 	CreateTimelineEntry(userID string, input CreateTimelineEntryInput) (domain.TimelineEntry, error)
+	UpdateTimelineEntry(userID string, input UpdateTimelineEntryInput) (domain.TimelineEntry, error)
+	DeleteTimelineEntry(userID, albumID, entryID string) error
+	DeleteTimelineEntryMedia(userID, albumID, entryID, mediaID string) error
 	CreateAlbum(userID string, input CreateAlbumInput) (domain.Album, error)
 	CreateBaby(userID string, input CreateBabyInput) (domain.BabyProfile, error)
 	BabyByID(userID, albumID, babyID string) (domain.BabyProfile, error)
@@ -183,10 +206,11 @@ type Repository interface {
 	DeleteBaby(userID, albumID, babyID string) error
 	LeaveAlbum(userID string, input LeaveAlbumInput) error
 	UpdateMemberRole(userID string, input UpdateAlbumMemberRoleInput) (domain.AlbumMember, error)
+	UpdateMemberRelation(userID string, input UpdateAlbumMemberRelationInput) (domain.AlbumMember, error)
 	CreateInvite(userID string, input CreateAlbumInviteInput) (domain.AlbumInvite, error)
 	Invites(albumID, userID string) ([]domain.AlbumInvite, error)
 	InviteByCode(code string) (domain.AlbumInvite, error)
-	AcceptInvite(userID, code string) (domain.AlbumInvite, error)
+	AcceptInvite(userID string, input AcceptInviteInput) (domain.AlbumInvite, error)
 	CreateUploadSession(userID string, input UploadSessionInput) (domain.UploadSession, error)
 	AttachUploadContent(userID, sessionID string, input UploadContentInput) (domain.UploadSession, error)
 	CreateStorageNodePairing(userID string, input CreateStorageNodePairingInput) (domain.StorageNodePairing, error)
@@ -269,7 +293,34 @@ func normalizeAlbumWorkspace(value AlbumWorkspace) AlbumWorkspace {
 	if value.Invites == nil {
 		value.Invites = []domain.AlbumInvite{}
 	}
+	applyMemberLabels(value.Timeline, value.Members)
 	return value
+}
+
+func applyMemberLabels(timeline []domain.TimelineEntry, members []domain.AlbumMember) {
+	if len(timeline) == 0 || len(members) == 0 {
+		return
+	}
+	labels := make(map[string]string, len(members))
+	for _, member := range members {
+		label := strings.TrimSpace(member.Relation)
+		if label == "" {
+			label = strings.TrimSpace(member.DisplayName)
+		}
+		if label != "" {
+			labels[member.UserID] = label
+		}
+	}
+	for entryIndex := range timeline {
+		if label := labels[timeline[entryIndex].UploadedBy]; label != "" {
+			timeline[entryIndex].UploadedByName = label
+		}
+		for itemIndex := range timeline[entryIndex].Items {
+			if label := labels[timeline[entryIndex].Items[itemIndex].UploadedBy]; label != "" {
+				timeline[entryIndex].Items[itemIndex].UploadedByName = label
+			}
+		}
+	}
 }
 
 func normalizeAppState(value AppState) AppState {
@@ -323,11 +374,16 @@ func newID(prefix string) string {
 }
 
 func newInviteCode() string {
+	const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 	buf := make([]byte, 6)
 	if _, err := rand.Read(buf); err != nil {
-		return fmt.Sprintf("invite-%d", time.Now().UTC().UnixNano())
+		return fmt.Sprintf("%06d", time.Now().UTC().UnixNano()%1000000)
 	}
-	return strings.ToLower(hex.EncodeToString(buf))
+	code := make([]byte, 6)
+	for index, value := range buf {
+		code[index] = alphabet[int(value)%len(alphabet)]
+	}
+	return string(code)
 }
 
 func newPairingCode() string {

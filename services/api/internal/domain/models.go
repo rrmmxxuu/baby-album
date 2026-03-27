@@ -31,6 +31,7 @@ type FamilyMember struct {
 	FamilyID    string `json:"albumId"`
 	Role        Role   `json:"role"`
 	DisplayName string `json:"displayName"`
+	Relation    string `json:"relation,omitempty"`
 }
 
 type AlbumMember = FamilyMember

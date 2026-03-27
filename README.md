@@ -46,6 +46,31 @@ cd E:\qinbaobao\apps\web
 npm.cmd run dev
 ```
 
+## One-command local start
+
+```bash
+./scripts/dev-up.sh 192.168.31.200
+```
+
+This starts:
+
+- PostgreSQL via Docker Compose
+- the Go API on `:8080`
+- the Next.js web app on `:3000`
+
+If you also want the NAS agent to start, pass pairing or node credentials in the same shell first:
+
+```bash
+export AGENT_PAIRING_CODE='12345678'
+./scripts/dev-up.sh 192.168.31.200
+```
+
+Stop everything with:
+
+```bash
+./scripts/dev-down.sh
+```
+
 ## Single-host test deployment
 
 The repository already supports a simple single-VM test deployment:
@@ -79,6 +104,36 @@ For a fuller VPS guide built around Nginx Proxy Manager and Cloudflare, use [doc
 4. The control plane returns a dedicated `nodeId` and `nodeToken`; the agent saves them to `.agent-state.json` under `AGENT_LIBRARY_ROOT`.
 5. Subsequent restarts and heartbeats reuse the saved node credentials and report `total/free/available` bytes from the NAS filesystem.
 6. The web control panel reads the latest capacity numbers from the active album's storage node and shows remaining space.
+
+## Agent Docker Compose
+
+The recommended NAS startup path is now Docker Compose, because the agent container includes `ffmpeg` for video poster generation.
+
+1. Generate a pairing code in the web control panel
+2. Run:
+
+```bash
+./scripts/agent-init.sh \
+  --api-base-url http://192.168.31.200:8080 \
+  --pairing-code ABC123 \
+  --node-name "Living Room NAS" \
+  --library-path /volume1/baby-album/library
+```
+
+3. Start the agent:
+
+```bash
+cd deploy/agent
+docker compose up --build -d
+```
+
+The deployment now uses:
+
+- a mounted library directory for originals and `.agent-state.json`
+- a mounted `config/agent.json` for user-facing setup values
+- a minimal `.env` for host paths and heartbeat interval
+
+If `config/agent.json` is missing and you start the container with an attached terminal, the agent will enter an interactive setup wizard and write the config file for you. After setup, future runs can use `docker compose up -d` directly.
 
 ## Production note
 

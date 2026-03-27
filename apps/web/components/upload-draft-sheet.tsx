@@ -1,15 +1,18 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createTimelineEntry, getApiBaseUrl } from "../lib/api";
-import type { TimelineTimeMode, TimelineVisibility } from "../lib/types";
+import { createTimelineEntry, deleteTimelineEntry, deleteTimelineEntryMedia, getApiBaseUrl, getPreviewUrl, updateTimelineEntry } from "../lib/api";
+import type { MediaAsset, TimelineEntry, TimelineTimeMode, TimelineVisibility } from "../lib/types";
 
 type DraftMedia = {
   id: string;
-  file: File;
+  file: File | null;
+  fileName: string;
   previewUrl: string;
   capturedAt: string;
   mediaType: string;
+  existingMediaId?: string;
+  localPreview?: boolean;
 };
 
 type UploadDraft = {
@@ -28,8 +31,10 @@ interface UploadDraftSheetProps {
   open: boolean;
   disabled?: boolean;
   disabledReason?: string;
+  editingEntry?: TimelineEntry | null;
   onClose: () => void;
   onUploaded?: () => void;
+  onDeleted?: () => void;
 }
 
 function createClientId(prefix: string) {
@@ -75,9 +80,11 @@ function buildDrafts(files: File[]) {
     const media: DraftMedia = {
       id: createClientId("media"),
       file,
+      fileName: file.name,
       previewUrl: URL.createObjectURL(file),
       capturedAt,
-      mediaType: file.type || "application/octet-stream"
+      mediaType: file.type || "application/octet-stream",
+      localPreview: true
     };
     if (media.mediaType.startsWith("video/")) {
       drafts.push({
@@ -110,6 +117,25 @@ function buildDrafts(files: File[]) {
   }
 
   return drafts.sort((left, right) => draftDisplayAt(right).localeCompare(draftDisplayAt(left)));
+}
+
+function buildDraftFromEntry(entry: TimelineEntry, albumId: string, authToken: string): UploadDraft {
+  return {
+    id: entry.id,
+    caption: entry.caption,
+    visibility: entry.visibility,
+    timeMode: entry.timeMode,
+    manualDate: entry.timelineDay,
+    items: entry.items.map((item) => ({
+      id: createClientId("media"),
+      file: null,
+      fileName: item.fileName,
+      previewUrl: getPreviewUrl(item.id, albumId, authToken, item.processedAt ?? item.uploadedAt),
+      capturedAt: item.capturedAt,
+      mediaType: item.mediaType,
+      existingMediaId: item.id
+    }))
+  };
 }
 
 function mergeDrafts(existingDrafts: UploadDraft[], incomingDrafts: UploadDraft[]) {
@@ -180,12 +206,14 @@ function timeModeLabel(value: TimelineTimeMode) {
 function revokeDrafts(items: UploadDraft[]) {
   for (const draft of items) {
     for (const item of draft.items) {
-      URL.revokeObjectURL(item.previewUrl);
+      if (item.localPreview) {
+        URL.revokeObjectURL(item.previewUrl);
+      }
     }
   }
 }
 
-export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled, disabledReason, onClose, onUploaded }: UploadDraftSheetProps) {
+export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled, disabledReason, editingEntry, onClose, onUploaded, onDeleted }: UploadDraftSheetProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const appendInputRef = useRef<HTMLInputElement | null>(null);
   const editAppendInputRef = useRef<HTMLInputElement | null>(null);
@@ -199,9 +227,33 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
   const [batchManualDate, setBatchManualDate] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const isEditMode = Boolean(editingEntry);
 
   const selectedDraft = drafts.find((item) => item.id === selectedDraftId) ?? drafts[0] ?? null;
   const totalFiles = useMemo(() => drafts.reduce((sum, draft) => sum + draft.items.length, 0), [drafts]);
+  const originalMediaIds = useMemo(() => new Set(editingEntry?.items.map((item) => item.id) ?? []), [editingEntry]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    if (editingEntry) {
+      const initialDraft = buildDraftFromEntry(editingEntry, albumId, authToken);
+      setDrafts([initialDraft]);
+      setSelectedDraftId(initialDraft.id);
+      setEditorOpen(true);
+      setBatchSettingsOpen(false);
+      setStatus(null);
+      setUploading(false);
+      return;
+    }
+    setDrafts([]);
+    setSelectedDraftId("");
+    setEditorOpen(false);
+    setBatchSettingsOpen(false);
+    setStatus(null);
+    setUploading(false);
+  }, [albumId, authToken, editingEntry, open]);
 
   useEffect(() => {
     if (!open) {
@@ -269,7 +321,7 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
             return draft;
           }
           const removedItem = draft.items.find((item) => item.id === itemId);
-          if (removedItem) {
+          if (removedItem?.localPreview) {
             URL.revokeObjectURL(removedItem.previewUrl);
           }
           return { ...draft, items: draft.items.filter((item) => item.id !== itemId) };
@@ -291,9 +343,11 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
     const nextItems = files.map((file) => ({
       id: createClientId("media"),
       file,
+      fileName: file.name,
       previewUrl: URL.createObjectURL(file),
       capturedAt: toCapturedAt(file),
-      mediaType: file.type || "application/octet-stream"
+      mediaType: file.type || "application/octet-stream",
+      localPreview: true
     }));
     const hasVideo = selectedDraft.items.some((item) => item.mediaType.startsWith("video/"));
     const incomingVideo = nextItems.some((item) => item.mediaType.startsWith("video/"));
@@ -315,6 +369,9 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
   }
 
   async function uploadFile(entryId: string, uploadBatchId: string, item: DraftMedia) {
+    if (!item.file) {
+      return;
+    }
     const createResponse = await fetch(`${apiBaseUrl}/api/v1/upload-sessions`, {
       method: "POST",
       headers: {
@@ -325,14 +382,14 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
         albumId,
         entryId,
         uploadBatchId,
-        fileName: item.file.name,
+        fileName: item.fileName,
         mediaType: item.mediaType,
         capturedAt: item.capturedAt
       })
     });
     const createPayload = await createResponse.json() as { id?: string; error?: string };
     if (!createResponse.ok || !createPayload.id) {
-      throw new Error(createPayload.error ?? `创建 ${item.file.name} 的上传任务失败。`);
+      throw new Error(createPayload.error ?? `创建 ${item.fileName} 的上传任务失败。`);
     }
 
     const formData = new FormData();
@@ -346,7 +403,7 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
     });
     const uploadPayload = await uploadResponse.json() as { error?: string };
     if (!uploadResponse.ok) {
-      throw new Error(uploadPayload.error ?? `上传 ${item.file.name} 失败。`);
+      throw new Error(uploadPayload.error ?? `上传 ${item.fileName} 失败。`);
     }
   }
 
@@ -359,25 +416,52 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
       setStatus("请先选择要上传的照片或视频。");
       return;
     }
+    if (drafts.some((draft) => draft.items.length === 0)) {
+      setStatus("每条记录至少保留一个文件。");
+      return;
+    }
     setUploading(true);
     setStatus(null);
     try {
-      for (const [draftIndex, draft] of drafts.entries()) {
-        setStatus(`正在创建记录 ${draftIndex + 1} / ${drafts.length}`);
-        const entry = await createTimelineEntry(authToken, {
+      if (isEditMode && editingEntry && selectedDraft) {
+        setStatus("正在保存这条动态");
+        const entry = await updateTimelineEntry(authToken, editingEntry.id, {
           albumId,
-          caption: draft.caption,
-          visibility: draft.visibility,
-          timeMode: draft.timeMode,
-          displayAt: draftDisplayAt(draft)
+          caption: selectedDraft.caption,
+          visibility: selectedDraft.visibility,
+          timeMode: selectedDraft.timeMode,
+          displayAt: draftDisplayAt(selectedDraft)
         });
+        const keptMediaIds = new Set(selectedDraft.items.map((item) => item.existingMediaId).filter(Boolean) as string[]);
+        for (const mediaId of Array.from(originalMediaIds)) {
+          if (!keptMediaIds.has(mediaId)) {
+            await deleteTimelineEntryMedia(authToken, albumId, entry.id, mediaId);
+          }
+        }
+        const newItems = selectedDraft.items.filter((item) => !item.existingMediaId);
         const uploadBatchId = createClientId("batch");
-        for (const [itemIndex, item] of draft.items.entries()) {
-          setStatus(`正在上传 ${draftIndex + 1}.${itemIndex + 1} / ${drafts.length}.${draft.items.length}`);
+        for (const [itemIndex, item] of newItems.entries()) {
+          setStatus(`正在补传 ${itemIndex + 1} / ${newItems.length}`);
           await uploadFile(entry.id, uploadBatchId, item);
         }
+      } else {
+        for (const [draftIndex, draft] of drafts.entries()) {
+          setStatus(`正在创建记录 ${draftIndex + 1} / ${drafts.length}`);
+          const entry = await createTimelineEntry(authToken, {
+            albumId,
+            caption: draft.caption,
+            visibility: draft.visibility,
+            timeMode: draft.timeMode,
+            displayAt: draftDisplayAt(draft)
+          });
+          const uploadBatchId = createClientId("batch");
+          for (const [itemIndex, item] of draft.items.entries()) {
+            setStatus(`正在上传 ${draftIndex + 1}.${itemIndex + 1} / ${drafts.length}.${draft.items.length}`);
+            await uploadFile(entry.id, uploadBatchId, item);
+          }
+        }
       }
-      setStatus("上传任务已创建，媒体会继续由 NAS 处理。");
+      setStatus(isEditMode ? "动态已更新，媒体会继续由 NAS 处理。" : "上传任务已创建，媒体会继续由 NAS 处理。");
       onUploaded?.();
       setTimeout(() => {
         closeSheet();
@@ -389,15 +473,47 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
     }
   }
 
+  async function handleDeleteEntry() {
+    if (!editingEntry) {
+      return;
+    }
+    if (!window.confirm("确认删除这条动态吗？删除后不能恢复。")) {
+      return;
+    }
+    setUploading(true);
+    setStatus("正在删除这条动态");
+    try {
+      await deleteTimelineEntry(authToken, albumId, editingEntry.id);
+      onDeleted?.();
+      closeSheet();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "删除失败。");
+    } finally {
+      setUploading(false);
+    }
+  }
+
   return (
     <div className="draftSheetOverlay">
       <section className="draftSheet">
         <header className="draftSheetHeader">
           {editorOpen ? (
             <>
-              <button className="draftTopAction" onClick={() => setEditorOpen(false)} type="button">取消</button>
-              <h2>{babyName ? `${babyName}新变化` : "编辑记录"}</h2>
-              <button className="draftTopPrimary" onClick={() => setEditorOpen(false)} type="button">保存</button>
+              <button className="draftTopAction" onClick={() => {
+                if (isEditMode) {
+                  closeSheet();
+                  return;
+                }
+                setEditorOpen(false);
+              }} type="button">取消</button>
+              <h2>{isEditMode ? "编辑动态" : babyName ? `${babyName}新变化` : "编辑记录"}</h2>
+              <button className="draftTopPrimary" onClick={() => {
+                if (isEditMode) {
+                  void handleUploadAll();
+                  return;
+                }
+                setEditorOpen(false);
+              }} type="button">保存</button>
             </>
           ) : (
             <>
@@ -453,7 +569,12 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
 
         {drafts.length === 0 ? (
           <div className="draftEmptyState">
-            {disabled ? (
+            {isEditMode ? (
+              <>
+                <p className="helperText">这条动态里已经没有媒体了，可以直接删除，或者重新添加照片后再保存。</p>
+                <button onClick={() => editAppendInputRef.current?.click()} type="button">添加照片或视频</button>
+              </>
+            ) : disabled ? (
               <>
                 <p className="helperText">{disabledReason ?? "当前不可上传。"}</p>
                 <button className="secondaryButton" onClick={closeSheet} type="button">返回</button>
@@ -467,11 +588,11 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
           </div>
         ) : (
           <>
-            {!editorOpen ? (
+            {!editorOpen && !isEditMode ? (
               <div className="draftPage">
                 <section className="draftListPage">
                   <div className="draftListCards">
-                    {drafts.map((draft, index) => (
+                    {drafts.map((draft) => (
                       <article className="draftListCard panel" key={draft.id}>
                         <div className="draftListCardTop">
                           <strong>{draftDayLabel(draft.manualDate)}</strong>
@@ -487,7 +608,7 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
                           </button>
                         </div>
                         <div className="draftListThumbs">
-                          {draft.items.slice(0, 4).map((item) => <img alt={item.file.name} key={item.id} src={item.previewUrl} />)}
+                          {draft.items.slice(0, 4).map((item) => <img alt={item.fileName} key={item.id} src={item.previewUrl} />)}
                         </div>
                         <textarea
                           className="draftListCaption"
@@ -516,7 +637,7 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
                     <div className={`draftEditorMedia draftEditorMedia${Math.min(selectedDraft.items.length, 4)}`}>
                       {selectedDraft.items.map((item) => (
                         <div className="draftEditorMediaCard" key={item.id}>
-                          <img alt={item.file.name} src={item.previewUrl} />
+                          <img alt={item.fileName} src={item.previewUrl} />
                           <div className="draftMediaActions">
                             <button className="draftRemoveButton" onClick={() => removeDraftItem(selectedDraft.id, item.id)} type="button">移除</button>
                           </div>
@@ -525,10 +646,7 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
                       <button className="draftAddTile" onClick={() => editAppendInputRef.current?.click()} type="button">添加</button>
                     </div>
 
-                    <label>
-                      介绍文字
-                      <textarea className="draftTextarea" onChange={(event) => updateDraft(selectedDraft.id, (draft) => ({ ...draft, caption: event.target.value }))} placeholder="写一点这次记录的说明" value={selectedDraft.caption} />
-                    </label>
+                    <textarea className="draftTextarea draftTextareaStandalone" onChange={(event) => updateDraft(selectedDraft.id, (draft) => ({ ...draft, caption: event.target.value }))} placeholder="写点介绍吧" value={selectedDraft.caption} />
 
                     <div className="draftSettingList">
                       <label className="draftSettingRow">
@@ -555,12 +673,18 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
                         </label>
                       ) : null}
                     </div>
+
+                    {isEditMode ? (
+                      <button className="draftDeleteButton" disabled={uploading} onClick={() => void handleDeleteEntry()} type="button">
+                        删除这条动态
+                      </button>
+                    ) : null}
                   </div>
                 </section>
               </div>
             ) : null}
 
-            {batchSettingsOpen ? (
+            {batchSettingsOpen && !isEditMode ? (
               <div className="draftBatchModal" onClick={() => setBatchSettingsOpen(false)}>
                 <section className="draftBatchTools panel" onClick={(event) => event.stopPropagation()}>
                   <div className="panelStack">
@@ -613,11 +737,13 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
               </div>
             ) : null}
 
-            <footer className="draftFloatingBar">
-              <button className="secondaryButton" onClick={() => setBatchSettingsOpen(true)} type="button">批量设置</button>
-              <button disabled={uploading || disabled} onClick={() => void handleUploadAll()} type="button">{uploading ? "保存中..." : "保存"}</button>
-            </footer>
-            {status ? <p className="statusNote">{status}</p> : <p className="helperText">系统会先创建记录，再把每个文件送入主控缓存和 NAS 处理链。</p>}
+            {!isEditMode ? (
+              <footer className="draftFloatingBar">
+                <button className="secondaryButton" onClick={() => setBatchSettingsOpen(true)} type="button">批量设置</button>
+                <button disabled={uploading || disabled} onClick={() => void handleUploadAll()} type="button">{uploading ? "保存中..." : "保存"}</button>
+              </footer>
+            ) : null}
+            {status ? <p className="statusNote">{status}</p> : <p className="helperText">{isEditMode ? "你可以修改说明、权限、记录时间，并继续增删图片。" : "系统会先创建记录，再把每个文件送入主控缓存和 NAS 处理链。"}</p>}
           </>
         )}
       </section>

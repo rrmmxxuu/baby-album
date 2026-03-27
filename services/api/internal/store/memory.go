@@ -47,10 +47,10 @@ func NewInMemoryStore() *InMemoryStore {
 		credentials[user.ID] = struct{ Salt, Hash string }{Salt: salt, Hash: hash}
 	}
 	members := []domain.FamilyMember{
-		{UserID: "user-owner", FamilyID: family.ID, Role: domain.RoleOwner, DisplayName: "Ramon"},
-		{UserID: "user-admin", FamilyID: family.ID, Role: domain.RoleAdmin, DisplayName: "Grandma"},
-		{UserID: "user-member", FamilyID: family.ID, Role: domain.RoleMember, DisplayName: "Dad"},
-		{UserID: "user-viewer", FamilyID: family.ID, Role: domain.RoleViewer, DisplayName: "Auntie"},
+		{UserID: "user-owner", FamilyID: family.ID, Role: domain.RoleOwner, DisplayName: "Ramon", Relation: "爸爸"},
+		{UserID: "user-admin", FamilyID: family.ID, Role: domain.RoleAdmin, DisplayName: "Grandma", Relation: "奶奶"},
+		{UserID: "user-member", FamilyID: family.ID, Role: domain.RoleMember, DisplayName: "Dad", Relation: "妈妈"},
+		{UserID: "user-viewer", FamilyID: family.ID, Role: domain.RoleViewer, DisplayName: "Auntie", Relation: "阿姨"},
 	}
 	node := domain.StorageNode{ID: "node-demo", FamilyID: family.ID, Name: "Living Room NAS", Status: domain.NodeOnline, RegistrationToken: "demo-registration-token", LastSeenAt: now.Add(-10 * time.Second), TotalBytes: 2 << 40, FreeBytes: 1500 << 30, AvailableBytes: 1450 << 30}
 	media := []domain.MediaAsset{
@@ -283,15 +283,124 @@ func (s *InMemoryStore) CreateTimelineEntry(userID string, input CreateTimelineE
 	return entry, nil
 }
 
+func (s *InMemoryStore) UpdateTimelineEntry(userID string, input UpdateTimelineEntryInput) (domain.TimelineEntry, error) {
+	if !validTimelineVisibility(input.Visibility) || !validTimelineTimeMode(input.TimeMode) {
+		return domain.TimelineEntry{}, ErrConflict
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	entryIndex, entry, err := s.timelineEntryByIDLocked(input.AlbumID, input.EntryID)
+	if err != nil {
+		return domain.TimelineEntry{}, err
+	}
+	if err := s.authorizeTimelineEntryEditLocked(userID, entry); err != nil {
+		return domain.TimelineEntry{}, err
+	}
+	entry.Caption = stringsTrim(input.Caption)
+	entry.Visibility = input.Visibility
+	entry.TimeMode = input.TimeMode
+	entry.DisplayAt = input.DisplayAt.UTC()
+	entry.TimelineDay = input.DisplayAt.UTC().Format("2006-01-02")
+	s.timelineEntries[input.AlbumID][entryIndex] = entry
+	sortTimelineEntries(s.timelineEntries[input.AlbumID])
+	return entry, nil
+}
+
+func (s *InMemoryStore) DeleteTimelineEntry(userID, albumID, entryID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, entry, err := s.timelineEntryByIDLocked(albumID, entryID)
+	if err != nil {
+		return err
+	}
+	if err := s.authorizeTimelineEntryEditLocked(userID, entry); err != nil {
+		return err
+	}
+	entries := s.timelineEntries[albumID][:0]
+	for _, item := range s.timelineEntries[albumID] {
+		if item.ID != entryID {
+			entries = append(entries, item)
+		}
+	}
+	s.timelineEntries[albumID] = entries
+
+	mediaItems := s.media[albumID][:0]
+	removedMediaIDs := map[string]struct{}{}
+	for _, item := range s.media[albumID] {
+		if item.EntryID == entryID {
+			removedMediaIDs[item.ID] = struct{}{}
+			continue
+		}
+		mediaItems = append(mediaItems, item)
+	}
+	s.media[albumID] = mediaItems
+
+	for sessionID, session := range s.uploadSessions {
+		if session.FamilyID == albumID && session.EntryID == entryID {
+			delete(s.uploadSessions, sessionID)
+		}
+	}
+	for jobID, job := range s.jobs {
+		if job.FamilyID != albumID {
+			continue
+		}
+		if _, ok := removedMediaIDs[job.MediaID]; ok {
+			delete(s.jobs, jobID)
+		}
+	}
+	return nil
+}
+
+func (s *InMemoryStore) DeleteTimelineEntryMedia(userID, albumID, entryID, mediaID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, entry, err := s.timelineEntryByIDLocked(albumID, entryID)
+	if err != nil {
+		return err
+	}
+	if err := s.authorizeTimelineEntryEditLocked(userID, entry); err != nil {
+		return err
+	}
+	found := false
+	mediaItems := s.media[albumID][:0]
+	for _, item := range s.media[albumID] {
+		if item.ID == mediaID && item.EntryID == entryID {
+			found = true
+			continue
+		}
+		mediaItems = append(mediaItems, item)
+	}
+	if !found {
+		return ErrNotFound
+	}
+	s.media[albumID] = mediaItems
+	s.removeTimelineMediaLocked(albumID, entryID, mediaID)
+	for sessionID, session := range s.uploadSessions {
+		if session.FamilyID == albumID && session.MediaID == mediaID {
+			delete(s.uploadSessions, sessionID)
+		}
+	}
+	for jobID, job := range s.jobs {
+		if job.FamilyID == albumID && job.MediaID == mediaID {
+			delete(s.jobs, jobID)
+		}
+	}
+	return nil
+}
+
 func (s *InMemoryStore) CreateAlbum(userID string, input CreateAlbumInput) (domain.Album, error) {
 	name := stringsTrim(input.Name)
 	timezone := stringsTrim(input.Timezone)
 	babyName := stringsTrim(input.BabyName)
+	relation := stringsTrim(input.Relation)
 	if name == "" {
 		return domain.Family{}, fmt.Errorf("family name is required")
 	}
 	if babyName == "" {
 		return domain.Family{}, fmt.Errorf("baby name is required")
+	}
+	if relation == "" {
+		return domain.Family{}, fmt.Errorf("relation is required")
 	}
 	if timezone == "" {
 		timezone = "Asia/Shanghai"
@@ -305,7 +414,7 @@ func (s *InMemoryStore) CreateAlbum(userID string, input CreateAlbumInput) (doma
 	}
 	family := domain.Family{ID: newID("family"), Name: name, Timezone: timezone}
 	s.families[family.ID] = family
-	s.members[family.ID] = []domain.FamilyMember{{UserID: user.ID, FamilyID: family.ID, Role: domain.RoleOwner, DisplayName: user.DisplayName}}
+	s.members[family.ID] = []domain.FamilyMember{{UserID: user.ID, FamilyID: family.ID, Role: domain.RoleOwner, DisplayName: user.DisplayName, Relation: relation}}
 	s.timelineEntries[family.ID] = []domain.TimelineEntry{}
 	s.media[family.ID] = []domain.MediaAsset{}
 	baby := domain.BabyProfile{ID: newID("baby"), FamilyID: family.ID, Name: babyName, CreatedAt: time.Now().UTC()}
@@ -492,11 +601,32 @@ func (s *InMemoryStore) UpdateMemberRole(userID string, input UpdateAlbumMemberR
 	return domain.FamilyMember{}, ErrNotFound
 }
 
-func (s *InMemoryStore) CreateInvite(userID string, input CreateAlbumInviteInput) (domain.AlbumInvite, error) {
-	if !validRole(input.Role) || input.Role == domain.RoleOwner {
-		return domain.FamilyInvite{}, ErrForbidden
+func (s *InMemoryStore) UpdateMemberRelation(userID string, input UpdateAlbumMemberRelationInput) (domain.AlbumMember, error) {
+	relation := stringsTrim(input.Relation)
+	if relation == "" {
+		return domain.FamilyMember{}, fmt.Errorf("relation is required")
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	actor, err := findMember(s.members[input.AlbumID], userID)
+	if err != nil {
+		return domain.FamilyMember{}, err
+	}
+	if userID != input.MemberUserID && actor.Role != domain.RoleOwner && actor.Role != domain.RoleAdmin {
+		return domain.FamilyMember{}, ErrForbidden
+	}
+	members := s.members[input.AlbumID]
+	for i := range members {
+		if members[i].UserID == input.MemberUserID {
+			members[i].Relation = relation
+			s.members[input.AlbumID] = members
+			return members[i], nil
+		}
+	}
+	return domain.FamilyMember{}, ErrNotFound
+}
 
+func (s *InMemoryStore) CreateInvite(userID string, input CreateAlbumInviteInput) (domain.AlbumInvite, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	actor, err := findMember(s.members[input.AlbumID], userID)
@@ -506,10 +636,7 @@ func (s *InMemoryStore) CreateInvite(userID string, input CreateAlbumInviteInput
 	if actor.Role != domain.RoleOwner && actor.Role != domain.RoleAdmin {
 		return domain.FamilyInvite{}, ErrForbidden
 	}
-	if actor.Role == domain.RoleAdmin && input.Role == domain.RoleAdmin {
-		return domain.FamilyInvite{}, ErrForbidden
-	}
-	invite := domain.AlbumInvite{ID: newID("invite"), FamilyID: input.AlbumID, Code: newInviteCode(), Role: input.Role, Status: domain.InvitePending, CreatedBy: userID, CreatedAt: time.Now().UTC()}
+	invite := domain.AlbumInvite{ID: newID("invite"), FamilyID: input.AlbumID, Code: newInviteCode(), Role: domain.RoleViewer, Status: domain.InvitePending, CreatedBy: userID, CreatedAt: time.Now().UTC()}
 	s.invites[invite.Code] = s.hydrateInviteLocked(invite)
 	return s.invites[invite.Code], nil
 }
@@ -540,10 +667,14 @@ func (s *InMemoryStore) InviteByCode(code string) (domain.AlbumInvite, error) {
 	return s.hydrateInviteLocked(invite), nil
 }
 
-func (s *InMemoryStore) AcceptInvite(userID, code string) (domain.AlbumInvite, error) {
+func (s *InMemoryStore) AcceptInvite(userID string, input AcceptInviteInput) (domain.AlbumInvite, error) {
+	relation := stringsTrim(input.Relation)
+	if relation == "" {
+		return domain.FamilyInvite{}, fmt.Errorf("relation is required")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	invite, ok := s.invites[code]
+	invite, ok := s.invites[input.Code]
 	if !ok {
 		return domain.FamilyInvite{}, ErrNotFound
 	}
@@ -557,13 +688,13 @@ func (s *InMemoryStore) AcceptInvite(userID, code string) (domain.AlbumInvite, e
 	if s.userBelongsToAlbumLocked(userID, invite.FamilyID) {
 		return domain.FamilyInvite{}, ErrConflict
 	}
-	s.members[invite.FamilyID] = append(s.members[invite.FamilyID], domain.FamilyMember{UserID: user.ID, FamilyID: invite.FamilyID, Role: invite.Role, DisplayName: user.DisplayName})
+	s.members[invite.FamilyID] = append(s.members[invite.FamilyID], domain.FamilyMember{UserID: user.ID, FamilyID: invite.FamilyID, Role: invite.Role, DisplayName: user.DisplayName, Relation: relation})
 	acceptedAt := time.Now().UTC()
 	invite.Status = domain.InviteAccepted
 	invite.AcceptedAt = &acceptedAt
 	invite.AcceptedBy = user.ID
-	s.invites[code] = s.hydrateInviteLocked(invite)
-	return s.invites[code], nil
+	s.invites[input.Code] = s.hydrateInviteLocked(invite)
+	return s.invites[input.Code], nil
 }
 
 func (s *InMemoryStore) CreateUploadSession(userID string, input UploadSessionInput) (domain.UploadSession, error) {
@@ -959,6 +1090,26 @@ func (s *InMemoryStore) timelineEntryExistsLocked(albumID, entryID string) bool 
 	return false
 }
 
+func (s *InMemoryStore) timelineEntryByIDLocked(albumID, entryID string) (int, domain.TimelineEntry, error) {
+	for index, entry := range s.timelineEntries[albumID] {
+		if entry.ID == entryID {
+			return index, entry, nil
+		}
+	}
+	return -1, domain.TimelineEntry{}, ErrNotFound
+}
+
+func (s *InMemoryStore) authorizeTimelineEntryEditLocked(userID string, entry domain.TimelineEntry) error {
+	member, err := findMember(s.members[entry.FamilyID], userID)
+	if err != nil {
+		return err
+	}
+	if member.Role == domain.RoleOwner || member.Role == domain.RoleAdmin || entry.UploadedBy == userID {
+		return nil
+	}
+	return ErrForbidden
+}
+
 func (s *InMemoryStore) attachMediaToTimelineEntryLocked(albumID, entryID string, asset domain.MediaAsset) {
 	entries := s.timelineEntries[albumID]
 	for i := range entries {
@@ -966,6 +1117,24 @@ func (s *InMemoryStore) attachMediaToTimelineEntryLocked(albumID, entryID string
 			continue
 		}
 		entries[i].Items = append(entries[i].Items, asset)
+		s.timelineEntries[albumID] = entries
+		return
+	}
+}
+
+func (s *InMemoryStore) removeTimelineMediaLocked(albumID, entryID, mediaID string) {
+	entries := s.timelineEntries[albumID]
+	for i := range entries {
+		if entries[i].ID != entryID {
+			continue
+		}
+		filtered := entries[i].Items[:0]
+		for _, item := range entries[i].Items {
+			if item.ID != mediaID {
+				filtered = append(filtered, item)
+			}
+		}
+		entries[i].Items = filtered
 		s.timelineEntries[albumID] = entries
 		return
 	}

@@ -73,7 +73,7 @@ export async function logoutUser(token: string): Promise<void> {
   }
 }
 
-export async function createAlbum(token: string, input: { name: string; timezone: string; babyName: string; birthDate?: string }) {
+export async function createAlbum(token: string, input: { name: string; timezone: string; babyName: string; birthDate?: string; relation: string }) {
   const response = await fetch(`${apiBaseUrl}/api/v1/albums`, {
     method: "POST",
     headers: buildHeaders(token, { "Content-Type": "application/json" }),
@@ -103,11 +103,20 @@ export async function updateMemberRole(token: string, albumId: string, memberUse
   return parseResponse<{ userId: string; role: Role }>(response);
 }
 
-export async function createInvite(token: string, albumId: string, role: Role): Promise<AlbumInvite> {
+export async function updateMemberRelation(token: string, albumId: string, memberUserId: string, relation: string) {
+  const response = await fetch(`${apiBaseUrl}/api/v1/albums/${encodeURIComponent(albumId)}/members/${encodeURIComponent(memberUserId)}/relation`, {
+    method: "POST",
+    headers: buildHeaders(token, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ relation })
+  });
+  return parseResponse<{ userId: string; relation?: string }>(response);
+}
+
+export async function createInvite(token: string, albumId: string): Promise<AlbumInvite> {
   const response = await fetch(`${apiBaseUrl}/api/v1/albums/${encodeURIComponent(albumId)}/invites`, {
     method: "POST",
     headers: buildHeaders(token, { "Content-Type": "application/json" }),
-    body: JSON.stringify({ role })
+    body: JSON.stringify({})
   });
   return parseResponse<AlbumInvite>(response);
 }
@@ -125,10 +134,11 @@ export async function loadInvite(code: string): Promise<AlbumInvite> {
   return parseResponse<AlbumInvite>(response);
 }
 
-export async function acceptInvite(token: string, code: string): Promise<AlbumInvite> {
+export async function acceptInvite(token: string, code: string, relation: string): Promise<AlbumInvite> {
   const response = await fetch(`${apiBaseUrl}/api/v1/invites/${encodeURIComponent(code)}/accept`, {
     method: "POST",
-    headers: buildHeaders(token)
+    headers: buildHeaders(token, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ relation })
   });
   return parseResponse<AlbumInvite>(response);
 }
@@ -140,6 +150,31 @@ export async function createTimelineEntry(token: string, input: { albumId: strin
     body: JSON.stringify(input)
   });
   return parseResponse<TimelineEntry>(response);
+}
+
+export async function updateTimelineEntry(token: string, entryId: string, input: { albumId: string; caption: string; visibility: TimelineVisibility; timeMode: TimelineTimeMode; displayAt: string }): Promise<TimelineEntry> {
+  const response = await fetch(`${apiBaseUrl}/api/v1/timeline-entries/${encodeURIComponent(entryId)}`, {
+    method: "POST",
+    headers: buildHeaders(token, { "Content-Type": "application/json" }),
+    body: JSON.stringify(input)
+  });
+  return parseResponse<TimelineEntry>(response);
+}
+
+export async function deleteTimelineEntry(token: string, albumId: string, entryId: string): Promise<void> {
+  const response = await fetch(`${apiBaseUrl}/api/v1/timeline-entries/${encodeURIComponent(entryId)}?albumId=${encodeURIComponent(albumId)}`, {
+    method: "DELETE",
+    headers: buildHeaders(token)
+  });
+  await parseResponse<{ deleted: boolean }>(response);
+}
+
+export async function deleteTimelineEntryMedia(token: string, albumId: string, entryId: string, mediaId: string): Promise<void> {
+  const response = await fetch(`${apiBaseUrl}/api/v1/timeline-entries/${encodeURIComponent(entryId)}/media/${encodeURIComponent(mediaId)}?albumId=${encodeURIComponent(albumId)}`, {
+    method: "DELETE",
+    headers: buildHeaders(token)
+  });
+  await parseResponse<{ deleted: boolean }>(response);
 }
 
 export async function updateBabyProfile(token: string, albumId: string, babyId: string, input: { name: string; birthDate?: string }) {

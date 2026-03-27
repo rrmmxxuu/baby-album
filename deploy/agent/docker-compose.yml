@@ -1,0 +1,15 @@
+services:
+  agent:
+    build:
+      context: ../../services/agent
+    container_name: baby-album-agent
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+    environment:
+      AGENT_CONFIG_FILE: /config/agent.json
+      AGENT_HEARTBEAT_INTERVAL: ${AGENT_HEARTBEAT_INTERVAL:-15s}
+      AGENT_LIBRARY_ROOT: /data/library
+    volumes:
+      - ${AGENT_LIBRARY_HOST_PATH}:/data/library
+      - ${AGENT_CONFIG_HOST_PATH}:/config

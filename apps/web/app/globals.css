@@ -1,5 +1,5 @@
 :root {
-  --bg: #f6efe4;
+  --bg: #ffffff;
   --panel: rgba(255, 250, 242, 0.88);
   --panel-strong: #fffaf3;
   --ink: #2f251d;
@@ -15,9 +15,11 @@
 }
 
 html {
+  min-height: 100%;
+  background-color: #ffffff;
   background:
     radial-gradient(circle at top left, rgba(255, 255, 255, 0.7), transparent 30%),
-    linear-gradient(180deg, #f1ddc8 0%, var(--bg) 46%, #f3eadf 100%);
+    linear-gradient(180deg, #ffffff 0%, #ffffff 120px, #faf6f0 46%, #f6f0e8 100%);
 }
 
 body {
@@ -25,6 +27,10 @@ body {
   min-height: 100vh;
   color: var(--ink);
   font-family: "Trebuchet MS", "Avenir Next", "Segoe UI", sans-serif;
+  background-color: #ffffff;
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.7), transparent 30%),
+    linear-gradient(180deg, #ffffff 0%, #ffffff 120px, #faf6f0 46%, #f6f0e8 100%);
 }
 
 button,
@@ -45,7 +51,7 @@ code {
 .appShell {
   width: min(1120px, calc(100vw - 24px));
   margin: 0 auto;
-  padding: 20px 0 104px;
+  padding: calc(20px + env(safe-area-inset-top)) 0 calc(104px + env(safe-area-inset-bottom));
 }
 
 .panel {
@@ -481,6 +487,8 @@ img.settingsCardAvatar {
 }
 
 .momentThumb {
+  display: block;
+  width: 100%;
   position: relative;
   aspect-ratio: 1 / 1;
   overflow: hidden;
@@ -515,10 +523,19 @@ img.settingsCardAvatar {
   font-weight: 700;
   letter-spacing: 0.08em;
   font-size: 0.82rem;
+  background:
+    radial-gradient(circle at 50% 40%, rgba(255,255,255,0.22), rgba(255,255,255,0) 28%),
+    linear-gradient(135deg, rgba(255, 236, 214, 0.65), rgba(216, 145, 112, 0.55)),
+    linear-gradient(135deg, #f5d3b0, #cd7f57);
+}
+
+.momentThumbLarge .momentThumbFallback {
+  font-size: 1rem;
 }
 
 .momentVideo {
   position: relative;
+  min-height: 0;
 }
 
 .momentVideoBadge {
@@ -536,6 +553,29 @@ img.settingsCardAvatar {
   margin: 0;
   color: #8d8377;
   font-size: 0.86rem;
+}
+
+.momentCardFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.momentMetaGroup {
+  display: grid;
+  gap: 4px;
+  align-content: center;
+}
+
+.momentEditButton {
+  align-self: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #f2ede5;
+  color: #6a5849;
+  font-size: 0.84rem;
+  white-space: nowrap;
 }
 
 .momentCaption {
@@ -722,6 +762,7 @@ img.settingsCardAvatar {
   background: transparent;
   font: inherit;
   color: var(--ink);
+  text-align: right;
 }
 
 .draftEditorMedia {
@@ -731,7 +772,7 @@ img.settingsCardAvatar {
 }
 
 .draftEditorMedia1 {
-  grid-template-columns: minmax(0, 220px);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .draftEditorMediaCard {
@@ -774,6 +815,12 @@ img.settingsCardAvatar {
   font-size: 0.9rem;
 }
 
+.draftCaptionField {
+  display: grid;
+  gap: 10px;
+  text-align: right;
+}
+
 .draftTextarea {
   min-height: 110px;
   resize: vertical;
@@ -782,6 +829,17 @@ img.settingsCardAvatar {
   padding: 14px 16px;
   background: rgba(255, 255, 255, 0.76);
   font: inherit;
+  text-align: right;
+}
+
+.draftTextareaStandalone {
+  display: block;
+  width: 100%;
+}
+
+.draftDeleteButton {
+  background: #fff1ef;
+  color: #b24a36;
 }
 
 .draftSettingList {
@@ -891,6 +949,7 @@ img.settingsCardAvatar {
 }
 
 .lightboxImage,
+.lightboxVideo,
 .lightboxFallback {
   width: 100%;
   max-height: min(68vh, 720px);
@@ -899,6 +958,10 @@ img.settingsCardAvatar {
 
 .lightboxImage {
   object-fit: contain;
+}
+
+.lightboxVideo {
+  background: rgba(0, 0, 0, 0.5);
 }
 
 .lightboxFallback {

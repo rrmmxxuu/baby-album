@@ -549,6 +549,32 @@ img.settingsCardAvatar {
   font-size: 0.78rem;
 }
 
+.momentVideoPlay {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  width: 68px;
+  height: 68px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(17, 17, 17, 0.34);
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+}
+
+.momentVideoPlayTriangle {
+  width: 0;
+  height: 0;
+  margin-left: 4px;
+  border-top: 11px solid transparent;
+  border-bottom: 11px solid transparent;
+  border-left: 18px solid #ffffff;
+}
+
 .momentMeta {
   margin: 0;
   color: #8d8377;
@@ -1337,5 +1363,764 @@ img.settingsCardAvatar {
 
   .thumb {
     height: 180px;
+  }
+}
+
+/* iOS-first visual language */
+
+:root {
+  --bg: #f2f2f7;
+  --panel: rgba(255, 255, 255, 0.72);
+  --panel-strong: rgba(255, 255, 255, 0.94);
+  --ink: #111111;
+  --muted: #6d6d72;
+  --accent: #007aff;
+  --accent-soft: rgba(0, 122, 255, 0.14);
+  --line: rgba(60, 60, 67, 0.16);
+  --shadow: 0 24px 60px rgba(17, 17, 17, 0.08);
+}
+
+html {
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0) 30%),
+    linear-gradient(180deg, #ffffff 0px, #ffffff 180px, #f8f8fc 320px, #f2f2f7 100%);
+}
+
+body {
+  color: var(--ink);
+  font-family: "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0) 30%),
+    linear-gradient(180deg, #ffffff 0px, #ffffff 180px, #f8f8fc 320px, #f2f2f7 100%);
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+input,
+select,
+textarea {
+  font-size: 17px;
+}
+
+button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #0a84ff 0%, #007aff 100%);
+  color: #ffffff;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  box-shadow: 0 10px 24px rgba(0, 122, 255, 0.22);
+}
+
+button:disabled {
+  opacity: 0.52;
+  box-shadow: none;
+}
+
+input,
+select,
+textarea {
+  min-height: 44px;
+  border-radius: 14px;
+  border: 1px solid rgba(60, 60, 67, 0.12);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
+  padding: 12px 14px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #8e8e93;
+}
+
+label {
+  display: grid;
+  gap: 8px;
+  color: #3a3a3c;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.appShell {
+  width: min(960px, 100vw);
+  margin: 0 auto;
+  padding: calc(10px + env(safe-area-inset-top)) 12px calc(116px + env(safe-area-inset-bottom));
+}
+
+.appShellAuthenticated {
+  max-width: 780px;
+}
+
+.panel,
+.inviteCard,
+.metricCard,
+.sessionBadge,
+.timelineDay {
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 24px;
+  background: var(--panel);
+  backdrop-filter: blur(28px) saturate(160%);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+  box-shadow: var(--shadow);
+}
+
+.panelStack {
+  gap: 16px;
+  padding: 18px;
+}
+
+.topBar {
+  padding: 12px 10px 2px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.topBar h1,
+.sectionHeading h2,
+.timelineDay h3,
+.momentsHeroCopy h2,
+.momentDayHeader h3,
+.draftSheetHeader h2 {
+  font-family: "SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont, sans-serif;
+  letter-spacing: -0.03em;
+}
+
+.topBar h1 {
+  font-size: clamp(2rem, 5vw, 2.7rem);
+  font-weight: 700;
+  line-height: 1.04;
+}
+
+.sectionHeading h2 {
+  font-size: 1.55rem;
+  font-weight: 700;
+  line-height: 1.08;
+}
+
+.eyebrow {
+  color: #8e8e93;
+  font-size: 0.8rem;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.helperText,
+.memberRow p,
+.timelineCopy p,
+.settingsMenuMeta,
+.momentMeta,
+.momentsHeroMeta {
+  color: var(--muted);
+}
+
+.noticeBanner,
+.errorBanner,
+.statusNote {
+  border-radius: 16px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(20px);
+}
+
+.noticeBanner,
+.statusNote {
+  background: rgba(255, 249, 230, 0.86);
+  color: #6d5311;
+}
+
+.errorBanner {
+  background: rgba(255, 235, 234, 0.92);
+  color: #b3261e;
+}
+
+.gridColumns,
+.pageStack,
+.summaryGrid,
+.momentsFeed,
+.momentBatchList,
+.stackList,
+.settingsMenu,
+.draftListCards {
+  gap: 14px;
+}
+
+.sectionHeading {
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.sectionHeading > div {
+  min-width: 0;
+}
+
+.segmentedControl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border-radius: 14px;
+  background: rgba(120, 120, 128, 0.12);
+}
+
+.segmentedControlButton {
+  min-height: 36px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: transparent;
+  color: #3a3a3c;
+  box-shadow: none;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.segmentedControlButtonActive {
+  background: rgba(255, 255, 255, 0.96);
+  color: #111111;
+  box-shadow: 0 1px 2px rgba(17, 17, 17, 0.12);
+}
+
+.secondaryButton,
+.momentEditButton,
+.draftEditInline,
+.lightboxClose {
+  background: rgba(120, 120, 128, 0.12);
+  color: #007aff;
+  box-shadow: none;
+}
+
+.momentEditButton,
+.draftEditInline {
+  min-height: 32px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.secondaryButton {
+  border: 1px solid rgba(60, 60, 67, 0.12);
+}
+
+.pill,
+.tag,
+.momentBabyDay,
+.momentVideoBadge {
+  background: var(--accent-soft);
+  color: #005ecb;
+  border: 1px solid rgba(0, 122, 255, 0.08);
+}
+
+.pillOnline {
+  background: rgba(52, 199, 89, 0.14);
+  color: #248a3d;
+}
+
+.landingHero,
+.momentsHero {
+  overflow: hidden;
+  border-radius: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0) 30%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.58)),
+    linear-gradient(145deg, rgba(0, 122, 255, 0.08), rgba(90, 200, 250, 0.12), rgba(255, 255, 255, 0.18));
+  box-shadow: 0 24px 60px rgba(30, 41, 59, 0.08);
+}
+
+.momentsHero {
+  min-height: 208px;
+  padding: 22px;
+}
+
+.momentsHeroBackdrop {
+  background:
+    radial-gradient(circle at top left, rgba(10, 132, 255, 0.14), transparent 30%),
+    radial-gradient(circle at bottom right, rgba(90, 200, 250, 0.14), transparent 34%);
+}
+
+.momentsHeroAvatar {
+  width: 78px;
+  height: 78px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.96);
+  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.1);
+  color: #007aff;
+}
+
+.heroAlbumSelect {
+  min-height: 38px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(60, 60, 67, 0.12);
+}
+
+.momentCard {
+  gap: 12px;
+  padding: 14px;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.06);
+}
+
+.momentThumb,
+.thumb {
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0)),
+    linear-gradient(145deg, #d6ecff, #bfdbfe 48%, #dbeafe 100%);
+}
+
+.momentThumbFallback,
+.thumbFallback {
+  color: #2458a6;
+  letter-spacing: 0.02em;
+}
+
+.momentCaption {
+  color: #1c1c1e;
+  line-height: 1.45;
+}
+
+.floatingAddButton {
+  right: max(18px, calc((100vw - min(780px, 100vw)) / 2 + 18px));
+  bottom: calc(92px + env(safe-area-inset-bottom));
+  width: 58px;
+  height: 58px;
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, #0a84ff 0%, #007aff 100%);
+  box-shadow: 0 22px 40px rgba(0, 122, 255, 0.28);
+}
+
+.settingsMenuItem,
+.settingsCardButton {
+  min-height: 58px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.8);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
+}
+
+.settingsMenuItem {
+  color: #1c1c1e;
+  font-weight: 600;
+}
+
+.settingsMenuDanger {
+  color: #ff3b30;
+}
+
+.settingsCardAvatar {
+  background: linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%);
+  border: 1px solid rgba(255, 255, 255, 0.94);
+  color: #007aff;
+}
+
+.settingsPage {
+  width: min(780px, 100%);
+  margin-top: 0;
+}
+
+.settingsDetailPage {
+  width: min(720px, 100%);
+  gap: 14px;
+  padding: 0;
+}
+
+.settingsHero {
+  position: relative;
+  overflow: hidden;
+  min-height: 176px;
+  padding: 20px;
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0) 32%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.7)),
+    linear-gradient(145deg, rgba(0, 122, 255, 0.05), rgba(90, 200, 250, 0.06), rgba(255, 255, 255, 0.18));
+}
+
+.settingsHeroBackdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at top left, rgba(10, 132, 255, 0.08), transparent 34%),
+    radial-gradient(circle at bottom right, rgba(90, 200, 250, 0.06), transparent 32%);
+}
+
+.settingsHeroBody {
+  position: relative;
+  z-index: 1;
+  min-height: 136px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px;
+  align-items: end;
+}
+
+.settingsHeroCopy {
+  display: grid;
+  gap: 8px;
+}
+
+.settingsHeroCopy h2 {
+  margin: 0;
+  font-family: "SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: clamp(1.8rem, 4vw, 2.35rem);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+}
+
+.settingsHeroCopy p {
+  margin: 0;
+}
+
+.settingsSessionBadge {
+  align-self: start;
+  min-width: min(280px, 100%);
+}
+
+.settingsNavBar {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settingsPage.pageStack,
+.settingsDetailPage.panelStack {
+  margin-top: 0;
+}
+
+.settingsNavTitle {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+}
+
+.settingsNavTitle p,
+.settingsNavTitle h2 {
+  margin: 0;
+}
+
+.settingsNavTitle h2 {
+  font-family: "SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 1.3rem;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+}
+
+.settingsNavBack {
+  flex: 0 0 64px;
+}
+
+.settingsNavAction,
+.settingsNavSpacer {
+  flex: 0 0 64px;
+}
+
+.settingsNavSpacer {
+  width: 64px;
+}
+
+.settingsMenu {
+  gap: 12px;
+}
+
+.settingsMenuItem {
+  min-height: 72px;
+  padding: 16px 18px;
+}
+
+.settingsMenuBody {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  text-align: left;
+  flex: 1;
+}
+
+.settingsChevron {
+  color: #aeaeb2;
+  font-size: 1.05rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.settingsCardTitle {
+  color: #6d6d72;
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.settingsIdentityRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.settingsIdentityAvatar {
+  width: 60px;
+  height: 60px;
+  border-radius: 20px;
+  flex: 0 0 60px;
+  font-size: 1.35rem;
+}
+
+.settingsIdentityBody {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.settingsIdentityBody strong,
+.storageNodeHeader p {
+  margin: 0;
+}
+
+.settingsInfoList {
+  display: grid;
+  gap: 0;
+}
+
+.settingsInfoRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 0;
+  border-top: 1px solid rgba(60, 60, 67, 0.1);
+}
+
+.settingsInfoRow:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.settingsInfoRow:last-child {
+  padding-bottom: 0;
+}
+
+.settingsInfoRow strong {
+  text-align: right;
+  color: #1c1c1e;
+}
+
+.storageNodeHeader {
+  display: grid;
+  gap: 8px;
+}
+
+.storageNodeStatusRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.storageNodeStatusLabel {
+  color: #1c1c1e;
+  font-weight: 600;
+}
+
+.storageNodeDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  flex: 0 0 10px;
+  box-shadow: 0 0 0 4px rgba(120, 120, 128, 0.12);
+}
+
+.storageNodeDotOnline {
+  background: #34c759;
+  box-shadow: 0 0 0 4px rgba(52, 199, 89, 0.16);
+}
+
+.storageNodeDotOffline {
+  background: #ff9f0a;
+  box-shadow: 0 0 0 4px rgba(255, 159, 10, 0.16);
+}
+
+.storageNodeHeartbeat {
+  margin: 0;
+}
+
+.storageMetricsGrid {
+  margin-top: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.draftSheetOverlay {
+  background: rgba(17, 17, 17, 0.18);
+  backdrop-filter: blur(24px);
+}
+
+.draftSheet {
+  height: 100vh;
+  border-radius: 0;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(242, 242, 247, 0.94)),
+    #f2f2f7;
+}
+
+.draftSheetHeader,
+.draftSheetFooter {
+  min-height: 44px;
+}
+
+.draftSheetHeader h2 {
+  flex: 1;
+  text-align: center;
+}
+
+.draftTopAction {
+  min-width: 64px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  color: #007aff;
+  box-shadow: none;
+}
+
+.draftTopPrimary {
+  min-width: 64px;
+  min-height: 36px;
+  padding: 8px 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(0, 122, 255, 0.12);
+  color: #007aff;
+  box-shadow: none;
+}
+
+.draftTopSpacer {
+  width: 64px;
+  flex: 0 0 64px;
+}
+
+.draftAddTile {
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px dashed rgba(60, 60, 67, 0.18);
+}
+
+.draftFloatingBar {
+  background: linear-gradient(180deg, rgba(242, 242, 247, 0), rgba(242, 242, 247, 0.98) 28%);
+}
+
+.lightboxOverlay {
+  background: rgba(17, 17, 17, 0.42);
+  backdrop-filter: blur(18px);
+}
+
+.lightboxShell {
+  border-radius: 28px;
+  background: rgba(28, 28, 30, 0.82);
+  backdrop-filter: blur(30px);
+}
+
+.bottomNav {
+  left: 12px;
+  right: 12px;
+  bottom: calc(10px + env(safe-area-inset-bottom));
+  transform: none;
+  width: auto;
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  border-radius: 24px;
+  background: rgba(248, 248, 252, 0.78);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  box-shadow: 0 18px 34px rgba(17, 17, 17, 0.08);
+}
+
+.bottomNav button {
+  min-height: 48px;
+  border-radius: 16px;
+  background: transparent;
+  color: #6d6d72;
+  box-shadow: none;
+}
+
+.bottomNav .navActive {
+  background: rgba(255, 255, 255, 0.96);
+  color: #007aff;
+  box-shadow: 0 6px 16px rgba(17, 17, 17, 0.08);
+}
+
+@media (max-width: 680px) {
+  .appShell {
+    padding-left: 10px;
+    padding-right: 10px;
+    padding-bottom: calc(116px + env(safe-area-inset-bottom));
+  }
+
+  .topBar {
+    padding-top: 6px;
+  }
+
+  .momentsHero {
+    min-height: 226px;
+    padding: 20px;
+  }
+
+  .momentsHeroBody {
+    grid-template-columns: 1fr;
+  }
+
+  .settingsHeroBody {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .settingsSessionBadge {
+    min-width: 0;
+  }
+
+  .settingsMenuItem {
+    min-height: 68px;
+  }
+
+  .settingsInfoRow {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .storageMetricsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .momentVideoPlay {
+    width: 60px;
+    height: 60px;
+  }
+
+  .momentVideoPlayTriangle {
+    border-top-width: 10px;
+    border-bottom-width: 10px;
+    border-left-width: 16px;
+  }
+
+  .floatingAddButton {
+    right: 14px;
+    bottom: calc(90px + env(safe-area-inset-bottom));
+  }
+
+  .draftSheet {
+    padding: 14px 14px calc(16px + env(safe-area-inset-bottom));
   }
 }

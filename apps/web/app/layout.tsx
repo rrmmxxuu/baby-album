@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "black-translucent",
+    statusBarStyle: "default",
     title: "宝宝相册"
   },
   icons: {
@@ -27,7 +27,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#f1ddc8"
+  themeColor: "#f2f2f7"
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

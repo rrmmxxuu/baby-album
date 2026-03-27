@@ -485,7 +485,7 @@ function AppShellInner() {
   }, [activeAlbum, authToken, hasPendingPreview]);
 
   return (
-    <main className="appShell">
+    <main className={`appShell${authToken && activeAlbum ? " appShellAuthenticated" : ""}`}>
       {!authToken || !activeAlbum ? <section className="topBar panel">
         <div>
           <p className="eyebrow">宝宝相册</p>
@@ -526,6 +526,24 @@ function AppShellInner() {
                   <h2>{authMode === "login" ? "登录" : "注册"}</h2>
                 </div>
               </div>
+              <div aria-label="登录或注册" className="segmentedControl" role="tablist">
+                <button
+                  aria-selected={authMode === "login"}
+                  className={`segmentedControlButton${authMode === "login" ? " segmentedControlButtonActive" : ""}`}
+                  onClick={() => setAuthMode("login")}
+                  type="button"
+                >
+                  登录
+                </button>
+                <button
+                  aria-selected={authMode === "register"}
+                  className={`segmentedControlButton${authMode === "register" ? " segmentedControlButtonActive" : ""}`}
+                  onClick={() => setAuthMode("register")}
+                  type="button"
+                >
+                  注册
+                </button>
+              </div>
 
               {authMode === "register" ? (
                 <form className="formGrid" onSubmit={handleRegister}>
@@ -542,7 +560,6 @@ function AppShellInner() {
                     <input type="password" value={registerPassword} onChange={(event) => setRegisterPassword(event.target.value)} />
                   </label>
                   <button type="submit">注册并继续</button>
-                  <button className="secondaryButton" onClick={() => setAuthMode("login")} type="button">返回登录</button>
                 </form>
               ) : (
                 <form className="formGrid" onSubmit={handleLogin}>
@@ -555,7 +572,6 @@ function AppShellInner() {
                     <input type="password" value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} />
                   </label>
                   <button type="submit">登录</button>
-                  <button className="secondaryButton" onClick={() => setAuthMode("register")} type="button">注册</button>
                 </form>
               )}
             </article>
@@ -657,37 +673,89 @@ function AppShellInner() {
           {activeTab === "settings" ? (
             <section className="pageStack settingsPage">
               {settingsScreen === "menu" ? (
-                <article className="settingsMenu">
-                  <button className="settingsMenuItem panel" onClick={() => setSettingsScreen("account")} type="button"><span>账户管理</span><span>›</span></button>
-                  <button className="settingsMenuItem panel" onClick={() => setSettingsScreen("babies")} type="button"><span>宝宝管理</span><span>›</span></button>
-                  <button className="settingsMenuItem panel" disabled={!canManageStorage} onClick={() => setSettingsScreen("storage")} type="button"><span>储存节点管理</span><span>{canManageStorage ? "›" : "仅 owner"}</span></button>
-                  <button className="settingsMenuItem settingsMenuDanger panel" onClick={handleLogout} type="button"><span>退出登录</span><span>›</span></button>
-                </article>
+                <>
+                  <article className="settingsHero panel">
+                    <div className="settingsHeroBackdrop" />
+                    <div className="settingsHeroBody">
+                      <div className="settingsHeroCopy">
+                        <p className="eyebrow">设置</p>
+                        <h2>管理账号、宝宝和储存节点</h2>
+                        <p className="helperText">当前正在查看 {activeBaby?.name ?? activeAlbum.album.name} 的相册空间。</p>
+                      </div>
+                      <div className="sessionBadge settingsSessionBadge">
+                        <strong>{currentUser?.displayName}</strong>
+                        <span>{currentUser?.email}</span>
+                        <span>{memberRelationLabel(activeAlbum.membership)} · {roleLabel(activeAlbum.membership.role)}</span>
+                      </div>
+                    </div>
+                  </article>
+
+                  <article className="settingsMenu">
+                    <button className="settingsMenuItem panel" onClick={() => setSettingsScreen("account")} type="button">
+                      <span className="settingsMenuBody">
+                        <span className="settingsMenuPrimary">账户管理</span>
+                        <span className="settingsMenuMeta">查看当前登录账号和你在相册中的身份</span>
+                      </span>
+                      <span className="settingsChevron">›</span>
+                    </button>
+                    <button className="settingsMenuItem panel" onClick={() => setSettingsScreen("babies")} type="button">
+                      <span className="settingsMenuBody">
+                        <span className="settingsMenuPrimary">宝宝管理</span>
+                        <span className="settingsMenuMeta">切换、编辑或新增宝宝相册</span>
+                      </span>
+                      <span className="settingsChevron">›</span>
+                    </button>
+                    <button className="settingsMenuItem panel" disabled={!canManageStorage} onClick={() => setSettingsScreen("storage")} type="button">
+                      <span className="settingsMenuBody">
+                        <span className="settingsMenuPrimary">储存节点管理</span>
+                        <span className="settingsMenuMeta">{canManageStorage ? "查看 NAS 状态并生成配对码" : "仅 owner 可以管理储存节点"}</span>
+                      </span>
+                      <span className="settingsChevron">{canManageStorage ? "›" : "仅 owner"}</span>
+                    </button>
+                    <button className="settingsMenuItem settingsMenuDanger panel" onClick={handleLogout} type="button">
+                      <span className="settingsMenuBody">
+                        <span className="settingsMenuPrimary">退出登录</span>
+                        <span className="settingsMenuMeta">清除当前设备上的登录状态</span>
+                      </span>
+                      <span className="settingsChevron">›</span>
+                    </button>
+                  </article>
+                </>
               ) : null}
 
               {settingsScreen === "account" ? (
                 <article className="panelStack settingsDetailPage">
-                  <div className="sectionHeading"><button className="secondaryButton" onClick={() => setSettingsScreen("menu")} type="button">返回</button><div><p className="eyebrow">账户管理</p><h2>当前登录</h2></div></div>
+                  <SettingsHeader eyebrow="账户管理" onBack={() => setSettingsScreen("menu")} title="账户信息" />
                   <article className="panelStack panel">
-                    <p className="settingsCardTitle">当前登录</p>
-                    <p><strong>{currentUser?.displayName}</strong></p>
-                    <p className="helperText">{currentUser?.email}</p>
-                    <p className="helperText">当前在 {activeBaby?.name ?? activeAlbum.album.name} 中与你的关系称呼：{memberRelationLabel(activeAlbum.membership)}</p>
-                  </article>
-                  <article className="panelStack panel">
-                    <p className="settingsCardTitle">退出登录</p>
-                    <button className="secondaryButton" onClick={handleLogout} type="button">退出登录</button>
+                    <p className="settingsCardTitle">账户概览</p>
+                    <div className="settingsIdentityRow">
+                      <span aria-hidden="true" className="settingsCardAvatar settingsIdentityAvatar">{babyAvatarText(currentUser?.displayName)}</span>
+                      <div className="settingsIdentityBody">
+                        <strong>{currentUser?.displayName}</strong>
+                        <p className="helperText">{currentUser?.email}</p>
+                      </div>
+                    </div>
+                    <div className="settingsInfoList">
+                      <div className="settingsInfoRow">
+                        <span className="helperText">当前宝宝</span>
+                        <strong>{activeBaby?.name ?? activeAlbum.album.name}</strong>
+                      </div>
+                      <div className="settingsInfoRow">
+                        <span className="helperText">关系称呼</span>
+                        <strong>{memberRelationLabel(activeAlbum.membership)}</strong>
+                      </div>
+                      <div className="settingsInfoRow">
+                        <span className="helperText">当前权限</span>
+                        <strong>{roleLabel(activeAlbum.membership.role)}</strong>
+                      </div>
+                    </div>
                   </article>
                 </article>
               ) : null}
 
               {settingsScreen === "babies" ? (
                 <article className="panelStack settingsDetailPage">
-                  <div className="sectionHeading">
-                    <button className="secondaryButton" onClick={() => setSettingsScreen("menu")} type="button">返回</button>
-                    <div><p className="eyebrow">宝宝管理</p><h2>已加入的宝宝</h2></div>
-                    <button onClick={() => setSettingsScreen("addBaby")} type="button">添加宝宝</button>
-                  </div>
+                  <SettingsHeader actionLabel="添加" eyebrow="宝宝管理" onAction={() => setSettingsScreen("addBaby")} onBack={() => setSettingsScreen("menu")} title="已加入的宝宝" />
                   <div className="stackList">
                     {albumOptions.map((item) => (
                       <button
@@ -710,10 +778,7 @@ function AppShellInner() {
 
               {settingsScreen === "addBaby" ? (
                 <article className="panelStack settingsDetailPage">
-                  <div className="sectionHeading">
-                    <button className="secondaryButton" onClick={() => setSettingsScreen("babies")} type="button">返回</button>
-                    <div><p className="eyebrow">添加宝宝</p><h2>新建或加入</h2></div>
-                  </div>
+                  <SettingsHeader eyebrow="添加宝宝" onBack={() => setSettingsScreen("babies")} title="新建或加入" />
                   <form className="panelStack panel" onSubmit={handleCreateAlbum}>
                     <p className="settingsCardTitle">自己新建</p>
                     <label>宝宝姓名<input value={babyName} onChange={(event) => setBabyName(event.target.value)} /></label>
@@ -733,7 +798,7 @@ function AppShellInner() {
 
               {settingsScreen === "babyDetail" ? (
                 <article className="panelStack settingsDetailPage">
-                  <div className="sectionHeading"><button className="secondaryButton" onClick={() => setSettingsScreen("babies")} type="button">返回</button><div><p className="eyebrow">宝宝管理</p><h2>{activeBaby?.name ?? activeAlbum.album.name}</h2></div></div>
+                  <SettingsHeader eyebrow="宝宝管理" onBack={() => setSettingsScreen("babies")} title={activeBaby?.name ?? activeAlbum.album.name} />
                   <article className="panelStack panel">
                     <p className="settingsCardTitle">我的角色</p>
                     <form className="formGrid" onSubmit={handleUpdateMyRelation}>
@@ -807,7 +872,7 @@ function AppShellInner() {
 
               {settingsScreen === "memberDetail" ? (
                 <article className="panelStack settingsDetailPage">
-                  <div className="sectionHeading"><button className="secondaryButton" onClick={() => setSettingsScreen("babyDetail")} type="button">返回</button><div><p className="eyebrow">成员详情</p><h2>{albumMembers.find((member) => member.userId === settingsMemberId)?.displayName ?? "成员"}</h2></div></div>
+                  <SettingsHeader eyebrow="成员详情" onBack={() => setSettingsScreen("babyDetail")} title={albumMembers.find((member) => member.userId === settingsMemberId)?.displayName ?? "成员"} />
                   {albumMembers.filter((member) => member.userId === settingsMemberId).map((member) => (
                     <article className="panelStack panel" key={member.userId}>
                       <p className="settingsCardTitle">成员信息</p>
@@ -832,7 +897,7 @@ function AppShellInner() {
 
               {settingsScreen === "storage" ? (
                 <article className="panelStack settingsDetailPage">
-                  <div className="sectionHeading"><button className="secondaryButton" onClick={() => setSettingsScreen("menu")} type="button">返回</button><div><p className="eyebrow">储存节点管理</p><h2>{activeBaby?.name ?? activeAlbum.album.name}</h2></div></div>
+                  <SettingsHeader eyebrow="储存节点管理" onBack={() => setSettingsScreen("menu")} title={activeBaby?.name ?? activeAlbum.album.name} />
                   <article className="panelStack panel">
                     <p className="settingsCardTitle">当前宝宝</p>
                     <label>
@@ -847,9 +912,26 @@ function AppShellInner() {
                     <p className="settingsCardTitle">储存节点</p>
                     {storageNode ? (
                       <>
-                        <p><strong>{storageNode.name}</strong></p>
-                        <p className="helperText">状态：{storageNode.status === "online" ? "在线" : "离线"} / 最近心跳：{formatDateTime(storageNode.lastSeenAt)}</p>
-                        <p className="helperText">可用空间：{formatBytes(storageNode.availableBytes)} / 总容量：{formatBytes(storageNode.totalBytes)}</p>
+                        <div className="storageNodeHeader">
+                          <div>
+                            <p><strong>{storageNode.name}</strong></p>
+                            <div className="storageNodeStatusRow">
+                              <span className={`storageNodeDot ${storageNode.status === "online" ? "storageNodeDotOnline" : "storageNodeDotOffline"}`} />
+                              <span className="storageNodeStatusLabel">{storageNode.status === "online" ? "在线" : "离线"}</span>
+                            </div>
+                            <p className="helperText storageNodeHeartbeat">最近心跳：{formatDateTime(storageNode.lastSeenAt)}</p>
+                          </div>
+                        </div>
+                        <div className="summaryGrid storageMetricsGrid">
+                          <article className="metricCard">
+                            <span>可用空间</span>
+                            <strong>{formatBytes(storageNode.availableBytes)}</strong>
+                          </article>
+                          <article className="metricCard">
+                            <span>总容量</span>
+                            <strong>{formatBytes(storageNode.totalBytes)}</strong>
+                          </article>
+                        </div>
                       </>
                     ) : <p className="helperText">这个宝宝还没有绑定储存节点。</p>}
                   </article>
@@ -959,7 +1041,9 @@ function MomentVideo({ authToken, albumId, item, onOpen }: { authToken: string; 
   return (
     <div className="momentVideo">
       <MomentThumb albumId={albumId} authToken={authToken} item={item} large onOpen={onOpen} />
-      <div className="momentVideoBadge">视频</div>
+      <div aria-hidden="true" className="momentVideoPlay">
+        <span className="momentVideoPlayTriangle" />
+      </div>
     </div>
   );
 }
@@ -1040,6 +1124,23 @@ function LightboxViewer({ authToken, lightbox, onClose, onNavigate }: { authToke
         </div>
       </div>
     </div>
+  );
+}
+
+function SettingsHeader({ eyebrow, onBack, title, actionLabel, onAction }: { eyebrow: string; onBack: () => void; title: string; actionLabel?: string; onAction?: () => void }) {
+  return (
+    <header className="settingsNavBar">
+      <button className="draftTopAction settingsNavBack" onClick={onBack} type="button">返回</button>
+      <div className="settingsNavTitle">
+        <p className="eyebrow">{eyebrow}</p>
+        <h2>{title}</h2>
+      </div>
+      {actionLabel && onAction ? (
+        <button className="draftTopPrimary settingsNavAction" onClick={onAction} type="button">{actionLabel}</button>
+      ) : (
+        <span className="settingsNavSpacer" />
+      )}
+    </header>
   );
 }
 

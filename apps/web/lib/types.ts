@@ -135,3 +135,9 @@ export interface AppStatePayload {
   activeAlbumId?: string;
   activeAlbum?: AlbumWorkspace | null;
 }
+
+export interface TimelinePagePayload {
+  items: TimelineEntry[];
+  nextCursor?: string;
+  hasMore: boolean;
+}

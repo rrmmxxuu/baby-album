@@ -16,6 +16,7 @@
 
 html {
   min-height: 100%;
+  overflow-x: hidden;
   background-color: #ffffff;
   background:
     radial-gradient(circle at top left, rgba(255, 255, 255, 0.7), transparent 30%),
@@ -25,6 +26,9 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+  touch-action: pan-y;
   color: var(--ink);
   font-family: "Trebuchet MS", "Avenir Next", "Segoe UI", sans-serif;
   background-color: #ffffff;
@@ -514,6 +518,7 @@ img.settingsCardAvatar {
 
 .momentThumbImage {
   object-fit: cover;
+  transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease;
 }
 
 .momentThumbFallback {
@@ -630,6 +635,8 @@ img.settingsCardAvatar {
   z-index: 35;
   padding: 0;
   background: #fbf6ef;
+  opacity: 0;
+  transition: opacity 220ms ease;
 }
 
 .draftSheet {
@@ -641,6 +648,23 @@ img.settingsCardAvatar {
   gap: 16px;
   padding: 18px 18px calc(18px + env(safe-area-inset-bottom));
   background: #fbf6ef;
+  opacity: 0;
+  transform: translate3d(0, 28px, 0) scale(0.985);
+  transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease;
+}
+
+.draftSheetOverlayOpen {
+  opacity: 1;
+}
+
+.draftSheetOpen {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+}
+
+.draftSheetClosing {
+  opacity: 0;
+  transform: translate3d(0, 24px, 0) scale(0.985);
 }
 
 .draftSheetHeader,
@@ -671,6 +695,7 @@ img.settingsCardAvatar {
   background: transparent;
   color: var(--muted);
   font-weight: 500;
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease, background-color 220ms ease;
 }
 
 .draftTopPrimary {
@@ -1019,6 +1044,8 @@ img.settingsCardAvatar {
   padding: 16px;
   background: rgba(19, 14, 11, 0.82);
   backdrop-filter: blur(10px);
+  opacity: 0;
+  transition: opacity 220ms ease;
 }
 
 .lightboxShell {
@@ -1032,6 +1059,23 @@ img.settingsCardAvatar {
   background: rgba(35, 27, 22, 0.94);
   color: white;
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.34);
+  opacity: 0;
+  transform: translate3d(0, 18px, 0) scale(0.97);
+  transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease;
+}
+
+.lightboxOverlayOpen {
+  opacity: 1;
+}
+
+.lightboxShellOpen {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+}
+
+.lightboxShellClosing {
+  opacity: 0;
+  transform: translate3d(0, 12px, 0) scale(0.98);
 }
 
 .lightboxTopBar,
@@ -1054,6 +1098,7 @@ img.settingsCardAvatar {
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.12);
   color: white;
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), background-color 220ms ease;
 }
 
 .lightboxStage {
@@ -1098,6 +1143,7 @@ img.settingsCardAvatar {
   color: white;
   font-size: 1.8rem;
   line-height: 1;
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), background-color 220ms ease;
 }
 
 .lightboxArrowLeft {
@@ -1185,6 +1231,7 @@ img.settingsCardAvatar {
 
 .bottomNav {
   position: fixed;
+  z-index: 20;
   left: 50%;
   bottom: 16px;
   transform: translateX(-50%);
@@ -1196,17 +1243,25 @@ img.settingsCardAvatar {
   border-radius: 26px;
   background: rgba(47, 37, 29, 0.92);
   box-shadow: 0 18px 40px rgba(47, 37, 29, 0.25);
+  transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease, box-shadow 240ms ease;
 }
 
 .bottomNav button {
   background: transparent;
   color: rgba(255, 255, 255, 0.78);
   padding: 12px 14px;
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), background-color 220ms ease, color 220ms ease;
 }
 
 .bottomNav .navActive {
   background: linear-gradient(135deg, #c96544 0%, var(--accent) 100%);
   color: white;
+}
+
+.bottomNavHidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(0, 18px, 0) scale(0.96);
 }
 
 .settingsMenu {
@@ -1226,6 +1281,7 @@ img.settingsCardAvatar {
   color: var(--ink);
   font-weight: 500;
   text-align: left;
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 240ms ease, background-color 220ms ease;
 }
 
 .settingsMenuItem:disabled {
@@ -1553,7 +1609,7 @@ label {
 .appShell {
   width: min(960px, 100vw);
   margin: 0 auto;
-  padding: calc(10px + env(safe-area-inset-top)) 12px calc(116px + env(safe-area-inset-bottom));
+  padding: calc(10px + env(safe-area-inset-top)) 12px calc(88px + env(safe-area-inset-bottom));
 }
 
 .appShellAuthenticated {
@@ -1750,6 +1806,57 @@ label {
     radial-gradient(circle at bottom right, rgba(90, 200, 250, 0.14), transparent 34%);
 }
 
+.pullRefreshIndicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #6d6d72;
+  font-size: 0.92rem;
+  font-weight: 600;
+  opacity: 0;
+  transform: translate3d(0, -8px, 0);
+  pointer-events: none;
+  transition: opacity 180ms ease, transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.pullRefreshIndicatorVisible {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+.pullRefreshIndicatorReady {
+  color: #007aff;
+}
+
+.pullRefreshSpinner {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 2px solid rgba(0, 122, 255, 0.18);
+  border-top-color: #007aff;
+}
+
+.pullRefreshSpinnerSpinning {
+  animation: pullRefreshSpin 0.8s linear infinite;
+}
+
+.momentsPullLayer {
+  display: grid;
+  gap: 14px;
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.photosFeedShell {
+  position: relative;
+}
+
 .momentsHeroAvatar {
   width: 78px;
   height: 78px;
@@ -1775,6 +1882,7 @@ label {
   border: 1px solid rgba(255, 255, 255, 0.72);
   background: rgba(255, 255, 255, 0.78);
   box-shadow: 0 16px 34px rgba(15, 23, 42, 0.06);
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 240ms ease, background-color 240ms ease;
 }
 
 .momentThumb,
@@ -1783,6 +1891,7 @@ label {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0)),
     linear-gradient(145deg, #d6ecff, #bfdbfe 48%, #dbeafe 100%);
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 240ms ease, filter 240ms ease;
 }
 
 .momentThumbFallback,
@@ -1797,14 +1906,36 @@ label {
 }
 
 .floatingAddButton {
+  position: fixed;
   right: max(18px, calc((100vw - min(780px, 100vw)) / 2 + 18px));
   bottom: calc(92px + env(safe-area-inset-bottom));
+  z-index: 21;
   width: 58px;
   height: 58px;
   border-radius: 999px;
   background:
     linear-gradient(180deg, #0a84ff 0%, #007aff 100%);
   box-shadow: 0 22px 40px rgba(0, 122, 255, 0.28);
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 240ms ease, opacity 220ms ease;
+}
+
+.timelineFooterState {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #6d6d72;
+  font-size: 0.92rem;
+}
+
+.timelineFooterStateDone {
+  color: #8e8e93;
+}
+
+.timelineLoadMoreSentinel {
+  width: 100%;
+  height: 1px;
 }
 
 .settingsMenuItem,
@@ -1834,12 +1965,72 @@ label {
 .settingsPage {
   width: min(780px, 100%);
   margin-top: 0;
+  position: relative;
+  background: #ffffff;
 }
 
 .settingsDetailPage {
   width: min(720px, 100%);
   gap: 14px;
   padding: 0;
+}
+
+.tabViewport {
+  position: relative;
+  overflow: clip;
+  background: transparent;
+}
+
+.tabSection {
+  width: 100%;
+  min-width: 0;
+  background: transparent;
+  transition: opacity 260ms ease, transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+
+.tabSectionActive {
+  position: relative;
+  z-index: 1;
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+.tabSectionInactive {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(22px, 0, 0);
+}
+
+.settingsScene {
+  animation-duration: 320ms;
+  animation-fill-mode: both;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.settingsSceneForward {
+  animation-name: settingsScenePushIn;
+}
+
+.settingsSceneBack {
+  animation-name: settingsScenePopIn;
+}
+
+.settingsRootSceneForward {
+  animation-name: settingsRootFadeIn;
+}
+
+.settingsRootSceneBack {
+  animation-name: settingsRootReturnIn;
+}
+
+.settingsRootScene {
+  display: grid;
+  gap: 16px;
+  background: #ffffff;
 }
 
 .settingsHero {
@@ -1903,6 +2094,10 @@ label {
 
 .settingsPage.pageStack,
 .settingsDetailPage.panelStack {
+  margin-top: 0;
+}
+
+.photosPage.pageStack {
   margin-top: 0;
 }
 
@@ -2285,6 +2480,7 @@ label {
   background: rgba(0, 122, 255, 0.12);
   color: #007aff;
   box-shadow: none;
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), background-color 220ms ease, opacity 180ms ease;
 }
 
 .draftTopSpacer {
@@ -2343,11 +2539,119 @@ label {
   box-shadow: 0 6px 16px rgba(17, 17, 17, 0.08);
 }
 
+.settingsMenuItem:hover,
+.settingsCardButton:hover,
+.momentCard:hover {
+  transform: translate3d(0, -2px, 0);
+}
+
+.momentThumb:hover .momentThumbImage {
+  transform: scale(1.02);
+}
+
+.settingsMenuItem:active,
+.settingsCardButton:active,
+.momentThumb:active,
+.momentEditButton:active,
+.floatingAddButton:active,
+.bottomNav button:active,
+.draftTopAction:active,
+.draftTopPrimary:active,
+.lightboxClose:active {
+  transform: scale(0.98);
+}
+
+.lightboxArrowLeft:active,
+.lightboxArrowRight:active {
+  transform: translateY(-50%) scale(0.96);
+}
+
+@keyframes settingsScenePushIn {
+  from {
+    opacity: 0;
+    transform: translate3d(42px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes settingsScenePopIn {
+  from {
+    opacity: 0;
+    transform: translate3d(-28px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes settingsRootFadeIn {
+  from {
+    opacity: 0;
+    transform: translate3d(20px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes settingsRootReturnIn {
+  from {
+    opacity: 0;
+    transform: translate3d(-18px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes pullRefreshSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tabSection,
+  .draftSheetOverlay,
+  .draftSheet,
+  .lightboxOverlay,
+  .lightboxShell,
+  .bottomNav,
+  .bottomNav button,
+  .settingsMenuItem,
+  .settingsCardButton,
+  .momentCard,
+  .momentThumb,
+  .momentThumbImage,
+  .momentEditButton,
+  .floatingAddButton,
+  .momentsPullLayer,
+  .pullRefreshIndicator,
+  .pullRefreshSpinner,
+  .draftTopAction,
+  .draftTopPrimary,
+  .lightboxClose,
+  .lightboxArrow,
+  .settingsScene {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
 @media (max-width: 680px) {
   .appShell {
     padding-left: 10px;
     padding-right: 10px;
-    padding-bottom: calc(116px + env(safe-area-inset-bottom));
+    padding-bottom: calc(88px + env(safe-area-inset-bottom));
   }
 
   .topBar {

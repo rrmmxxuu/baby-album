@@ -83,8 +83,7 @@ func loadDotEnv(path string) {
 func mustLoadRepository() (store.Repository, func()) {
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
-		log.Print("DATABASE_URL is empty; using in-memory store")
-		return store.NewInMemoryStore(), func() {}
+		log.Fatal("DATABASE_URL is required")
 	}
 	postgresStore, err := store.NewPostgresStore(databaseURL)
 	if err != nil {

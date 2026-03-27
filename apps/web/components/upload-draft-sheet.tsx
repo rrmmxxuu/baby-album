@@ -35,6 +35,8 @@ type UploadProgressState = {
   bytesPerSecond: number;
 };
 
+const SHEET_EXIT_MS = 260;
+
 interface UploadDraftSheetProps {
   albumId: string;
   authToken: string;
@@ -259,6 +261,7 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const appendInputRef = useRef<HTMLInputElement | null>(null);
   const editAppendInputRef = useRef<HTMLInputElement | null>(null);
+  const draftsRef = useRef<UploadDraft[]>([]);
   const apiBaseUrl = getApiBaseUrl();
   const [drafts, setDrafts] = useState<UploadDraft[]>([]);
   const [selectedDraftId, setSelectedDraftId] = useState("");
@@ -270,11 +273,17 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
   const [status, setStatus] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<UploadProgressState | null>(null);
+  const [shouldRender, setShouldRender] = useState(open);
+  const [visible, setVisible] = useState(false);
   const isEditMode = Boolean(editingEntry);
 
   const selectedDraft = drafts.find((item) => item.id === selectedDraftId) ?? drafts[0] ?? null;
   const totalFiles = useMemo(() => drafts.reduce((sum, draft) => sum + draft.items.length, 0), [drafts]);
   const originalMediaIds = useMemo(() => new Set(editingEntry?.items.map((item) => item.id) ?? []), [editingEntry]);
+
+  useEffect(() => {
+    draftsRef.current = drafts;
+  }, [drafts]);
 
   useEffect(() => {
     if (!open) {
@@ -301,6 +310,27 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
   }, [albumId, authToken, editingEntry, open]);
 
   useEffect(() => {
+    if (open) {
+      setShouldRender(true);
+      const frame = window.requestAnimationFrame(() => setVisible(true));
+      return () => window.cancelAnimationFrame(frame);
+    }
+    setVisible(false);
+    const timer = window.setTimeout(() => {
+      revokeDrafts(draftsRef.current);
+      setDrafts([]);
+      setSelectedDraftId("");
+      setEditorOpen(false);
+      setBatchSettingsOpen(false);
+      setStatus(null);
+      setUploading(false);
+      setUploadProgress(null);
+      setShouldRender(false);
+    }, SHEET_EXIT_MS);
+    return () => window.clearTimeout(timer);
+  }, [open]);
+
+  useEffect(() => {
     if (!open) {
       return;
     }
@@ -310,7 +340,7 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
   }, [drafts, open, selectedDraftId]);
 
   useEffect(() => {
-    if (!open) {
+    if (!shouldRender) {
       return;
     }
     const previousOverflow = document.body.style.overflow;
@@ -318,25 +348,13 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [open]);
+  }, [shouldRender]);
 
-  if (!open) {
+  if (!shouldRender) {
     return null;
   }
 
-  function resetDrafts() {
-    revokeDrafts(drafts);
-    setDrafts([]);
-    setSelectedDraftId("");
-    setEditorOpen(false);
-    setBatchSettingsOpen(false);
-    setStatus(null);
-    setUploading(false);
-    setUploadProgress(null);
-  }
-
   function closeSheet() {
-    resetDrafts();
     onClose();
   }
 
@@ -663,8 +681,8 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
   }
 
   return (
-    <div className="draftSheetOverlay">
-      <section className="draftSheet">
+    <div className={`draftSheetOverlay${visible ? " draftSheetOverlayOpen" : ""}${open ? "" : " draftSheetOverlayClosing"}`}>
+      <section className={`draftSheet${visible ? " draftSheetOpen" : ""}${open ? "" : " draftSheetClosing"}`}>
         <header className="draftSheetHeader">
           {editorOpen ? (
             <>

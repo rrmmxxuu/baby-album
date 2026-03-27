@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -24,6 +25,19 @@ var (
 	ErrPairingExpired   = errors.New("pairing code expired")
 	ErrPairingUsed      = errors.New("pairing code already used")
 )
+
+const DefaultTimelinePageSize = 10
+
+type TimelinePageInput struct {
+	Cursor string
+	Limit  int
+}
+
+type TimelinePage struct {
+	Items      []domain.TimelineEntry `json:"items"`
+	NextCursor string                 `json:"nextCursor,omitempty"`
+	HasMore    bool                   `json:"hasMore"`
+}
 
 type UploadSessionInput struct {
 	AlbumID       string
@@ -191,7 +205,7 @@ type Repository interface {
 	RevokeSession(token string) error
 	AppState(userID, albumID string) (AppState, error)
 	AlbumWorkspace(albumID, userID string) (AlbumWorkspace, error)
-	Timeline(albumID, userID string) ([]domain.TimelineEntry, error)
+	TimelinePage(albumID, userID string, input TimelinePageInput) (TimelinePage, error)
 	Members(albumID, userID string) ([]domain.AlbumMember, error)
 	MediaByID(albumID, userID, mediaID string) (domain.MediaAsset, error)
 	CreateTimelineEntry(userID string, input CreateTimelineEntryInput) (domain.TimelineEntry, error)
@@ -297,6 +311,13 @@ func normalizeAlbumWorkspace(value AlbumWorkspace) AlbumWorkspace {
 	return value
 }
 
+func normalizeTimelinePage(value TimelinePage) TimelinePage {
+	if value.Items == nil {
+		value.Items = []domain.TimelineEntry{}
+	}
+	return value
+}
+
 func applyMemberLabels(timeline []domain.TimelineEntry, members []domain.AlbumMember) {
 	if len(timeline) == 0 || len(members) == 0 {
 		return
@@ -332,6 +353,68 @@ func normalizeAppState(value AppState) AppState {
 		value.ActiveAlbum = &normalized
 	}
 	return value
+}
+
+type timelineCursor struct {
+	DisplayAt  time.Time
+	UploadedAt time.Time
+	EntryID    string
+}
+
+func normalizeTimelinePageLimit(limit int) int {
+	switch {
+	case limit <= 0:
+		return DefaultTimelinePageSize
+	case limit > 50:
+		return 50
+	default:
+		return limit
+	}
+}
+
+func encodeTimelineCursor(entry domain.TimelineEntry) string {
+	raw := strings.Join([]string{
+		entry.DisplayAt.UTC().Format(time.RFC3339Nano),
+		entry.UploadedAt.UTC().Format(time.RFC3339Nano),
+		entry.ID,
+	}, "|")
+	return base64.RawURLEncoding.EncodeToString([]byte(raw))
+}
+
+func decodeTimelineCursor(value string) (timelineCursor, error) {
+	decoded, err := base64.RawURLEncoding.DecodeString(strings.TrimSpace(value))
+	if err != nil {
+		return timelineCursor{}, ErrConflict
+	}
+	parts := strings.SplitN(string(decoded), "|", 3)
+	if len(parts) != 3 || strings.TrimSpace(parts[2]) == "" {
+		return timelineCursor{}, ErrConflict
+	}
+	displayAt, err := time.Parse(time.RFC3339Nano, parts[0])
+	if err != nil {
+		return timelineCursor{}, ErrConflict
+	}
+	uploadedAt, err := time.Parse(time.RFC3339Nano, parts[1])
+	if err != nil {
+		return timelineCursor{}, ErrConflict
+	}
+	return timelineCursor{DisplayAt: displayAt.UTC(), UploadedAt: uploadedAt.UTC(), EntryID: strings.TrimSpace(parts[2])}, nil
+}
+
+func timelineEntryPrecedesCursor(entry domain.TimelineEntry, cursor timelineCursor) bool {
+	if entry.DisplayAt.Before(cursor.DisplayAt) {
+		return true
+	}
+	if entry.DisplayAt.After(cursor.DisplayAt) {
+		return false
+	}
+	if entry.UploadedAt.Before(cursor.UploadedAt) {
+		return true
+	}
+	if entry.UploadedAt.After(cursor.UploadedAt) {
+		return false
+	}
+	return entry.ID < cursor.EntryID
 }
 
 func canonicalEmail(email string) string {

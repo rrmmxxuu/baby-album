@@ -310,7 +310,7 @@ func (s *PostgresStore) AlbumWorkspace(familyID, userID string) (AlbumWorkspace,
 	if err != nil {
 		return AlbumWorkspace{}, err
 	}
-	timeline, err := s.Timeline(familyID, userID)
+	timelinePage, err := s.TimelinePage(familyID, userID, TimelinePageInput{Limit: DefaultTimelinePageSize})
 	if err != nil {
 		return AlbumWorkspace{}, err
 	}
@@ -329,41 +329,95 @@ func (s *PostgresStore) AlbumWorkspace(familyID, userID string) (AlbumWorkspace,
 			return AlbumWorkspace{}, err
 		}
 	}
-	return normalizeAlbumWorkspace(AlbumWorkspace{Album: family, Baby: primaryBaby(babies), CurrentUser: user, Membership: membership, StorageNode: node, Timeline: timeline, Members: members, Babies: babies, Invites: invites}), nil
+	return normalizeAlbumWorkspace(AlbumWorkspace{Album: family, Baby: primaryBaby(babies), CurrentUser: user, Membership: membership, StorageNode: node, Timeline: timelinePage.Items, Members: members, Babies: babies, Invites: invites}), nil
 }
 
-func (s *PostgresStore) Timeline(familyID, userID string) ([]domain.TimelineEntry, error) {
+func (s *PostgresStore) TimelinePage(familyID, userID string, input TimelinePageInput) (TimelinePage, error) {
 	if err := s.authorize(familyID, userID, domain.RoleViewer); err != nil {
-		return nil, err
+		return TimelinePage{}, err
 	}
-	entryRows, err := s.db.Query(`select id, family_id, caption, visibility, time_mode, display_at, timeline_day, uploaded_by, uploaded_by_name, uploaded_at, created_at from timeline_entries where family_id = $1 order by display_at desc, uploaded_at desc, id desc`, familyID)
+	limit := normalizeTimelinePageLimit(input.Limit)
+	var (
+		entryRows *sql.Rows
+		err       error
+	)
+	if strings.TrimSpace(input.Cursor) == "" {
+		entryRows, err = s.db.Query(
+			`select id, family_id, caption, visibility, time_mode, display_at, timeline_day, uploaded_by, uploaded_by_name, uploaded_at, created_at from timeline_entries where family_id = $1 order by display_at desc, uploaded_at desc, id desc limit $2`,
+			familyID,
+			limit+1,
+		)
+	} else {
+		cursor, decodeErr := decodeTimelineCursor(input.Cursor)
+		if decodeErr != nil {
+			return TimelinePage{}, decodeErr
+		}
+		entryRows, err = s.db.Query(
+			`select id, family_id, caption, visibility, time_mode, display_at, timeline_day, uploaded_by, uploaded_by_name, uploaded_at, created_at
+			 from timeline_entries
+			 where family_id = $1 and (
+			 	display_at < $2 or
+			 	(display_at = $2 and uploaded_at < $3) or
+			 	(display_at = $2 and uploaded_at = $3 and id < $4)
+			 )
+			 order by display_at desc, uploaded_at desc, id desc
+			 limit $5`,
+			familyID,
+			cursor.DisplayAt,
+			cursor.UploadedAt,
+			cursor.EntryID,
+			limit+1,
+		)
+	}
 	if err != nil {
-		return nil, err
+		return TimelinePage{}, err
 	}
 	defer entryRows.Close()
+
 	entryIndexes := make(map[string]int)
-	var items []domain.TimelineEntry
+	items := make([]domain.TimelineEntry, 0, limit+1)
 	for entryRows.Next() {
-		entry, err := scanTimelineEntry(entryRows)
-		if err != nil {
-			return nil, err
+		entry, scanErr := scanTimelineEntry(entryRows)
+		if scanErr != nil {
+			return TimelinePage{}, scanErr
 		}
 		entry.Items = []domain.MediaAsset{}
 		items = append(items, entry)
 		entryIndexes[entry.ID] = len(items) - 1
 	}
 	if err := entryRows.Err(); err != nil {
-		return nil, err
+		return TimelinePage{}, err
 	}
-	mediaRows, err := s.db.Query(`select id, family_id, entry_id, upload_batch_id, uploaded_by, uploaded_by_name, file_name, media_type, captured_at, uploaded_at, timeline_day, status, source, width, height, preview_status, preview_blob_key, original_blob_key, processed_at, original_path from media_assets where family_id = $1 order by captured_at asc, uploaded_at asc, id asc`, familyID)
+
+	hasMore := len(items) > limit
+	if hasMore {
+		delete(entryIndexes, items[len(items)-1].ID)
+		items = items[:limit]
+	}
+	if len(items) == 0 {
+		return normalizeTimelinePage(TimelinePage{Items: []domain.TimelineEntry{}, HasMore: false}), nil
+	}
+
+	queryArgs := make([]any, 0, len(items)+1)
+	queryArgs = append(queryArgs, familyID)
+	placeholders := make([]string, 0, len(items))
+	for index, entry := range items {
+		placeholders = append(placeholders, fmt.Sprintf("$%d", index+2))
+		queryArgs = append(queryArgs, entry.ID)
+	}
+	mediaQuery := fmt.Sprintf(
+		`select id, family_id, entry_id, upload_batch_id, uploaded_by, uploaded_by_name, file_name, media_type, captured_at, uploaded_at, timeline_day, status, source, width, height, preview_status, preview_blob_key, original_blob_key, processed_at, original_path from media_assets where family_id = $1 and entry_id in (%s) order by captured_at asc, uploaded_at asc, id asc`,
+		strings.Join(placeholders, ","),
+	)
+	mediaRows, err := s.db.Query(mediaQuery, queryArgs...)
 	if err != nil {
-		return nil, err
+		return TimelinePage{}, err
 	}
 	defer mediaRows.Close()
 	for mediaRows.Next() {
-		item, err := scanMediaAsset(mediaRows)
-		if err != nil {
-			return nil, err
+		item, scanErr := scanMediaAsset(mediaRows)
+		if scanErr != nil {
+			return TimelinePage{}, scanErr
 		}
 		index, ok := entryIndexes[item.EntryID]
 		if !ok {
@@ -371,7 +425,15 @@ func (s *PostgresStore) Timeline(familyID, userID string) ([]domain.TimelineEntr
 		}
 		items[index].Items = append(items[index].Items, item)
 	}
-	return items, mediaRows.Err()
+	if err := mediaRows.Err(); err != nil {
+		return TimelinePage{}, err
+	}
+
+	page := TimelinePage{Items: items, HasMore: hasMore}
+	if hasMore {
+		page.NextCursor = encodeTimelineCursor(items[len(items)-1])
+	}
+	return normalizeTimelinePage(page), nil
 }
 
 func (s *PostgresStore) Members(familyID, userID string) ([]domain.AlbumMember, error) {

@@ -1,4 +1,4 @@
-import type { AlbumInvite, AppStatePayload, AuthPayload, Role, StorageNodePairing, TimelineEntry, TimelineTimeMode, TimelineVisibility } from "./types";
+import type { AlbumInvite, AppStatePayload, AuthPayload, Role, StorageNodePairing, TimelineEntry, TimelinePagePayload, TimelineTimeMode, TimelineVisibility } from "./types";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
 
@@ -42,6 +42,21 @@ export async function loadAppState(token: string, albumId?: string): Promise<App
     cache: "no-store"
   });
   return parseResponse<AppStatePayload>(response);
+}
+
+export async function loadTimelinePage(token: string, albumId: string, input?: { cursor?: string; limit?: number }): Promise<TimelinePagePayload> {
+  const query = new URLSearchParams({ albumId });
+  if (input?.cursor) {
+    query.set("cursor", input.cursor);
+  }
+  if (typeof input?.limit === "number" && Number.isFinite(input.limit)) {
+    query.set("limit", `${input.limit}`);
+  }
+  const response = await fetch(`${apiBaseUrl}/api/v1/timeline?${query.toString()}`, {
+    headers: buildHeaders(token),
+    cache: "no-store"
+  });
+  return parseResponse<TimelinePagePayload>(response);
 }
 
 export async function registerUser(input: { displayName: string; email: string; password: string }): Promise<AuthPayload> {

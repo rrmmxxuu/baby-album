@@ -1,18 +1,23 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { UploadDraftSheet } from "./upload-draft-sheet";
-import { acceptInvite, createAlbum, createInvite, createStorageNodePairing, getBabyAvatarUrl, getOriginalUrl, getPreviewUrl, leaveAlbum, loadAppState, loadInvite, loginUser, logoutUser, registerUser, updateBabyProfile, updateMemberRelation, updateMemberRole, uploadBabyAvatar } from "../lib/api";
+import { acceptInvite, createAlbum, createInvite, createStorageNodePairing, getBabyAvatarUrl, getOriginalUrl, getPreviewUrl, leaveAlbum, loadAppState, loadInvite, loadTimelinePage, loginUser, logoutUser, registerUser, updateBabyProfile, updateMemberRelation, updateMemberRole, uploadBabyAvatar } from "../lib/api";
 import type { AlbumInvite, AlbumMember, AppStatePayload, MediaAsset, Role, StorageNodePairing, TimelineEntry } from "../lib/types";
 
 type TabKey = "photos" | "settings";
 type AuthMode = "login" | "register";
 type SettingsScreen = "menu" | "account" | "babies" | "addBaby" | "babyDetail" | "memberDetail" | "storage";
+type NavDirection = "forward" | "back";
 
 const TOKEN_STORAGE_KEY = "baby-album.authToken";
 const ALBUM_STORAGE_KEY = "baby-album.albumId";
 const RELATION_OPTIONS = ["爸爸", "妈妈", "爷爷", "奶奶", "外公", "外婆", "阿姨", "叔叔", "哥哥", "姐姐"];
+const OVERLAY_EXIT_MS = 240;
+const TIMELINE_PAGE_SIZE = 10;
+const PULL_REFRESH_TRIGGER = 72;
+const PULL_REFRESH_MAX = 104;
 
 function AppShellInner() {
   const searchParams = useSearchParams();
@@ -33,7 +38,13 @@ function AppShellInner() {
   const [draftSheetOpen, setDraftSheetOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<TimelineEntry | null>(null);
   const [settingsScreen, setSettingsScreen] = useState<SettingsScreen>("menu");
+  const [settingsNavDirection, setSettingsNavDirection] = useState<NavDirection>("forward");
   const [settingsMemberId, setSettingsMemberId] = useState("");
+  const [lightboxClosing, setLightboxClosing] = useState(false);
+  const tabScrollPositionsRef = useRef<Record<TabKey, number>>({ photos: 0, settings: 0 });
+  const timelineRequestRef = useRef(0);
+  const timelineAlbumRef = useRef("");
+  const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
   const [babyProfileName, setBabyProfileName] = useState("");
   const [babyProfileBirthDate, setBabyProfileBirthDate] = useState("");
   const [createBabyAvatarFile, setCreateBabyAvatarFile] = useState<File | null>(null);
@@ -44,6 +55,15 @@ function AppShellInner() {
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [timelineEntries, setTimelineEntries] = useState<TimelineEntry[]>([]);
+  const [timelineNextCursor, setTimelineNextCursor] = useState("");
+  const [timelineHasMore, setTimelineHasMore] = useState(false);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+  const [timelineLoadingMore, setTimelineLoadingMore] = useState(false);
+  const [timelineRefreshing, setTimelineRefreshing] = useState(false);
+  const [pullStartY, setPullStartY] = useState<number | null>(null);
+  const [pullOffset, setPullOffset] = useState(0);
+  const [pullReady, setPullReady] = useState(false);
 
   const [registerName, setRegisterName] = useState("");
   const [registerEmail, setRegisterEmail] = useState("");
@@ -110,10 +130,31 @@ function AppShellInner() {
 
   useEffect(() => {
     if (activeTab !== "settings") {
+      setSettingsNavDirection("forward");
       setSettingsScreen("menu");
       setSettingsMemberId("");
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    if (!authToken || !appState?.activeAlbum) {
+      return;
+    }
+    function handleScroll() {
+      tabScrollPositionsRef.current[activeTab] = window.scrollY;
+    }
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [appState, activeTab, authToken]);
+
+  useLayoutEffect(() => {
+    if (!authToken || !appState?.activeAlbum) {
+      return;
+    }
+    const nextScrollTop = tabScrollPositionsRef.current[activeTab] ?? 0;
+    window.scrollTo(0, nextScrollTop);
+  }, [appState, activeTab, authToken]);
 
   useEffect(() => {
     if (!lightbox) {
@@ -132,7 +173,7 @@ function AppShellInner() {
     }
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
-        setLightbox(null);
+        requestCloseLightbox();
         return;
       }
       if (event.key === "ArrowLeft") {
@@ -148,6 +189,33 @@ function AppShellInner() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [lightbox]);
+
+  useEffect(() => {
+    if (!lightboxClosing) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setLightbox(null);
+      setLightboxClosing(false);
+    }, OVERLAY_EXIT_MS);
+    return () => window.clearTimeout(timer);
+  }, [lightboxClosing]);
+
+  useEffect(() => {
+    if (draftSheetOpen) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setEditingEntry(null);
+    }, OVERLAY_EXIT_MS);
+    return () => window.clearTimeout(timer);
+  }, [draftSheetOpen]);
+
+  useEffect(() => {
+    if (activeTab !== "photos" || draftSheetOpen || lightbox) {
+      resetPullRefresh();
+    }
+  }, [activeTab, draftSheetOpen, lightbox]);
 
   async function refreshApp(targetAlbumId?: string) {
     if (!authToken) {
@@ -173,6 +241,69 @@ function AppShellInner() {
       }
     } finally {
       setLoading(false);
+    }
+  }
+
+  function mergeTimelineEntries(existing: TimelineEntry[], incoming: TimelineEntry[]) {
+    const seen = new Set(existing.map((entry) => entry.id));
+    const next = [...existing];
+    for (const entry of incoming) {
+      if (seen.has(entry.id)) {
+        continue;
+      }
+      seen.add(entry.id);
+      next.push(entry);
+    }
+    return next;
+  }
+
+  async function replaceTimeline(albumId: string, limit = TIMELINE_PAGE_SIZE, showRefreshing = false) {
+    if (!authToken) {
+      return;
+    }
+    const requestId = timelineRequestRef.current + 1;
+    timelineRequestRef.current = requestId;
+    if (showRefreshing) {
+      setTimelineRefreshing(true);
+    } else {
+      setTimelineLoading(true);
+    }
+    try {
+      const page = await loadTimelinePage(authToken, albumId, { limit });
+      if (timelineRequestRef.current !== requestId) {
+        return;
+      }
+      timelineAlbumRef.current = albumId;
+      setTimelineEntries(page.items);
+      setTimelineNextCursor(page.nextCursor ?? "");
+      setTimelineHasMore(page.hasMore);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "加载时间线失败。");
+    } finally {
+      if (timelineRequestRef.current === requestId) {
+        setTimelineLoading(false);
+        setTimelineRefreshing(false);
+      }
+    }
+  }
+
+  async function loadMoreTimeline(albumId: string) {
+    if (!authToken || !timelineHasMore || !timelineNextCursor || timelineLoadingMore || timelineLoading || timelineRefreshing) {
+      return;
+    }
+    setTimelineLoadingMore(true);
+    try {
+      const page = await loadTimelinePage(authToken, albumId, { cursor: timelineNextCursor, limit: TIMELINE_PAGE_SIZE });
+      if (timelineAlbumRef.current !== albumId) {
+        return;
+      }
+      setTimelineEntries((current) => mergeTimelineEntries(current, page.items));
+      setTimelineNextCursor(page.nextCursor ?? "");
+      setTimelineHasMore(page.hasMore);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "加载更多时间线失败。");
+    } finally {
+      setTimelineLoadingMore(false);
     }
   }
 
@@ -339,11 +470,27 @@ function AppShellInner() {
     }
   }
 
+  function openSettingsScreen(screen: SettingsScreen, direction: NavDirection = "forward", options?: { memberId?: string }) {
+    setSettingsNavDirection(direction);
+    if (screen !== "memberDetail") {
+      setSettingsMemberId("");
+    }
+    if (options?.memberId) {
+      setSettingsMemberId(options.memberId);
+    }
+    setSettingsScreen(screen);
+  }
+
+  function switchTab(nextTab: TabKey) {
+    tabScrollPositionsRef.current[activeTab] = window.scrollY;
+    setActiveTab(nextTab);
+  }
+
   async function handleOpenAlbumSettings(albumId: string) {
     setError(null);
     setNotice(null);
     await refreshApp(albumId);
-    setSettingsScreen("babyDetail");
+    openSettingsScreen("babyDetail");
   }
 
   async function handleUpdateBabyProfile(event: React.FormEvent<HTMLFormElement>) {
@@ -428,19 +575,20 @@ function AppShellInner() {
     }
     if (!storageNode) {
       setNotice("请先去设置里配对储存节点。");
-      setActiveTab("settings");
-      setSettingsScreen("storage");
+      switchTab("settings");
+      openSettingsScreen("storage");
       return;
     }
     if (activeAlbum.membership.role === "viewer") {
       setNotice("当前身份没有上传权限。");
       return;
     }
+    setEditingEntry(null);
     setDraftSheetOpen(true);
   }
 
   function handleOpenEditEntry(entryId: string) {
-    const entry = activeAlbum?.timeline.find((item) => item.id === entryId) ?? null;
+    const entry = albumTimeline.find((item) => item.id === entryId) ?? null;
     if (!entry) {
       return;
     }
@@ -448,17 +596,52 @@ function AppShellInner() {
     setDraftSheetOpen(true);
   }
 
+  function openLightbox(next: LightboxState) {
+    setLightboxClosing(false);
+    setLightbox(next);
+  }
+
+  function requestCloseLightbox() {
+    if (!lightbox || lightboxClosing) {
+      return;
+    }
+    setLightboxClosing(true);
+  }
+
+  function resetPullRefresh() {
+    setPullStartY(null);
+    setPullOffset(0);
+    setPullReady(false);
+  }
+
+  async function triggerPullRefresh() {
+    if (!activeAlbum || timelineRefreshing || timelineLoading) {
+      resetPullRefresh();
+      return;
+    }
+    setPullOffset(56);
+    await replaceTimeline(activeAlbum.album.id, Math.max(TIMELINE_PAGE_SIZE, timelineEntries.length), true);
+    resetPullRefresh();
+  }
+
   function refreshTimelineSoon(targetAlbumId: string) {
+    void replaceTimeline(targetAlbumId, Math.max(TIMELINE_PAGE_SIZE, timelineEntries.length), true);
     void refreshApp(targetAlbumId);
-    window.setTimeout(() => void refreshApp(targetAlbumId), 2000);
-    window.setTimeout(() => void refreshApp(targetAlbumId), 5000);
+    window.setTimeout(() => {
+      void replaceTimeline(targetAlbumId, Math.max(TIMELINE_PAGE_SIZE, timelineEntries.length), true);
+      void refreshApp(targetAlbumId);
+    }, 2000);
+    window.setTimeout(() => {
+      void replaceTimeline(targetAlbumId, Math.max(TIMELINE_PAGE_SIZE, timelineEntries.length), true);
+      void refreshApp(targetAlbumId);
+    }, 5000);
   }
 
   const activeAlbum = appState?.activeAlbum ?? null;
   const albumOptions = appState?.albums ?? [];
   const currentUser = appState?.currentUser ?? null;
   const activeBaby = activeAlbum?.baby ?? activeAlbum?.babies?.[0] ?? null;
-  const albumTimeline = activeAlbum?.timeline ?? [];
+  const albumTimeline = timelineEntries;
   const albumMembers = activeAlbum?.members ?? [];
   const albumInvites = activeAlbum?.invites ?? [];
   const storageNode = activeAlbum?.storageNode ?? null;
@@ -487,20 +670,57 @@ function AppShellInner() {
       : "可继续上传，处理会在节点恢复后继续";
   const storagePairingModeLabel = storageNode ? "替换主节点" : "首次接入";
   const storagePairingActionLabel = storageNode ? "生成替换码" : "生成配对码";
+  const settingsSceneClassName = `panelStack settingsDetailPage settingsScene ${settingsNavDirection === "forward" ? "settingsSceneForward" : "settingsSceneBack"}`;
   const hasPendingPreview = useMemo(
     () => albumTimeline.some((entry) => entry.items.some((item) => item.previewStatus !== "ready")),
     [albumTimeline]
   );
 
   useEffect(() => {
+    if (!authToken || !activeAlbum) {
+      timelineAlbumRef.current = "";
+      setTimelineEntries([]);
+      setTimelineNextCursor("");
+      setTimelineHasMore(false);
+      setTimelineLoading(false);
+      setTimelineLoadingMore(false);
+      setTimelineRefreshing(false);
+      return;
+    }
+    timelineAlbumRef.current = activeAlbum.album.id;
+    setTimelineEntries([]);
+    setTimelineNextCursor("");
+    setTimelineHasMore(false);
+    void replaceTimeline(activeAlbum.album.id);
+  }, [activeAlbum?.album.id, authToken]);
+
+  useEffect(() => {
+    if (activeTab !== "photos" || !activeAlbum || !timelineHasMore || timelineLoading || timelineLoadingMore || timelineRefreshing) {
+      return;
+    }
+    const target = loadMoreSentinelRef.current;
+    if (!target) {
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries[0]?.isIntersecting) {
+        return;
+      }
+      void loadMoreTimeline(activeAlbum.album.id);
+    }, { rootMargin: "240px 0px" });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [activeAlbum, activeTab, timelineHasMore, timelineLoading, timelineLoadingMore, timelineRefreshing, timelineNextCursor]);
+
+  useEffect(() => {
     if (!authToken || !activeAlbum || !hasPendingPreview) {
       return;
     }
     const timer = window.setInterval(() => {
-      void refreshApp(activeAlbum.album.id);
+      void replaceTimeline(activeAlbum.album.id, Math.max(TIMELINE_PAGE_SIZE, timelineEntries.length), true);
     }, 4000);
     return () => window.clearInterval(timer);
-  }, [activeAlbum, authToken, hasPendingPreview]);
+  }, [activeAlbum, authToken, hasPendingPreview, timelineEntries.length]);
 
   return (
     <main className={`appShell${authToken && activeAlbum ? " appShellAuthenticated" : ""}`}>
@@ -645,53 +865,102 @@ function AppShellInner() {
 
       {authToken && activeAlbum ? (
         <>
-          {activeTab === "photos" ? (
-            <section className="pageStack">
-              <article className="momentsHero panel">
-                <div className="momentsHeroBackdrop" />
-                <div className="momentsHeroBody">
-                  <BabyAvatar albumId={activeAlbum.album.id} baby={activeBaby} className="momentsHeroAvatar" token={authToken} />
-                  <div className="momentsHeroCopy">
-                    <h2>{activeBaby?.name ?? activeAlbum.album.name}</h2>
-                    <p className="momentsHeroMeta">{activeBaby?.birthDate ? `出生 ${formatDate(activeBaby.birthDate)}` : "还没有填写出生日期"}</p>
+          <div className="tabViewport">
+          <section
+            aria-hidden={activeTab !== "photos"}
+            className={`pageStack photosPage tabSection ${activeTab === "photos" ? "tabSectionActive" : "tabSectionInactive"}`}
+            onTouchCancel={resetPullRefresh}
+            onTouchEnd={() => {
+              if (pullReady) {
+                void triggerPullRefresh();
+                return;
+              }
+              resetPullRefresh();
+            }}
+            onTouchMove={(event) => {
+              if (pullStartY === null || draftSheetOpen || lightbox || activeTab !== "photos") {
+                return;
+              }
+              if (window.scrollY > 0) {
+                resetPullRefresh();
+                return;
+              }
+              const delta = event.touches[0].clientY - pullStartY;
+              if (delta <= 0) {
+                resetPullRefresh();
+                return;
+              }
+              event.preventDefault();
+              const nextOffset = Math.min(PULL_REFRESH_MAX, delta * 0.42);
+              setPullOffset(nextOffset);
+              setPullReady(nextOffset >= PULL_REFRESH_TRIGGER);
+            }}
+            onTouchStart={(event) => {
+              if (activeTab !== "photos" || draftSheetOpen || lightbox || timelineLoadingMore || timelineRefreshing || event.touches.length !== 1) {
+                return;
+              }
+              if (window.scrollY > 0) {
+                return;
+              }
+              setPullStartY(event.touches[0].clientY);
+            }}
+          >
+              <div className="photosFeedShell">
+                <div className={`pullRefreshIndicator${pullOffset > 0 || timelineRefreshing ? " pullRefreshIndicatorVisible" : ""}${pullReady ? " pullRefreshIndicatorReady" : ""}`}>
+                  <div className={`pullRefreshSpinner${timelineRefreshing ? " pullRefreshSpinnerSpinning" : ""}`} />
+                  <span>{timelineRefreshing ? "正在刷新" : pullReady ? "松手刷新" : "下拉刷新"}</span>
+                </div>
+
+                <div className="momentsPullLayer" style={pullOffset > 0 ? { transform: `translate3d(0, ${pullOffset}px, 0)` } : undefined}>
+                  <article className="momentsHero panel">
+                  <div className="momentsHeroBackdrop" />
+                  <div className="momentsHeroBody">
+                    <BabyAvatar albumId={activeAlbum.album.id} baby={activeBaby} className="momentsHeroAvatar" token={authToken} />
+                    <div className="momentsHeroCopy">
+                      <h2>{activeBaby?.name ?? activeAlbum.album.name}</h2>
+                      <p className="momentsHeroMeta">{activeBaby?.birthDate ? `出生 ${formatDate(activeBaby.birthDate)}` : "还没有填写出生日期"}</p>
+                    </div>
+                    <div className="momentsHeroAside">
+                      <p className="momentsHeroMeta">{timelineLoading && albumTimeline.length === 0 ? "正在加载" : `${albumTimeline.length} 条内容`}</p>
+                      <select className="heroAlbumSelect" value={activeAlbum.album.id} onChange={(event) => void refreshApp(event.target.value)}>
+                        {albumOptions.map((item) => (
+                          <option key={item.album.id} value={item.album.id}>
+                            {item.baby?.name ?? item.album.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
-                  <div className="momentsHeroAside">
-                    <p className="momentsHeroMeta">{albumTimeline.length} 条内容</p>
-                    <select className="heroAlbumSelect" value={activeAlbum.album.id} onChange={(event) => void refreshApp(event.target.value)}>
-                      {albumOptions.map((item) => (
-                        <option key={item.album.id} value={item.album.id}>
-                          {item.baby?.name ?? item.album.name}
-                        </option>
-                      ))}
-                    </select>
+                  </article>
+
+                  <div className="momentsFeed">
+                    {timelineLoading && timelineDays.length === 0 ? <article className="panel panelStack"><p className="helperText">正在加载时间线...</p></article> : null}
+                    {!timelineLoading && timelineDays.length === 0 ? <article className="panel panelStack"><p className="helperText">还没有媒体内容，先去上传一张照片吧。</p></article> : null}
+                    {timelineDays.map((day) => (
+                      <article className="momentDay" key={day.day}>
+                        <header className="momentDayHeader">
+                          <div>
+                            <h3>{formatTimelineDate(day.day)}</h3>
+                            <p>{day.itemsCount} 项</p>
+                          </div>
+                          {day.babyAgeLabel ? <span className="momentBabyDay">宝宝第 {day.babyAgeLabel}</span> : null}
+                        </header>
+                        <div className="momentBatchList">
+                          {day.batches.map((batch) => <MomentCard albumId={activeAlbum.album.id} authToken={authToken} batch={batch} canEdit={canEditTimelineEntry(activeAlbum.membership.role, currentUser?.id, batch)} key={`${day.day}-${batch.batchId}`} onEdit={() => handleOpenEditEntry(batch.batchId)} onOpen={(index) => openLightbox({ albumId: activeAlbum.album.id, batch, index })} />)}
+                        </div>
+                      </article>
+                    ))}
+                    {timelineLoadingMore ? <div className="timelineFooterState"><div className="pullRefreshSpinner pullRefreshSpinnerSpinning" /><span>正在加载更多</span></div> : null}
+                    {!timelineHasMore && albumTimeline.length > 0 ? <div className="timelineFooterState timelineFooterStateDone"><span>已经到底了</span></div> : null}
+                    <div className="timelineLoadMoreSentinel" ref={loadMoreSentinelRef} />
                   </div>
                 </div>
-              </article>
-
-              <div className="momentsFeed">
-                {timelineDays.length === 0 ? <article className="panel panelStack"><p className="helperText">还没有媒体内容，先去上传一张照片吧。</p></article> : timelineDays.map((day) => (
-                  <article className="momentDay" key={day.day}>
-                    <header className="momentDayHeader">
-                      <div>
-                        <h3>{formatTimelineDate(day.day)}</h3>
-                        <p>{day.itemsCount} 项</p>
-                      </div>
-                      {day.babyAgeLabel ? <span className="momentBabyDay">宝宝第 {day.babyAgeLabel}</span> : null}
-                    </header>
-                    <div className="momentBatchList">
-                      {day.batches.map((batch) => <MomentCard albumId={activeAlbum.album.id} authToken={authToken} batch={batch} canEdit={canEditTimelineEntry(activeAlbum.membership.role, currentUser?.id, batch)} key={`${day.day}-${batch.batchId}`} onEdit={() => handleOpenEditEntry(batch.batchId)} onOpen={(index) => setLightbox({ albumId: activeAlbum.album.id, batch, index })} />)}
-                    </div>
-                  </article>
-                ))}
               </div>
-              <button className="floatingAddButton" onClick={handleOpenUploadFlow} type="button">+</button>
             </section>
-          ) : null}
 
-          {activeTab === "settings" ? (
-            <section className="pageStack settingsPage">
+            <section aria-hidden={activeTab !== "settings"} className={`pageStack settingsPage tabSection ${activeTab === "settings" ? "tabSectionActive" : "tabSectionInactive"}`}>
               {settingsScreen === "menu" ? (
-                <>
+                <div className={`settingsScene settingsRootScene ${settingsNavDirection === "back" ? "settingsRootSceneBack" : "settingsRootSceneForward"}`}>
                   <article className="settingsHero panel">
                     <div className="settingsHeroBackdrop" />
                     <div className="settingsHeroBody">
@@ -709,21 +978,21 @@ function AppShellInner() {
                   </article>
 
                   <article className="settingsMenu">
-                    <button className="settingsMenuItem panel" onClick={() => setSettingsScreen("account")} type="button">
+                    <button className="settingsMenuItem panel" onClick={() => openSettingsScreen("account")} type="button">
                       <span className="settingsMenuBody">
                         <span className="settingsMenuPrimary">账户管理</span>
                         <span className="settingsMenuMeta">查看当前登录账号和你在相册中的身份</span>
                       </span>
                       <span className="settingsChevron">›</span>
                     </button>
-                    <button className="settingsMenuItem panel" onClick={() => setSettingsScreen("babies")} type="button">
+                    <button className="settingsMenuItem panel" onClick={() => openSettingsScreen("babies")} type="button">
                       <span className="settingsMenuBody">
                         <span className="settingsMenuPrimary">宝宝管理</span>
                         <span className="settingsMenuMeta">切换、编辑或新增宝宝相册</span>
                       </span>
                       <span className="settingsChevron">›</span>
                     </button>
-                    <button className="settingsMenuItem panel" onClick={() => setSettingsScreen("storage")} type="button">
+                    <button className="settingsMenuItem panel" onClick={() => openSettingsScreen("storage")} type="button">
                       <span className="settingsMenuBody">
                         <span className="settingsMenuPrimary">储存节点管理</span>
                         <span className="settingsMenuMeta">{storageStatusSummary}</span>
@@ -740,12 +1009,12 @@ function AppShellInner() {
                       <span className="settingsChevron">›</span>
                     </button>
                   </article>
-                </>
+                </div>
               ) : null}
 
               {settingsScreen === "account" ? (
-                <article className="panelStack settingsDetailPage">
-                  <SettingsHeader eyebrow="账户管理" onBack={() => setSettingsScreen("menu")} title="账户信息" />
+                <article className={settingsSceneClassName}>
+                  <SettingsHeader eyebrow="账户管理" onBack={() => openSettingsScreen("menu", "back")} title="账户信息" />
                   <article className="panelStack panel">
                     <p className="settingsCardTitle">账户概览</p>
                     <div className="settingsIdentityRow">
@@ -774,8 +1043,8 @@ function AppShellInner() {
               ) : null}
 
               {settingsScreen === "babies" ? (
-                <article className="panelStack settingsDetailPage">
-                  <SettingsHeader actionLabel="添加" eyebrow="宝宝管理" onAction={() => setSettingsScreen("addBaby")} onBack={() => setSettingsScreen("menu")} title="已加入的宝宝" />
+                <article className={settingsSceneClassName}>
+                  <SettingsHeader actionLabel="添加" eyebrow="宝宝管理" onAction={() => openSettingsScreen("addBaby")} onBack={() => openSettingsScreen("menu", "back")} title="已加入的宝宝" />
                   <div className="stackList">
                     {albumOptions.map((item) => (
                       <button
@@ -797,8 +1066,8 @@ function AppShellInner() {
               ) : null}
 
               {settingsScreen === "addBaby" ? (
-                <article className="panelStack settingsDetailPage">
-                  <SettingsHeader eyebrow="添加宝宝" onBack={() => setSettingsScreen("babies")} title="新建或加入" />
+                <article className={settingsSceneClassName}>
+                  <SettingsHeader eyebrow="添加宝宝" onBack={() => openSettingsScreen("babies", "back")} title="新建或加入" />
                   <form className="panelStack panel" onSubmit={handleCreateAlbum}>
                     <p className="settingsCardTitle">自己新建</p>
                     <label>宝宝姓名<input value={babyName} onChange={(event) => setBabyName(event.target.value)} /></label>
@@ -817,8 +1086,8 @@ function AppShellInner() {
               ) : null}
 
               {settingsScreen === "babyDetail" ? (
-                <article className="panelStack settingsDetailPage">
-                  <SettingsHeader eyebrow="宝宝管理" onBack={() => setSettingsScreen("babies")} title={activeBaby?.name ?? activeAlbum.album.name} />
+                <article className={settingsSceneClassName}>
+                  <SettingsHeader eyebrow="宝宝管理" onBack={() => openSettingsScreen("babies", "back")} title={activeBaby?.name ?? activeAlbum.album.name} />
                   <article className="panelStack panel">
                     <p className="settingsCardTitle">我的角色</p>
                     <form className="formGrid" onSubmit={handleUpdateMyRelation}>
@@ -845,7 +1114,7 @@ function AppShellInner() {
                     <p className="settingsCardTitle">管理亲友</p>
                     <div className="stackList">
                       {albumMembers.map((member) => (
-                        <button className="settingsCardButton settingsMemberCard" key={member.userId} onClick={() => { setSettingsMemberId(member.userId); setSettingsScreen("memberDetail"); }} type="button">
+                        <button className="settingsCardButton settingsMemberCard" key={member.userId} onClick={() => openSettingsScreen("memberDetail", "forward", { memberId: member.userId })} type="button">
                           <span className="settingsCardAvatar" aria-hidden="true">{babyAvatarText(member.displayName)}</span>
                           <span className="settingsCardBody">
                             <span className="settingsMenuPrimary">{member.displayName}</span>
@@ -891,8 +1160,8 @@ function AppShellInner() {
               ) : null}
 
               {settingsScreen === "memberDetail" ? (
-                <article className="panelStack settingsDetailPage">
-                  <SettingsHeader eyebrow="成员详情" onBack={() => setSettingsScreen("babyDetail")} title={albumMembers.find((member) => member.userId === settingsMemberId)?.displayName ?? "成员"} />
+                <article className={settingsSceneClassName}>
+                  <SettingsHeader eyebrow="成员详情" onBack={() => openSettingsScreen("babyDetail", "back")} title={albumMembers.find((member) => member.userId === settingsMemberId)?.displayName ?? "成员"} />
                   {albumMembers.filter((member) => member.userId === settingsMemberId).map((member) => (
                     <article className="panelStack panel" key={member.userId}>
                       <p className="settingsCardTitle">成员信息</p>
@@ -916,8 +1185,8 @@ function AppShellInner() {
               ) : null}
 
               {settingsScreen === "storage" ? (
-                <article className="panelStack settingsDetailPage">
-                  <SettingsHeader eyebrow="储存节点管理" onBack={() => setSettingsScreen("menu")} title="相册储存" />
+                <article className={settingsSceneClassName}>
+                  <SettingsHeader eyebrow="储存节点管理" onBack={() => openSettingsScreen("menu", "back")} title="相册储存" />
                   <article className="panel storageFlowHero">
                     <div className="storageFlowHeroTop">
                       <div className="storageFlowHeroCopy">
@@ -1055,22 +1324,25 @@ function AppShellInner() {
                 </article>
               ) : null}
             </section>
-          ) : null}
+          </div>
         </>
       ) : null}
 
       {loading ? <p className="helperText loadingRow">正在同步最新状态...</p> : null}
 
-      {lightbox ? <LightboxViewer authToken={authToken} lightbox={lightbox} onClose={() => setLightbox(null)} onNavigate={(direction) => setLightbox((current) => current ? moveLightbox(current, direction) : current)} /> : null}
+      {lightbox ? <LightboxViewer authToken={authToken} closing={lightboxClosing} lightbox={lightbox} onClose={requestCloseLightbox} onNavigate={(direction) => setLightbox((current) => current ? moveLightbox(current, direction) : current)} /> : null}
       {authToken && activeAlbum ? <UploadDraftSheet albumId={activeAlbum.album.id} authToken={authToken} babyName={activeBaby?.name} disabled={!canUploadMedia && !editingEntry} disabledReason={!storageNode ? "上传前需要先完成 NAS 配对。" : "当前身份没有上传权限。"} editingEntry={editingEntry} onClose={() => {
         setDraftSheetOpen(false);
-        setEditingEntry(null);
       }} onDeleted={() => refreshTimelineSoon(activeAlbum.album.id)} onUploaded={() => refreshTimelineSoon(activeAlbum.album.id)} open={draftSheetOpen} /> : null}
 
-      {authToken && activeAlbum && !draftSheetOpen ? (
-        <nav className="bottomNav">
-          <button className={activeTab === "photos" ? "navActive" : ""} onClick={() => setActiveTab("photos")} type="button">照片</button>
-          <button className={activeTab === "settings" ? "navActive" : ""} onClick={() => setActiveTab("settings")} type="button">设置</button>
+      {authToken && activeAlbum && activeTab === "photos" ? (
+        <button className="floatingAddButton" onClick={handleOpenUploadFlow} type="button">+</button>
+      ) : null}
+
+      {authToken && activeAlbum ? (
+        <nav className={`bottomNav${draftSheetOpen ? " bottomNavHidden" : ""}`}>
+          <button className={activeTab === "photos" ? "navActive" : ""} onClick={() => switchTab("photos")} type="button">照片</button>
+          <button className={activeTab === "settings" ? "navActive" : ""} onClick={() => switchTab("settings")} type="button">设置</button>
         </nav>
       ) : null}
     </main>
@@ -1172,8 +1444,9 @@ function MomentThumb({ authToken, albumId, item, large, onOpen }: { authToken: s
   );
 }
 
-function LightboxViewer({ authToken, lightbox, onClose, onNavigate }: { authToken: string; lightbox: LightboxState; onClose: () => void; onNavigate: (direction: -1 | 1) => void }) {
+function LightboxViewer({ authToken, lightbox, closing, onClose, onNavigate }: { authToken: string; lightbox: LightboxState; closing: boolean; onClose: () => void; onNavigate: (direction: -1 | 1) => void }) {
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const [visible, setVisible] = useState(false);
   const currentItem = lightbox.batch.items[lightbox.index];
   const isVideo = currentItem.mediaType.startsWith("video/");
   const originalUrl = getOriginalUrl(currentItem.id, lightbox.albumId, authToken);
@@ -1185,9 +1458,18 @@ function LightboxViewer({ authToken, lightbox, onClose, onNavigate }: { authToke
     setDisplayUrl(originalUrl);
   }, [originalUrl]);
 
+  useEffect(() => {
+    if (closing) {
+      setVisible(false);
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => setVisible(true));
+    return () => window.cancelAnimationFrame(frame);
+  }, [closing]);
+
   return (
-    <div className="lightboxOverlay" onClick={onClose} role="dialog" aria-modal="true">
-      <div className="lightboxShell" onClick={(event) => event.stopPropagation()}>
+    <div className={`lightboxOverlay${visible ? " lightboxOverlayOpen" : ""}${closing ? " lightboxOverlayClosing" : ""}`} onClick={onClose} role="dialog" aria-modal="true">
+      <div className={`lightboxShell${visible ? " lightboxShellOpen" : ""}${closing ? " lightboxShellClosing" : ""}`} onClick={(event) => event.stopPropagation()}>
         <div className="lightboxTopBar">
           <div>
             <strong>{currentItem.fileName}</strong>

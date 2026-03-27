@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"babyalbum/api/internal/domain"
@@ -19,12 +20,22 @@ func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	payload, err := s.store.Timeline(albumID(r), userID)
+	cursor := strings.TrimSpace(r.URL.Query().Get("cursor"))
+	limit := 0
+	if rawLimit := strings.TrimSpace(r.URL.Query().Get("limit")); rawLimit != "" {
+		parsedLimit, parseErr := strconv.Atoi(rawLimit)
+		if parseErr != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "limit must be a number"})
+			return
+		}
+		limit = parsedLimit
+	}
+	page, err := s.store.TimelinePage(albumID(r), userID, store.TimelinePageInput{Cursor: cursor, Limit: limit})
 	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": payload})
+	writeJSON(w, http.StatusOK, page)
 }
 
 func (s *Server) handleTimelineEntries(w http.ResponseWriter, r *http.Request) {

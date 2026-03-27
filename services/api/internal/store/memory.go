@@ -15,6 +15,28 @@ type authSession struct {
 	ExpiresAt time.Time
 }
 
+type storageBinding struct {
+	FamilyID  string
+	NodeID    string
+	Mode      string
+	Status    string
+	CreatedBy string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+type mediaPlacement struct {
+	MediaID        string
+	FamilyID       string
+	NodeID         string
+	Kind           string
+	Status         string
+	LocalPath      string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	LastVerifiedAt *time.Time
+}
+
 type InMemoryStore struct {
 	mu              sync.RWMutex
 	users           map[string]domain.User
@@ -23,7 +45,9 @@ type InMemoryStore struct {
 	families        map[string]domain.Family
 	members         map[string][]domain.FamilyMember
 	storageNodes    map[string]domain.StorageNode
+	storageBindings map[string]storageBinding
 	storagePairings map[string]domain.StorageNodePairing
+	mediaPlacements map[string]mediaPlacement
 	timelineEntries map[string][]domain.TimelineEntry
 	media           map[string][]domain.MediaAsset
 	babies          map[string][]domain.BabyProfile
@@ -53,6 +77,7 @@ func NewInMemoryStore() *InMemoryStore {
 		{UserID: "user-viewer", FamilyID: family.ID, Role: domain.RoleViewer, DisplayName: "Auntie", Relation: "阿姨"},
 	}
 	node := domain.StorageNode{ID: "node-demo", FamilyID: family.ID, Name: "Living Room NAS", Status: domain.NodeOnline, RegistrationToken: "demo-registration-token", LastSeenAt: now.Add(-10 * time.Second), TotalBytes: 2 << 40, FreeBytes: 1500 << 30, AvailableBytes: 1450 << 30}
+	binding := storageBinding{FamilyID: family.ID, NodeID: node.ID, Mode: "primary", Status: "active", CreatedBy: "user-owner", CreatedAt: now.Add(-10 * time.Second), UpdatedAt: now.Add(-10 * time.Second)}
 	media := []domain.MediaAsset{
 		newSeedMedia("media-001", family.ID, "2025-11-02-first-smile.heic", "image/heic", now.AddDate(0, -4, -13), "camera_roll"),
 		newSeedMedia("media-002", family.ID, "2026-01-16-weekend-video.mov", "video/quicktime", now.AddDate(0, -2, -9), "camera_roll"),
@@ -67,7 +92,9 @@ func NewInMemoryStore() *InMemoryStore {
 		families:        map[string]domain.Family{family.ID: family},
 		members:         map[string][]domain.FamilyMember{family.ID: members},
 		storageNodes:    map[string]domain.StorageNode{node.ID: node},
+		storageBindings: map[string]storageBinding{storageBindingKey(family.ID, node.ID): binding},
 		storagePairings: make(map[string]domain.StorageNodePairing),
+		mediaPlacements: seedMediaPlacements(media, node.ID),
 		timelineEntries: map[string][]domain.TimelineEntry{family.ID: entries},
 		media:           map[string][]domain.MediaAsset{family.ID: media},
 		babies:          map[string][]domain.BabyProfile{family.ID: babies},
@@ -75,6 +102,37 @@ func NewInMemoryStore() *InMemoryStore {
 		uploadSessions:  make(map[string]domain.UploadSession),
 		jobs:            make(map[string]domain.AgentJob),
 	}
+}
+
+func storageBindingKey(familyID, nodeID string) string {
+	return familyID + "::" + nodeID
+}
+
+func mediaPlacementKey(mediaID, nodeID string) string {
+	return mediaID + "::" + nodeID
+}
+
+func seedMediaPlacements(items []domain.MediaAsset, nodeID string) map[string]mediaPlacement {
+	placements := make(map[string]mediaPlacement, len(items))
+	for _, item := range items {
+		var verifiedAt *time.Time
+		if item.ProcessedAt != nil {
+			ts := *item.ProcessedAt
+			verifiedAt = &ts
+		}
+		placements[mediaPlacementKey(item.ID, nodeID)] = mediaPlacement{
+			MediaID:        item.ID,
+			FamilyID:       item.FamilyID,
+			NodeID:         nodeID,
+			Kind:           "primary",
+			Status:         "ready",
+			LocalPath:      item.OriginalPath,
+			CreatedAt:      item.UploadedAt,
+			UpdatedAt:      item.UploadedAt,
+			LastVerifiedAt: verifiedAt,
+		}
+	}
+	return placements
 }
 
 func newSeedMedia(id, familyID, fileName, mediaType string, capturedAt time.Time, source string) domain.MediaAsset {
@@ -761,6 +819,15 @@ func (s *InMemoryStore) CreateUploadSession(userID string, input UploadSessionIn
 		BlobKey:        "",
 	}
 	s.uploadSessions[session.ID] = session
+	s.mediaPlacements[mediaPlacementKey(mediaID, node.ID)] = mediaPlacement{
+		MediaID:   mediaID,
+		FamilyID:  input.AlbumID,
+		NodeID:    node.ID,
+		Kind:      "primary",
+		Status:    "pending",
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
 	s.attachMediaToTimelineEntryLocked(input.AlbumID, input.EntryID, asset)
 	return session, nil
 }
@@ -837,6 +904,22 @@ func (s *InMemoryStore) RegisterStorageNode(input StorageNodeRegisterInput) (Sto
 		node.FreeBytes = input.Capacity.FreeBytes
 		node.AvailableBytes = input.Capacity.AvailableBytes
 		s.storageNodes[node.ID] = node
+		if pairingCode := stringsTrim(input.PairingCode); pairingCode != "" {
+			pairing, ok := s.storagePairings[pairingCode]
+			if !ok {
+				return StorageNodeRegisterResult{}, ErrPairingNotFound
+			}
+			if pairing.UsedAt != nil {
+				return StorageNodeRegisterResult{}, ErrPairingUsed
+			}
+			if pairing.ExpiresAt.Before(now) {
+				return StorageNodeRegisterResult{}, ErrPairingExpired
+			}
+			s.bindNodeToFamilyLocked(pairing.FamilyID, node.ID, pairing.CreatedBy, now)
+			pairing.UsedAt = &now
+			s.storagePairings[pairing.Code] = pairing
+			node.FamilyID = pairing.FamilyID
+		}
 		return StorageNodeRegisterResult{Node: node, NodeID: node.ID, NodeToken: node.RegistrationToken}, nil
 	}
 
@@ -867,6 +950,7 @@ func (s *InMemoryStore) RegisterStorageNode(input StorageNodeRegisterInput) (Sto
 		AvailableBytes:    input.Capacity.AvailableBytes,
 	}
 	s.storageNodes[node.ID] = node
+	s.bindNodeToFamilyLocked(pairing.FamilyID, node.ID, pairing.CreatedBy, now)
 	pairing.UsedAt = &now
 	s.storagePairings[pairing.Code] = pairing
 	return StorageNodeRegisterResult{Node: node, NodeID: node.ID, NodeToken: node.RegistrationToken}, nil
@@ -972,6 +1056,25 @@ func (s *InMemoryStore) CompleteJob(nodeID, token, jobID string, input JobComple
 			break
 		}
 	}
+	currentPrimaryNodeID := s.primaryNodeIDForFamilyLocked(job.FamilyID)
+	placementKey := mediaPlacementKey(job.MediaID, nodeID)
+	placement := s.mediaPlacements[placementKey]
+	placement.MediaID = job.MediaID
+	placement.FamilyID = job.FamilyID
+	placement.NodeID = nodeID
+	if currentPrimaryNodeID == nodeID {
+		placement.Kind = "primary"
+		placement.LocalPath = input.OriginalPath
+	} else if placement.Kind == "" {
+		placement.Kind = "replica"
+	}
+	placement.Status = "ready"
+	placement.UpdatedAt = processedAt
+	placement.LastVerifiedAt = &processedAt
+	if placement.CreatedAt.IsZero() {
+		placement.CreatedAt = job.CreatedAt
+	}
+	s.mediaPlacements[placementKey] = placement
 	for id, session := range s.uploadSessions {
 		if session.MediaID == job.MediaID {
 			session.Status = "ready"
@@ -1021,12 +1124,9 @@ func (s *InMemoryStore) buildAlbumWorkspaceLocked(familyID, userID string) (Albu
 	babies := append([]domain.BabyProfile(nil), s.babies[familyID]...)
 	sortBabies(babies)
 	var node *domain.StorageNode
-	for _, candidate := range s.storageNodes {
-		if candidate.FamilyID == familyID {
-			copyNode := candidate
-			node = &copyNode
-			break
-		}
+	if currentNode, err := s.findAlbumNodeLocked(familyID); err == nil {
+		copyNode := currentNode
+		node = &copyNode
 	}
 	invites := []domain.AlbumInvite{}
 	if roleRank(member.Role) >= roleRank(domain.RoleAdmin) {
@@ -1073,12 +1173,158 @@ func (s *InMemoryStore) hydrateInviteLocked(invite domain.FamilyInvite) domain.F
 }
 
 func (s *InMemoryStore) findAlbumNodeLocked(familyID string) (domain.StorageNode, error) {
-	for _, node := range s.storageNodes {
-		if node.FamilyID == familyID {
+	for _, binding := range s.storageBindings {
+		if binding.FamilyID == familyID && binding.Mode == "primary" && binding.Status == "active" {
+			node, ok := s.storageNodes[binding.NodeID]
+			if !ok {
+				continue
+			}
+			node.FamilyID = familyID
 			return node, nil
 		}
 	}
 	return domain.StorageNode{}, ErrNotFound
+}
+
+func (s *InMemoryStore) bindNodeToFamilyLocked(familyID, nodeID, createdBy string, now time.Time) {
+	currentPrimaryNodeID := s.primaryNodeIDForFamilyLocked(familyID)
+	for key, binding := range s.storageBindings {
+		if binding.FamilyID == familyID && binding.Mode == "primary" && binding.Status == "active" && binding.NodeID != nodeID {
+			binding.Status = "draining"
+			binding.UpdatedAt = now
+			s.storageBindings[key] = binding
+			for sessionID, session := range s.uploadSessions {
+				if session.FamilyID == familyID && session.AssignedTo == binding.NodeID && session.Status == "created" {
+					session.AssignedTo = nodeID
+					s.uploadSessions[sessionID] = session
+				}
+			}
+			for jobID, job := range s.jobs {
+				if job.FamilyID == familyID && job.NodeID == binding.NodeID && job.Status == domain.JobPending {
+					job.NodeID = nodeID
+					job.UpdatedAt = now
+					s.jobs[jobID] = job
+				}
+			}
+		}
+	}
+
+	key := storageBindingKey(familyID, nodeID)
+	binding, ok := s.storageBindings[key]
+	if !ok {
+		binding = storageBinding{
+			FamilyID:  familyID,
+			NodeID:    nodeID,
+			Mode:      "primary",
+			Status:    "active",
+			CreatedBy: createdBy,
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+	} else {
+		binding.Mode = "primary"
+		binding.Status = "active"
+		binding.UpdatedAt = now
+		if binding.CreatedBy == "" {
+			binding.CreatedBy = createdBy
+		}
+		if binding.CreatedAt.IsZero() {
+			binding.CreatedAt = now
+		}
+	}
+	s.storageBindings[key] = binding
+
+	if currentPrimaryNodeID != "" && currentPrimaryNodeID != nodeID {
+		for placementKey, placement := range s.mediaPlacements {
+			if placement.FamilyID == familyID && placement.NodeID == currentPrimaryNodeID && placement.Kind == "primary" {
+				placement.Kind = "replica"
+				placement.UpdatedAt = now
+				s.mediaPlacements[placementKey] = placement
+			}
+		}
+	}
+
+	for _, asset := range s.media[familyID] {
+		if asset.OriginalBlobKey == "" {
+			continue
+		}
+		targetKey := mediaPlacementKey(asset.ID, nodeID)
+		if placement, ok := s.mediaPlacements[targetKey]; ok {
+			needsRehydrate := asset.Status == domain.MediaReady && placement.Status != "ready"
+			if placement.Kind != "primary" || needsRehydrate {
+				placement.Kind = "primary"
+				if needsRehydrate {
+					placement.Status = "pending"
+				}
+				placement.UpdatedAt = now
+				s.mediaPlacements[targetKey] = placement
+			}
+			if needsRehydrate && !s.hasPendingJobForMediaOnNodeLocked(asset.ID, nodeID) {
+				jobID := newID("job")
+				s.jobs[jobID] = domain.AgentJob{
+					ID:        jobID,
+					NodeID:    nodeID,
+					FamilyID:  familyID,
+					MediaID:   asset.ID,
+					Type:      "rehydrate_media",
+					Status:    domain.JobPending,
+					CreatedAt: now,
+					UpdatedAt: now,
+					FileName:  asset.FileName,
+					MediaType: asset.MediaType,
+					BlobKey:   asset.OriginalBlobKey,
+				}
+			}
+			continue
+		}
+		status := "pending"
+		if asset.Status != domain.MediaReady {
+			continue
+		}
+		s.mediaPlacements[targetKey] = mediaPlacement{
+			MediaID:   asset.ID,
+			FamilyID:  familyID,
+			NodeID:    nodeID,
+			Kind:      "primary",
+			Status:    status,
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+		if !s.hasPendingJobForMediaOnNodeLocked(asset.ID, nodeID) {
+			jobID := newID("job")
+			s.jobs[jobID] = domain.AgentJob{
+				ID:        jobID,
+				NodeID:    nodeID,
+				FamilyID:  familyID,
+				MediaID:   asset.ID,
+				Type:      "rehydrate_media",
+				Status:    domain.JobPending,
+				CreatedAt: now,
+				UpdatedAt: now,
+				FileName:  asset.FileName,
+				MediaType: asset.MediaType,
+				BlobKey:   asset.OriginalBlobKey,
+			}
+		}
+	}
+}
+
+func (s *InMemoryStore) primaryNodeIDForFamilyLocked(familyID string) string {
+	for _, binding := range s.storageBindings {
+		if binding.FamilyID == familyID && binding.Mode == "primary" && binding.Status == "active" {
+			return binding.NodeID
+		}
+	}
+	return ""
+}
+
+func (s *InMemoryStore) hasPendingJobForMediaOnNodeLocked(mediaID, nodeID string) bool {
+	for _, job := range s.jobs {
+		if job.MediaID == mediaID && job.NodeID == nodeID && job.Status == domain.JobPending {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *InMemoryStore) timelineEntryExistsLocked(albumID, entryID string) bool {

@@ -56,9 +56,16 @@ func (s *PostgresStore) migrate() error {
 		`alter table storage_nodes add column if not exists total_bytes bigint not null default 0`,
 		`alter table storage_nodes add column if not exists free_bytes bigint not null default 0`,
 		`alter table storage_nodes add column if not exists available_bytes bigint not null default 0`,
+		`create table if not exists storage_node_bindings (family_id text not null references families(id), node_id text not null references storage_nodes(id), mode text not null default 'primary', status text not null default 'active', created_by text, created_at timestamptz not null, updated_at timestamptz not null, primary key (family_id, node_id))`,
+		`create index if not exists idx_storage_node_bindings_node_status on storage_node_bindings (node_id, status)`,
+		`create unique index if not exists idx_storage_node_bindings_family_primary_active on storage_node_bindings (family_id) where mode = 'primary' and status = 'active'`,
+		`insert into storage_node_bindings (family_id, node_id, mode, status, created_at, updated_at) select items.family_id, items.id, 'primary', case when items.position = 1 then 'active' else 'draining' end, items.last_seen_at, items.last_seen_at from (select sn.family_id, sn.id, sn.last_seen_at, row_number() over (partition by sn.family_id order by sn.id asc) as position from storage_nodes sn) as items on conflict (family_id, node_id) do nothing`,
 		`create table if not exists storage_node_pairings (code text primary key, family_id text not null references families(id), created_by text not null references users(id), created_at timestamptz not null, expires_at timestamptz not null, used_at timestamptz)`,
 		`create table if not exists timeline_entries (id text primary key, family_id text not null references families(id), caption text not null default '', visibility text not null default 'members', time_mode text not null default 'captured_at', display_at timestamptz not null, timeline_day text not null, uploaded_by text not null default '', uploaded_by_name text not null default '', uploaded_at timestamptz not null, created_at timestamptz not null)`,
 		`create table if not exists media_assets (id text primary key, family_id text not null references families(id), entry_id text not null default '', upload_batch_id text not null default '', uploaded_by text not null default '', uploaded_by_name text not null default '', file_name text not null, media_type text not null, captured_at timestamptz not null, uploaded_at timestamptz not null, timeline_day text not null, status text not null, source text not null, width integer not null default 0, height integer not null default 0, preview_status text not null default 'pending', preview_blob_key text not null default '', original_blob_key text not null default '', processed_at timestamptz, original_path text not null default '')`,
+		`create table if not exists media_placements (media_id text not null references media_assets(id), family_id text not null references families(id), node_id text not null references storage_nodes(id), kind text not null default 'primary', status text not null default 'pending', local_path text not null default '', created_at timestamptz not null, updated_at timestamptz not null, last_verified_at timestamptz, primary key (media_id, node_id))`,
+		`create index if not exists idx_media_placements_family_node_status on media_placements (family_id, node_id, status)`,
+		`create index if not exists idx_media_placements_media_kind on media_placements (media_id, kind)`,
 		`alter table media_assets add column if not exists entry_id text not null default ''`,
 		`alter table media_assets add column if not exists upload_batch_id text not null default ''`,
 		`alter table media_assets add column if not exists uploaded_by text not null default ''`,
@@ -68,6 +75,7 @@ func (s *PostgresStore) migrate() error {
 		`update media_assets set uploaded_by_name = '家人' where uploaded_by_name = ''`,
 		`update media_assets set entry_id = upload_batch_id where entry_id = ''`,
 		`insert into timeline_entries (id, family_id, caption, visibility, time_mode, display_at, timeline_day, uploaded_by, uploaded_by_name, uploaded_at, created_at) select distinct m.entry_id, m.family_id, '', 'members', 'captured_at', m.captured_at, m.timeline_day, m.uploaded_by, case when m.uploaded_by_name = '' then '家人' else m.uploaded_by_name end, m.uploaded_at, m.uploaded_at from media_assets m where m.entry_id <> '' on conflict (id) do nothing`,
+		`insert into media_placements (media_id, family_id, node_id, kind, status, local_path, created_at, updated_at, last_verified_at) select m.id, m.family_id, sb.node_id, 'primary', case when m.status = 'ready' then 'ready' else 'pending' end, m.original_path, coalesce(m.processed_at, m.uploaded_at), coalesce(m.processed_at, m.uploaded_at), m.processed_at from media_assets m join storage_node_bindings sb on sb.family_id = m.family_id and sb.mode = 'primary' and sb.status = 'active' where m.original_blob_key <> '' on conflict (media_id, node_id) do nothing`,
 		`create table if not exists upload_sessions (id text primary key, family_id text not null references families(id), entry_id text not null default '', upload_batch_id text not null default '', uploaded_by text not null default '', uploaded_by_name text not null default '', media_id text not null references media_assets(id), file_name text not null, media_type text not null, status text not null, created_at timestamptz not null, assigned_to text not null references storage_nodes(id), byte_size bigint not null default 0, blob_key text not null default '')`,
 		`alter table upload_sessions add column if not exists entry_id text not null default ''`,
 		`alter table upload_sessions add column if not exists upload_batch_id text not null default ''`,
@@ -148,6 +156,9 @@ func (s *PostgresStore) seed() error {
 	if _, err := tx.Exec(`insert into storage_nodes (id, family_id, name, status, registration_token, last_seen_at, total_bytes, free_bytes, available_bytes) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`, "node-demo", "family-demo", "Living Room NAS", domain.NodeOnline, "demo-registration-token", now.Add(-10*time.Second), int64(2<<40), int64(1500<<30), int64(1450<<30)); err != nil {
 		return err
 	}
+	if _, err := tx.Exec(`insert into storage_node_bindings (family_id, node_id, mode, status, created_by, created_at, updated_at) values ($1, $2, 'primary', 'active', $3, $4, $4)`, "family-demo", "node-demo", "user-owner", now.Add(-10*time.Second)); err != nil {
+		return err
+	}
 	seedMedia := []domain.MediaAsset{
 		newSeedMedia("media-001", "family-demo", "2025-11-02-first-smile.heic", "image/heic", now.AddDate(0, -4, -13), "camera_roll"),
 		newSeedMedia("media-002", "family-demo", "2026-01-16-weekend-video.mov", "video/quicktime", now.AddDate(0, -2, -9), "camera_roll"),
@@ -160,6 +171,9 @@ func (s *PostgresStore) seed() error {
 	}
 	for _, item := range seedMedia {
 		if _, err := tx.Exec(`insert into media_assets (id, family_id, entry_id, upload_batch_id, uploaded_by, uploaded_by_name, file_name, media_type, captured_at, uploaded_at, timeline_day, status, source, width, height, preview_status, preview_blob_key, original_blob_key, processed_at, original_path) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`, item.ID, item.FamilyID, item.EntryID, item.UploadBatchID, item.UploadedBy, item.UploadedByName, item.FileName, item.MediaType, item.CapturedAt, item.UploadedAt, item.TimelineDay, item.Status, item.Source, item.Width, item.Height, item.PreviewStatus, item.PreviewBlobKey, item.OriginalBlobKey, item.ProcessedAt, item.OriginalPath); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`insert into media_placements (media_id, family_id, node_id, kind, status, local_path, created_at, updated_at, last_verified_at) values ($1, $2, $3, 'primary', 'ready', $4, $5, $5, $5)`, item.ID, item.FamilyID, "node-demo", item.OriginalPath, item.UploadedAt); err != nil {
 			return err
 		}
 	}
@@ -898,6 +912,9 @@ func (s *PostgresStore) CreateUploadSession(userID string, input UploadSessionIn
 	if _, err := tx.Exec(`insert into upload_sessions (id, family_id, entry_id, upload_batch_id, uploaded_by, uploaded_by_name, media_id, file_name, media_type, status, created_at, assigned_to, byte_size, blob_key) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`, uploadID, input.AlbumID, input.EntryID, uploadBatchID, user.ID, user.DisplayName, mediaID, input.FileName, input.MediaType, "created", now, node.ID, 0, ""); err != nil {
 		return domain.UploadSession{}, err
 	}
+	if _, err := tx.Exec(`insert into media_placements (media_id, family_id, node_id, kind, status, local_path, created_at, updated_at) values ($1, $2, $3, 'primary', 'pending', '', $4, $4) on conflict (media_id, node_id) do update set kind = excluded.kind, status = excluded.status, updated_at = excluded.updated_at`, mediaID, input.AlbumID, node.ID, now); err != nil {
+		return domain.UploadSession{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return domain.UploadSession{}, err
 	}
@@ -978,6 +995,37 @@ func (s *PostgresStore) RegisterStorageNode(input StorageNodeRegisterInput) (Sto
 		if err != nil {
 			return StorageNodeRegisterResult{}, err
 		}
+		if strings.TrimSpace(input.PairingCode) != "" {
+			pairing, err := s.storageNodePairingByCode(input.PairingCode)
+			if err != nil {
+				if err == ErrNotFound {
+					return StorageNodeRegisterResult{}, ErrPairingNotFound
+				}
+				return StorageNodeRegisterResult{}, err
+			}
+			now := time.Now().UTC()
+			if pairing.UsedAt != nil {
+				return StorageNodeRegisterResult{}, ErrPairingUsed
+			}
+			if pairing.ExpiresAt.Before(now) {
+				return StorageNodeRegisterResult{}, ErrPairingExpired
+			}
+			tx, err := s.db.Begin()
+			if err != nil {
+				return StorageNodeRegisterResult{}, err
+			}
+			defer tx.Rollback()
+			if err := s.bindNodeToFamilyTx(tx, pairing.FamilyID, node.ID, pairing.CreatedBy, now); err != nil {
+				return StorageNodeRegisterResult{}, err
+			}
+			if _, err := tx.Exec(`update storage_node_pairings set used_at = $1 where code = $2`, now, pairing.Code); err != nil {
+				return StorageNodeRegisterResult{}, err
+			}
+			if err := tx.Commit(); err != nil {
+				return StorageNodeRegisterResult{}, err
+			}
+			node.FamilyID = pairing.FamilyID
+		}
 		return StorageNodeRegisterResult{Node: node, NodeID: node.ID, NodeToken: node.RegistrationToken}, nil
 	}
 	pairing, err := s.storageNodePairingByCode(input.PairingCode)
@@ -1006,6 +1054,9 @@ func (s *PostgresStore) RegisterStorageNode(input StorageNodeRegisterInput) (Sto
 	}
 	defer tx.Rollback()
 	if _, err := tx.Exec(`insert into storage_nodes (id, family_id, name, status, registration_token, last_seen_at, total_bytes, free_bytes, available_bytes) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`, nodeID, pairing.FamilyID, nodeName, domain.NodeOnline, nodeToken, now, input.Capacity.TotalBytes, input.Capacity.FreeBytes, input.Capacity.AvailableBytes); err != nil {
+		return StorageNodeRegisterResult{}, err
+	}
+	if err := s.bindNodeToFamilyTx(tx, pairing.FamilyID, nodeID, pairing.CreatedBy, now); err != nil {
 		return StorageNodeRegisterResult{}, err
 	}
 	if _, err := tx.Exec(`update storage_node_pairings set used_at = $1 where code = $2`, now, pairing.Code); err != nil {
@@ -1040,7 +1091,7 @@ func (s *PostgresStore) PendingJobs(nodeID, token string) ([]domain.AgentJob, er
 	if node.RegistrationToken != token {
 		return nil, ErrNodeUnauthorized
 	}
-	rows, err := s.db.Query(`select aj.id, aj.node_id, aj.family_id, aj.media_id, aj.type, aj.status, aj.created_at, aj.updated_at, us.file_name, us.media_type, us.byte_size, us.blob_key from agent_jobs aj join upload_sessions us on us.media_id = aj.media_id where aj.node_id = $1 and aj.status = $2 order by aj.created_at asc`, nodeID, domain.JobPending)
+	rows, err := s.db.Query(`select aj.id, aj.node_id, aj.family_id, aj.media_id, aj.type, aj.status, aj.created_at, aj.updated_at, ma.file_name, ma.media_type, coalesce(us.byte_size, 0), ma.original_blob_key from agent_jobs aj join media_assets ma on ma.id = aj.media_id left join upload_sessions us on us.media_id = aj.media_id where aj.node_id = $1 and aj.status = $2 order by aj.created_at asc`, nodeID, domain.JobPending)
 	if err != nil {
 		return nil, err
 	}
@@ -1065,7 +1116,7 @@ func (s *PostgresStore) AgentJob(nodeID, token, jobID string) (domain.AgentJob, 
 		return domain.AgentJob{}, ErrNodeUnauthorized
 	}
 	var item domain.AgentJob
-	err = s.db.QueryRow(`select aj.id, aj.node_id, aj.family_id, aj.media_id, aj.type, aj.status, aj.created_at, aj.updated_at, us.file_name, us.media_type, us.byte_size, us.blob_key from agent_jobs aj join upload_sessions us on us.media_id = aj.media_id where aj.id = $1`, jobID).Scan(&item.ID, &item.NodeID, &item.FamilyID, &item.MediaID, &item.Type, &item.Status, &item.CreatedAt, &item.UpdatedAt, &item.FileName, &item.MediaType, &item.ByteSize, &item.BlobKey)
+	err = s.db.QueryRow(`select aj.id, aj.node_id, aj.family_id, aj.media_id, aj.type, aj.status, aj.created_at, aj.updated_at, ma.file_name, ma.media_type, coalesce(us.byte_size, 0), ma.original_blob_key from agent_jobs aj join media_assets ma on ma.id = aj.media_id left join upload_sessions us on us.media_id = aj.media_id where aj.id = $1`, jobID).Scan(&item.ID, &item.NodeID, &item.FamilyID, &item.MediaID, &item.Type, &item.Status, &item.CreatedAt, &item.UpdatedAt, &item.FileName, &item.MediaType, &item.ByteSize, &item.BlobKey)
 	if err == sql.ErrNoRows {
 		return domain.AgentJob{}, ErrNotFound
 	}
@@ -1111,6 +1162,17 @@ func (s *PostgresStore) CompleteJob(nodeID, token, jobID string, input JobComple
 		return domain.AgentJob{}, err
 	}
 	if _, err := tx.Exec(`update media_assets set status = $1, width = $2, height = $3, preview_status = $4, preview_blob_key = $5, processed_at = $6, original_path = $7 where id = $8`, domain.MediaReady, input.Width, input.Height, input.PreviewStatus, input.PreviewBlobKey, input.ProcessedAt, input.OriginalPath, job.MediaID); err != nil {
+		return domain.AgentJob{}, err
+	}
+	primaryNodeID, err := s.primaryNodeIDForFamilyTx(tx, job.FamilyID)
+	if err != nil {
+		return domain.AgentJob{}, err
+	}
+	placementKind := "replica"
+	if primaryNodeID == nodeID {
+		placementKind = "primary"
+	}
+	if _, err := tx.Exec(`insert into media_placements (media_id, family_id, node_id, kind, status, local_path, created_at, updated_at, last_verified_at) values ($1, $2, $3, $4, 'ready', $5, $6, $6, $6) on conflict (media_id, node_id) do update set kind = excluded.kind, status = excluded.status, local_path = excluded.local_path, updated_at = excluded.updated_at, last_verified_at = excluded.last_verified_at`, job.MediaID, job.FamilyID, nodeID, placementKind, input.OriginalPath, input.ProcessedAt); err != nil {
 		return domain.AgentJob{}, err
 	}
 	if _, err := tx.Exec(`update upload_sessions set status = $1 where media_id = $2`, "ready", job.MediaID); err != nil {
@@ -1289,7 +1351,7 @@ func (s *PostgresStore) albumNode(familyID string) (domain.StorageNode, error) {
 func (s *PostgresStore) albumNodeMaybe(familyID string) (*domain.StorageNode, error) {
 	var node domain.StorageNode
 	var status string
-	err := s.db.QueryRow(`select id, family_id, name, status, registration_token, last_seen_at, total_bytes, free_bytes, available_bytes from storage_nodes where family_id = $1 order by id asc limit 1`, familyID).Scan(&node.ID, &node.FamilyID, &node.Name, &status, &node.RegistrationToken, &node.LastSeenAt, &node.TotalBytes, &node.FreeBytes, &node.AvailableBytes)
+	err := s.db.QueryRow(`select sn.id, $1, sn.name, sn.status, sn.registration_token, sn.last_seen_at, sn.total_bytes, sn.free_bytes, sn.available_bytes from storage_node_bindings sb join storage_nodes sn on sn.id = sb.node_id where sb.family_id = $1 and sb.mode = 'primary' and sb.status = 'active' order by sb.updated_at desc, sb.created_at desc limit 1`, familyID).Scan(&node.ID, &node.FamilyID, &node.Name, &status, &node.RegistrationToken, &node.LastSeenAt, &node.TotalBytes, &node.FreeBytes, &node.AvailableBytes)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -1298,6 +1360,85 @@ func (s *PostgresStore) albumNodeMaybe(familyID string) (*domain.StorageNode, er
 	}
 	node.Status = domain.StorageNodeStatus(status)
 	return &node, nil
+}
+
+func (s *PostgresStore) bindNodeToFamilyTx(tx *sql.Tx, familyID, nodeID, createdBy string, now time.Time) error {
+	var currentNodeID string
+	err := tx.QueryRow(`select node_id from storage_node_bindings where family_id = $1 and mode = 'primary' and status = 'active' order by updated_at desc, created_at desc limit 1`, familyID).Scan(&currentNodeID)
+	if err != nil && err != sql.ErrNoRows {
+		return err
+	}
+	if currentNodeID != "" && currentNodeID != nodeID {
+		if _, err := tx.Exec(`update storage_node_bindings set status = 'draining', updated_at = $1 where family_id = $2 and node_id = $3 and mode = 'primary'`, now, familyID, currentNodeID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`update upload_sessions set assigned_to = $1 where family_id = $2 and assigned_to = $3 and status = 'created'`, nodeID, familyID, currentNodeID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`update agent_jobs set node_id = $1, updated_at = $2 where family_id = $3 and node_id = $4 and status = $5`, nodeID, now, familyID, currentNodeID, domain.JobPending); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`update media_placements set kind = 'replica', updated_at = $1 where family_id = $2 and node_id = $3 and kind = 'primary'`, now, familyID, currentNodeID); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(`insert into storage_node_bindings (family_id, node_id, mode, status, created_by, created_at, updated_at) values ($1, $2, 'primary', 'active', $3, $4, $4) on conflict (family_id, node_id) do update set mode = excluded.mode, status = excluded.status, updated_at = excluded.updated_at`, familyID, nodeID, nullableString(createdBy), now); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`update media_placements set kind = 'primary', updated_at = $1 where family_id = $2 and node_id = $3`, now, familyID, nodeID); err != nil {
+		return err
+	}
+	rows, err := tx.Query(`select m.id from media_assets m left join media_placements mp on mp.media_id = m.id and mp.node_id = $3 where m.family_id = $1 and m.status = $2 and m.original_blob_key <> '' and (mp.media_id is null or mp.status <> 'ready')`, familyID, domain.MediaReady, nodeID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	var mediaIDs []string
+	for rows.Next() {
+		var mediaID string
+		if err := rows.Scan(&mediaID); err != nil {
+			return err
+		}
+		mediaIDs = append(mediaIDs, mediaID)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, mediaID := range mediaIDs {
+		if _, err := tx.Exec(`insert into media_placements (media_id, family_id, node_id, kind, status, local_path, created_at, updated_at) values ($1, $2, $3, 'primary', 'pending', '', $4, $4) on conflict (media_id, node_id) do update set kind = excluded.kind, status = excluded.status, updated_at = excluded.updated_at`, mediaID, familyID, nodeID, now); err != nil {
+			return err
+		}
+		var existingJobID string
+		err := tx.QueryRow(`select id from agent_jobs where media_id = $1 and node_id = $2 and status = $3 order by created_at desc limit 1`, mediaID, nodeID, domain.JobPending).Scan(&existingJobID)
+		if err != nil && err != sql.ErrNoRows {
+			return err
+		}
+		if err == sql.ErrNoRows {
+			if _, err := tx.Exec(`insert into agent_jobs (id, node_id, family_id, media_id, type, status, created_at, updated_at) values ($1, $2, $3, $4, $5, $6, $7, $7)`, newID("job"), nodeID, familyID, mediaID, "rehydrate_media", domain.JobPending, now); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func nullableString(value string) any {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return value
+}
+
+func (s *PostgresStore) primaryNodeIDForFamilyTx(tx *sql.Tx, familyID string) (string, error) {
+	var nodeID string
+	err := tx.QueryRow(`select node_id from storage_node_bindings where family_id = $1 and mode = 'primary' and status = 'active' order by updated_at desc, created_at desc limit 1`, familyID).Scan(&nodeID)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return nodeID, nil
 }
 
 func (s *PostgresStore) nodeByID(nodeID string) (domain.StorageNode, error) {

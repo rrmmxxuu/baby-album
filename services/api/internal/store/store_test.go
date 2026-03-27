@@ -140,6 +140,136 @@ func TestInMemoryStorageNodePairingAndCapacity(t *testing.T) {
 	}
 }
 
+func TestInMemoryStorageNodeRebindingReassignsJobsAndRehydrates(t *testing.T) {
+	repo := NewInMemoryStore()
+	entry, err := repo.CreateTimelineEntry("user-owner", CreateTimelineEntryInput{
+		AlbumID:    "family-demo",
+		Caption:    "客厅玩耍",
+		Visibility: domain.EntryVisibilityMembers,
+		TimeMode:   domain.EntryTimeCaptured,
+		DisplayAt:  time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("CreateTimelineEntry returned error: %v", err)
+	}
+	session, err := repo.CreateUploadSession("user-owner", UploadSessionInput{
+		AlbumID:   "family-demo",
+		EntryID:   entry.ID,
+		FileName:  "living-room.mov",
+		MediaType: "video/quicktime",
+	})
+	if err != nil {
+		t.Fatalf("CreateUploadSession returned error: %v", err)
+	}
+	if _, err := repo.AttachUploadContent("user-owner", session.ID, UploadContentInput{
+		ByteSize: 8192,
+		BlobKey:  "upload-living-room.mov",
+	}); err != nil {
+		t.Fatalf("AttachUploadContent returned error: %v", err)
+	}
+
+	initialJobs, err := repo.PendingJobs("node-demo", "demo-registration-token")
+	if err != nil {
+		t.Fatalf("PendingJobs initial returned error: %v", err)
+	}
+	if len(initialJobs) != 1 {
+		t.Fatalf("expected one initial job, got %d", len(initialJobs))
+	}
+
+	switchPairing, err := repo.CreateStorageNodePairing("user-owner", CreateStorageNodePairingInput{AlbumID: "family-demo"})
+	if err != nil {
+		t.Fatalf("CreateStorageNodePairing switch returned error: %v", err)
+	}
+	registered, err := repo.RegisterStorageNode(StorageNodeRegisterInput{
+		NodeID:      "node-migration",
+		NodeName:    "Migration NAS",
+		PairingCode: switchPairing.Code,
+		Capacity:    StorageCapacityReport{TotalBytes: 8 << 40, FreeBytes: 6 << 40, AvailableBytes: 5 << 40},
+	})
+	if err != nil {
+		t.Fatalf("RegisterStorageNode switch returned error: %v", err)
+	}
+
+	oldNodeJobs, err := repo.PendingJobs("node-demo", "demo-registration-token")
+	if err != nil {
+		t.Fatalf("PendingJobs old node returned error: %v", err)
+	}
+	if len(oldNodeJobs) != 0 {
+		t.Fatalf("expected old node to have no pending jobs after switch, got %d", len(oldNodeJobs))
+	}
+	newNodeJobs, err := repo.PendingJobs(registered.NodeID, registered.NodeToken)
+	if err != nil {
+		t.Fatalf("PendingJobs new node returned error: %v", err)
+	}
+	if len(newNodeJobs) != 1 {
+		t.Fatalf("expected new node to receive migrated ingest job, got %d", len(newNodeJobs))
+	}
+	if newNodeJobs[0].Type != "ingest_media" {
+		t.Fatalf("expected migrated ingest job, got %s", newNodeJobs[0].Type)
+	}
+
+	state, err := repo.AppState("user-owner", "family-demo")
+	if err != nil {
+		t.Fatalf("AppState after switch returned error: %v", err)
+	}
+	if state.ActiveAlbum == nil || state.ActiveAlbum.StorageNode == nil {
+		t.Fatal("expected active album storage node after switch")
+	}
+	if state.ActiveAlbum.StorageNode.ID != registered.NodeID {
+		t.Fatalf("expected active node %s after switch, got %s", registered.NodeID, state.ActiveAlbum.StorageNode.ID)
+	}
+
+	if _, err := repo.CompleteJob(registered.NodeID, registered.NodeToken, newNodeJobs[0].ID, JobCompletionInput{
+		Width:          1920,
+		Height:         1080,
+		PreviewStatus:  domain.PreviewReady,
+		PreviewBlobKey: "preview-living-room.jpg",
+		ProcessedAt:    time.Now().UTC(),
+		OriginalPath:   "/data/albums/family-demo/living-room.mov",
+	}); err != nil {
+		t.Fatalf("CompleteJob returned error: %v", err)
+	}
+
+	returnPairing, err := repo.CreateStorageNodePairing("user-owner", CreateStorageNodePairingInput{AlbumID: "family-demo"})
+	if err != nil {
+		t.Fatalf("CreateStorageNodePairing return returned error: %v", err)
+	}
+	if _, err := repo.RegisterStorageNode(StorageNodeRegisterInput{
+		NodeID:      "node-demo",
+		Token:       "demo-registration-token",
+		NodeName:    "Living Room NAS",
+		PairingCode: returnPairing.Code,
+		Capacity:    StorageCapacityReport{TotalBytes: 2 << 40, FreeBytes: 1400 << 30, AvailableBytes: 1300 << 30},
+	}); err != nil {
+		t.Fatalf("RegisterStorageNode return returned error: %v", err)
+	}
+
+	state, err = repo.AppState("user-owner", "family-demo")
+	if err != nil {
+		t.Fatalf("AppState after return returned error: %v", err)
+	}
+	if state.ActiveAlbum == nil || state.ActiveAlbum.StorageNode == nil {
+		t.Fatal("expected active album storage node after return")
+	}
+	if state.ActiveAlbum.StorageNode.ID != "node-demo" {
+		t.Fatalf("expected active node node-demo after return, got %s", state.ActiveAlbum.StorageNode.ID)
+	}
+
+	returnJobs, err := repo.PendingJobs("node-demo", "demo-registration-token")
+	if err != nil {
+		t.Fatalf("PendingJobs return node returned error: %v", err)
+	}
+	if len(returnJobs) != 1 {
+		t.Fatalf("expected one rehydrate job on returned primary node, got %d", len(returnJobs))
+	}
+	if returnJobs[0].Type != "rehydrate_media" {
+		t.Fatalf("expected rehydrate job after returning node to primary, got %s", returnJobs[0].Type)
+	}
+	if returnJobs[0].BlobKey == "" {
+		t.Fatal("expected rehydrate job to carry original blob key")
+	}
+}
+
 func TestInMemoryOnboardingInviteFlow(t *testing.T) {
 	repo := NewInMemoryStore()
 	owner, err := repo.RegisterUser(RegisterUserInput{DisplayName: "Mia", Email: "mia@example.com", Password: "strongpass1"})

@@ -15,6 +15,8 @@ const TOKEN_STORAGE_KEY = "baby-album.authToken";
 const ALBUM_STORAGE_KEY = "baby-album.albumId";
 const RELATION_OPTIONS = ["爸爸", "妈妈", "爷爷", "奶奶", "外公", "外婆", "阿姨", "叔叔", "哥哥", "姐姐"];
 const OVERLAY_EXIT_MS = 240;
+const BOOT_SPLASH_MIN_MS = 420;
+const BOOT_SPLASH_EXIT_MS = 280;
 const TIMELINE_PAGE_SIZE = 10;
 const PULL_REFRESH_TRIGGER = 72;
 const PULL_REFRESH_MAX = 104;
@@ -24,6 +26,7 @@ function AppShellInner() {
   const queryInviteCode = searchParams.get("invite") ?? "";
   const [origin, setOrigin] = useState("");
   const [hydrated, setHydrated] = useState(false);
+  const [bootPhase, setBootPhase] = useState<"loading" | "exiting" | "done">("loading");
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [activeTab, setActiveTab] = useState<TabKey>("photos");
   const [authToken, setAuthToken] = useState("");
@@ -45,6 +48,10 @@ function AppShellInner() {
   const timelineRequestRef = useRef(0);
   const timelineAlbumRef = useRef("");
   const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
+  const bootStartedAtRef = useRef(0);
+  const bootMinTimerRef = useRef<number | null>(null);
+  const bootExitTimerRef = useRef<number | null>(null);
+  const bootstrappedRef = useRef(false);
   const [babyProfileName, setBabyProfileName] = useState("");
   const [babyProfileBirthDate, setBabyProfileBirthDate] = useState("");
   const [createBabyAvatarFile, setCreateBabyAvatarFile] = useState<File | null>(null);
@@ -74,12 +81,22 @@ function AppShellInner() {
   const [babyBirthDate, setBabyBirthDate] = useState("");
 
   useEffect(() => {
+    bootStartedAtRef.current = performance.now();
     setHydrated(true);
     setOrigin(window.location.origin);
     setAuthToken(window.localStorage.getItem(TOKEN_STORAGE_KEY) ?? "");
     setSelectedAlbumId(window.localStorage.getItem(ALBUM_STORAGE_KEY) ?? "");
     setInviteCodeInput(queryInviteCode);
   }, [queryInviteCode]);
+
+  useEffect(() => () => {
+    if (bootMinTimerRef.current !== null) {
+      window.clearTimeout(bootMinTimerRef.current);
+    }
+    if (bootExitTimerRef.current !== null) {
+      window.clearTimeout(bootExitTimerRef.current);
+    }
+  }, []);
 
   useEffect(() => {
     const code = inviteCodeInput.trim();
@@ -106,11 +123,51 @@ function AppShellInner() {
   }, [inviteCodeInput]);
 
   useEffect(() => {
-    if (!hydrated || !authToken) {
+    if (!hydrated || bootstrappedRef.current) {
       return;
     }
-    void refreshApp(selectedAlbumId || undefined);
-  }, [hydrated, authToken, selectedAlbumId]);
+    bootstrappedRef.current = true;
+    let cancelled = false;
+
+    function finishBoot() {
+      if (cancelled || bootPhase === "done") {
+        return;
+      }
+      if (bootMinTimerRef.current !== null) {
+        window.clearTimeout(bootMinTimerRef.current);
+      }
+      const elapsed = performance.now() - bootStartedAtRef.current;
+      const waitMs = Math.max(0, BOOT_SPLASH_MIN_MS - elapsed);
+      bootMinTimerRef.current = window.setTimeout(() => {
+        if (cancelled) {
+          return;
+        }
+        setBootPhase("exiting");
+        bootExitTimerRef.current = window.setTimeout(() => {
+          if (!cancelled) {
+            setBootPhase("done");
+          }
+        }, BOOT_SPLASH_EXIT_MS);
+      }, waitMs);
+    }
+
+    async function bootstrap() {
+      if (!authToken) {
+        finishBoot();
+        return;
+      }
+      try {
+        await refreshApp(selectedAlbumId || undefined, { silent: true });
+      } finally {
+        finishBoot();
+      }
+    }
+
+    void bootstrap();
+    return () => {
+      cancelled = true;
+    };
+  }, [authToken, hydrated, selectedAlbumId, bootPhase]);
 
   useEffect(() => {
     const members = appState?.activeAlbum?.members ?? [];
@@ -217,11 +274,13 @@ function AppShellInner() {
     }
   }, [activeTab, draftSheetOpen, lightbox]);
 
-  async function refreshApp(targetAlbumId?: string) {
+  async function refreshApp(targetAlbumId?: string, options?: { silent?: boolean }) {
     if (!authToken) {
       return;
     }
-    setLoading(true);
+    if (!options?.silent) {
+      setLoading(true);
+    }
     setError(null);
     try {
       const next = await loadAppState(authToken, targetAlbumId);
@@ -240,7 +299,9 @@ function AppShellInner() {
         clearSession(false);
       }
     } finally {
-      setLoading(false);
+      if (!options?.silent) {
+        setLoading(false);
+      }
     }
   }
 
@@ -723,7 +784,21 @@ function AppShellInner() {
   }, [activeAlbum, authToken, hasPendingPreview, timelineEntries.length]);
 
   return (
-    <main className={`appShell${authToken && activeAlbum ? " appShellAuthenticated" : ""}`}>
+    <main className={`appShell${authToken && activeAlbum ? " appShellAuthenticated" : ""}${bootPhase !== "done" ? " appShellBooting" : ""}`}>
+      {bootPhase !== "done" ? (
+        <div aria-hidden="true" className={`bootSplash bootSplash${bootPhase === "exiting" ? " bootSplashExiting" : ""}`}>
+          <div className="bootSplashBackdrop" />
+          <div className="bootSplashPanel">
+            <span className="bootSplashMark">宝</span>
+            <div className="bootSplashCopy">
+              <strong>宝宝相册</strong>
+            </div>
+            <div className="bootSplashLoader">
+              <span className="bootSplashLoaderBar" />
+            </div>
+          </div>
+        </div>
+      ) : null}
       {!authToken || !activeAlbum ? <section className="topBar panel">
         <div>
           <p className="eyebrow">宝宝相册</p>

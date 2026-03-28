@@ -338,9 +338,10 @@
   transform: translateX(-50%);
   width: min(560px, calc(100vw - 36px));
   display: flex;
+  align-items: center;
   justify-content: center;
   gap: 12px;
-  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  padding: 10px 12px;
   border-radius: 22px;
   background: rgba(248, 248, 252, 0.9);
   border: 1px solid rgba(255, 255, 255, 0.8);
@@ -686,4 +687,3 @@
   pointer-events: none;
   transform: translate3d(0, 18px, 0) scale(0.96);
 }
-

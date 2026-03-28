@@ -8,7 +8,7 @@ import { useAppSessionContext } from "../app-session-provider";
 import { useSettingsState } from "../hooks/use-settings-state";
 import { useTimelineState } from "../hooks/use-timeline-state";
 import { buildRelationLabels, buildTimelineFeed } from "../model/timeline";
-import { buildAlbumPath, buildAuthPath, parseSettingsScreen, resolveAlbumRedirect } from "../model/routes";
+import { buildAlbumPath, buildAuthPath, buildPhotosPath, parseSettingsScreen, resolveAlbumRedirect } from "../model/routes";
 import { buildAppShellViewModel } from "../model/view";
 import type { SettingsScreen, TabKey } from "../model/types";
 import { AppPageFrame } from "../ui/app-page-frame";
@@ -37,7 +37,7 @@ function toTab(pathname: string): TabKey {
 }
 
 function isRouteScreen(screen: SettingsScreen) {
-  return screen !== "menu" && screen !== "memberDetail";
+  return screen !== "menu";
 }
 
 export function AlbumRouteShell({ albumId, children }: AlbumRouteShellProps) {
@@ -47,6 +47,10 @@ export function AlbumRouteShell({ albumId, children }: AlbumRouteShellProps) {
   const session = useAppSessionContext();
   const requestedScreen = parseSettingsScreen(searchParams.get("screen"));
   const requestedMemberId = searchParams.get("memberId") ?? "";
+  const requestedLightboxEntryId = searchParams.get("lightbox") ?? "";
+  const requestedLightboxMediaId = searchParams.get("media") ?? "";
+  const requestedComposer = searchParams.get("composer") ?? "";
+  const requestedEditEntryId = searchParams.get("edit") ?? "";
   const activeTab = toTab(pathname);
   const requestedScreenKeyRef = useRef("");
   const inviteCode = searchParams.get("invite") ?? "";
@@ -135,6 +139,74 @@ export function AlbumRouteShell({ albumId, children }: AlbumRouteShellProps) {
     router.prefetch(buildAlbumPath(readyAlbum.album.id, "settings"));
   }, [readyAlbum, router]);
 
+  useEffect(() => {
+    if (activeTab !== "photos" || !readyAlbum) {
+      if (timeline.lightbox && !timeline.lightboxClosing) {
+        timeline.requestCloseLightbox();
+      }
+      return;
+    }
+
+    if (!requestedLightboxEntryId) {
+      if (timeline.lightbox && !timeline.lightboxClosing) {
+        timeline.requestCloseLightbox();
+      }
+      return;
+    }
+
+    const matchingBatch = timelineDays.flatMap((day) => day.batches).find((batch) => batch.entry.id === requestedLightboxEntryId);
+    if (!matchingBatch) {
+      return;
+    }
+
+    const nextIndex = Math.max(0, matchingBatch.items.findIndex((item) => item.id === requestedLightboxMediaId));
+    const nextMediaId = matchingBatch.items[nextIndex]?.id ?? "";
+    const currentMediaId = timeline.lightbox ? timeline.lightbox.batch.items[timeline.lightbox.index]?.id ?? "" : "";
+    const sameLightbox = Boolean(
+      timeline.lightbox
+      && !timeline.lightboxClosing
+      && timeline.lightbox.batch.entry.id === requestedLightboxEntryId
+      && currentMediaId === nextMediaId
+    );
+
+    if (sameLightbox) {
+      return;
+    }
+
+    timeline.openLightbox({
+      albumId: readyAlbum.album.id,
+      batch: matchingBatch,
+      index: nextIndex
+    });
+  }, [activeTab, readyAlbum, requestedLightboxEntryId, requestedLightboxMediaId, timeline, timelineDays]);
+
+  useEffect(() => {
+    if (activeTab !== "photos") {
+      if (timeline.draftSheetOpen) {
+        timeline.closeDraftSheet();
+      }
+      return;
+    }
+
+    if (requestedEditEntryId) {
+      if (!timeline.draftSheetOpen || timeline.editingEntry?.id !== requestedEditEntryId) {
+        timeline.openEditEntry(requestedEditEntryId);
+      }
+      return;
+    }
+
+    if (requestedComposer === "new") {
+      if (!timeline.draftSheetOpen || timeline.editingEntry) {
+        timeline.openNewDraftSheet();
+      }
+      return;
+    }
+
+    if (timeline.draftSheetOpen) {
+      timeline.closeDraftSheet();
+    }
+  }, [activeTab, requestedComposer, requestedEditEntryId, timeline, timeline.timelineEntries]);
+
   function changeTab(nextTab: TabKey) {
     if (!activeAlbum || nextTab === activeTab) {
       return;
@@ -170,7 +242,9 @@ export function AlbumRouteShell({ albumId, children }: AlbumRouteShellProps) {
       session.setNotice("当前身份没有上传权限。");
       return;
     }
-    timeline.openNewDraftSheet();
+    startTransition(() => {
+      router.push(buildPhotosPath(activeAlbum.album.id, { composer: "new" }));
+    });
   }
 
   async function handleOpenAlbumSettings(nextAlbumId: string) {
@@ -194,6 +268,61 @@ export function AlbumRouteShell({ albumId, children }: AlbumRouteShellProps) {
         return;
       }
       router.push(nextPath);
+    });
+  }
+
+  function handleOpenLightbox(entryId: string, mediaId: string) {
+    if (!activeAlbum) {
+      return;
+    }
+    startTransition(() => {
+      router.push(buildPhotosPath(activeAlbum.album.id, {
+        lightboxEntryId: entryId,
+        mediaId
+      }));
+    });
+  }
+
+  function handleNavigateLightbox(direction: -1 | 1) {
+    if (!activeAlbum || !timeline.lightbox) {
+      return;
+    }
+    const nextItem = timeline.lightbox.batch.items[timeline.lightbox.index + direction];
+    if (!nextItem) {
+      return;
+    }
+    startTransition(() => {
+      router.replace(buildPhotosPath(activeAlbum.album.id, {
+        lightboxEntryId: timeline.lightbox?.batch.entry.id,
+        mediaId: nextItem.id
+      }));
+    });
+  }
+
+  function handleCloseLightbox() {
+    if (!activeAlbum) {
+      return;
+    }
+    startTransition(() => {
+      router.replace(buildPhotosPath(activeAlbum.album.id));
+    });
+  }
+
+  function handleOpenEditEntry(entryId: string) {
+    if (!activeAlbum) {
+      return;
+    }
+    startTransition(() => {
+      router.push(buildPhotosPath(activeAlbum.album.id, { editEntryId: entryId }));
+    });
+  }
+
+  function handleCloseDraftSheet() {
+    if (!activeAlbum) {
+      return;
+    }
+    startTransition(() => {
+      router.replace(buildPhotosPath(activeAlbum.album.id));
     });
   }
 
@@ -225,6 +354,8 @@ export function AlbumRouteShell({ albumId, children }: AlbumRouteShellProps) {
             timelineDays,
             handleAlbumChange,
             handleOpenUploadFlow,
+            handleOpenLightbox,
+            handleOpenEditEntry,
             handleOpenAlbumSettings,
             navigateSettingsScreen,
             handleLogout
@@ -236,7 +367,7 @@ export function AlbumRouteShell({ albumId, children }: AlbumRouteShellProps) {
 
       {!redirectPath && (session.loading || !showAlbumContent) ? <p className="helperText loadingRow">正在同步最新状态...</p> : null}
 
-      {timeline.lightbox ? <LightboxViewer authToken={session.authToken} closing={timeline.lightboxClosing} lightbox={timeline.lightbox} onClose={timeline.requestCloseLightbox} onNavigate={timeline.navigateLightbox} /> : null}
+      {timeline.lightbox ? <LightboxViewer authToken={session.authToken} closing={timeline.lightboxClosing} lightbox={timeline.lightbox} onClose={handleCloseLightbox} onNavigate={handleNavigateLightbox} /> : null}
 
       {readyAlbum && !redirectPath ? (
         <UploadDraftSheet
@@ -246,7 +377,7 @@ export function AlbumRouteShell({ albumId, children }: AlbumRouteShellProps) {
           disabled={!appView.canUploadMedia && !timeline.editingEntry}
           disabledReason={!appView.storageNode ? "上传前需要先完成 NAS 配对。" : "当前身份没有上传权限。"}
           editingEntry={timeline.editingEntry}
-          onClose={timeline.closeDraftSheet}
+          onClose={handleCloseDraftSheet}
           onDeleted={() => timeline.refreshTimelineSoon(readyAlbum.album.id)}
           onUploaded={() => timeline.refreshTimelineSoon(readyAlbum.album.id)}
           open={timeline.draftSheetOpen}

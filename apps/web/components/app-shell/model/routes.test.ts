@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildAlbumPath, buildAlbumsPath, buildAuthPath, parseSettingsScreen, resolveAlbumRedirect, resolveAlbumsRedirect, resolveAuthRedirect, resolveHomeRedirect } from "./routes";
+import { buildAlbumPath, buildAlbumsPath, buildAuthPath, buildPhotosPath, parseSettingsScreen, resolveAlbumRedirect, resolveAlbumsRedirect, resolveAuthRedirect, resolveHomeRedirect } from "./routes";
 
 describe("route helpers", () => {
   it("builds auth and albums paths with optional invite codes", () => {
@@ -13,6 +13,13 @@ describe("route helpers", () => {
     expect(buildAlbumPath("album-1", "settings")).toBe("/album/album-1/settings");
     expect(buildAlbumPath("album-1", "settings", { screen: "storage" })).toBe("/album/album-1/settings?screen=storage");
     expect(buildAlbumPath("album-1", "settings", { screen: "memberDetail", memberId: "user-1" })).toBe("/album/album-1/settings?screen=memberDetail&memberId=user-1");
+  });
+
+  it("builds photos paths for lightbox and composer states", () => {
+    expect(buildPhotosPath("album-1")).toBe("/album/album-1/photos");
+    expect(buildPhotosPath("album-1", { lightboxEntryId: "entry-1", mediaId: "media-2" })).toBe("/album/album-1/photos?lightbox=entry-1&media=media-2");
+    expect(buildPhotosPath("album-1", { composer: "new" })).toBe("/album/album-1/photos?composer=new");
+    expect(buildPhotosPath("album-1", { editEntryId: "entry-9" })).toBe("/album/album-1/photos?edit=entry-9");
   });
 
   it("only accepts routable settings screens", () => {

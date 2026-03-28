@@ -20,6 +20,8 @@ export interface AlbumRouteContextValue {
   timelineDays: TimelineDayGroup[];
   handleAlbumChange: (albumId: string) => void;
   handleOpenUploadFlow: () => void;
+  handleOpenLightbox: (entryId: string, mediaId: string) => void;
+  handleOpenEditEntry: (entryId: string) => void;
   handleOpenAlbumSettings: (albumId: string) => void | Promise<void>;
   navigateSettingsScreen: (screen: SettingsScreen, direction?: NavDirection, options?: { memberId?: string }) => void;
   handleLogout: () => void;

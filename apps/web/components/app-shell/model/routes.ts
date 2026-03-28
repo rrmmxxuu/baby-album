@@ -19,6 +19,23 @@ export function buildAlbumsPath(inviteCode?: string) {
   return appendInvite("/albums", inviteCode);
 }
 
+export function buildPhotosPath(albumId: string, options?: { lightboxEntryId?: string | null; mediaId?: string | null; composer?: "new" | null; editEntryId?: string | null }) {
+  const basePath = `/album/${encodeURIComponent(albumId)}/photos`;
+  const query = new URLSearchParams();
+  if (options?.editEntryId) {
+    query.set("edit", options.editEntryId);
+  } else if (options?.composer === "new") {
+    query.set("composer", "new");
+  } else if (options?.lightboxEntryId) {
+    query.set("lightbox", options.lightboxEntryId);
+    if (options.mediaId) {
+      query.set("media", options.mediaId);
+    }
+  }
+  const queryString = query.toString();
+  return (queryString ? `${basePath}?${queryString}` : basePath) as Route;
+}
+
 export function buildAlbumPath(albumId: string, tab: TabKey, options?: { screen?: SettingsScreen | null; memberId?: string | null }) {
   const basePath = `/album/${encodeURIComponent(albumId)}/${tab}`;
   if (tab !== "settings" || !options?.screen || options.screen === "menu") {

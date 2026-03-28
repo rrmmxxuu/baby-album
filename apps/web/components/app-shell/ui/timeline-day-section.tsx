@@ -11,9 +11,11 @@ interface TimelineDaySectionProps {
   day: TimelineDayGroup;
   timeline: TimelineState;
   currentUserId?: string;
+  onEditEntry: (entryId: string) => void;
+  onOpenLightbox: (entryId: string, mediaId: string) => void;
 }
 
-export function TimelineDaySection({ activeAlbum, authToken, day, timeline, currentUserId }: TimelineDaySectionProps) {
+export function TimelineDaySection({ activeAlbum, authToken, day, timeline, currentUserId, onEditEntry, onOpenLightbox }: TimelineDaySectionProps) {
   return (
     <article className="momentDay">
       <header className="momentDayHeader">
@@ -37,8 +39,8 @@ export function TimelineDaySection({ activeAlbum, authToken, day, timeline, curr
             onCommentDraftChange={(value) => timeline.setCommentDraft(batch.entry.id, value)}
             onCommentSubmit={() => void timeline.handleCreateComment(batch.entry.id)}
             onCommentToggle={() => timeline.toggleCommentComposer(batch.entry.id)}
-            onEdit={() => timeline.openEditEntry(batch.batchId)}
-            onOpen={(index) => timeline.openLightbox({ albumId: activeAlbum.album.id, batch, index })}
+            onEdit={() => onEditEntry(batch.entry.id)}
+            onOpen={(index) => onOpenLightbox(batch.entry.id, batch.items[index]?.id ?? batch.items[0].id)}
           />
         ))}
       </div>

@@ -34,9 +34,12 @@ interface SettingsTabProps {
   canManageInvites: boolean;
   canManageBabyProfile: boolean;
   canManageStorage: boolean;
+  onAlbumChange: (albumId: string) => void;
+  onLogout: () => void;
+  onOpenAlbumSettings: (albumId: string) => void | Promise<void>;
 }
 
-export function SettingsTab({ activeTab, settingsSceneClassName, activeAlbum, activeBaby, currentUser, albumOptions, albumMembers, albumInvites, transferCandidates, authToken, session, settings, storageNode, storageStatus, storageStatusSummary, storageUploadSummary, storageFlowTitle, storagePairingModeLabel, storagePairingActionLabel, activeStoragePairing, canManageInvites, canManageBabyProfile, canManageStorage }: SettingsTabProps) {
+export function SettingsTab({ activeTab, settingsSceneClassName, activeAlbum, activeBaby, currentUser, albumOptions, albumMembers, albumInvites, transferCandidates, authToken, session, settings, storageNode, storageStatus, storageStatusSummary, storageUploadSummary, storageFlowTitle, storagePairingModeLabel, storagePairingActionLabel, activeStoragePairing, canManageInvites, canManageBabyProfile, canManageStorage, onAlbumChange, onLogout, onOpenAlbumSettings }: SettingsTabProps) {
   return (
     <section aria-hidden={!activeTab} className={`pageStack settingsPage tabSection ${activeTab ? "tabSectionActive" : "tabSectionInactive"}`}>
       {settings.settingsScreen === "menu" ? (
@@ -45,7 +48,7 @@ export function SettingsTab({ activeTab, settingsSceneClassName, activeAlbum, ac
           activeBaby={activeBaby}
           currentUser={currentUser}
           navDirection={settings.settingsNavDirection}
-          onLogout={session.handleLogout}
+          onLogout={onLogout}
           onOpenScreen={(screen) => settings.openSettingsScreen(screen)}
           storageStatus={storageStatus}
           storageStatusSummary={storageStatusSummary}
@@ -69,7 +72,7 @@ export function SettingsTab({ activeTab, settingsSceneClassName, activeAlbum, ac
           className={settingsSceneClassName}
           onAdd={() => settings.openSettingsScreen("addBaby")}
           onBack={() => settings.openSettingsScreen("menu", "back")}
-          onOpenAlbumSettings={settings.handleOpenAlbumSettings}
+          onOpenAlbumSettings={onOpenAlbumSettings}
         />
       ) : null}
 
@@ -111,7 +114,7 @@ export function SettingsTab({ activeTab, settingsSceneClassName, activeAlbum, ac
           albumOptions={albumOptions}
           canManageStorage={canManageStorage}
           className={settingsSceneClassName}
-          onAlbumChange={(albumId) => void session.refreshApp(albumId)}
+          onAlbumChange={onAlbumChange}
           onBack={() => settings.openSettingsScreen("menu", "back")}
           onCreateStoragePairing={settings.handleCreateStoragePairing}
           storageFlowTitle={storageFlowTitle}

@@ -1,5 +1,5 @@
-import { AppShell } from "../components/app-shell";
+import { HomeRoute } from "../components/app-shell/routes/home-route";
 
 export default function Home() {
-  return <AppShell />;
+  return <HomeRoute />;
 }

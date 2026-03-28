@@ -1,0 +1,163 @@
+
+@keyframes settingsScenePushIn {
+  from {
+    opacity: 0;
+    transform: translate3d(42px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes settingsScenePopIn {
+  from {
+    opacity: 0;
+    transform: translate3d(-28px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes settingsRootFadeIn {
+  from {
+    opacity: 0;
+    transform: translate3d(20px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes settingsRootReturnIn {
+  from {
+    opacity: 0;
+    transform: translate3d(-18px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes pullRefreshSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tabSection,
+  .draftSheetOverlay,
+  .draftSheet,
+  .lightboxOverlay,
+  .lightboxShell,
+  .bottomNav,
+  .bottomNav button,
+  .settingsMenuItem,
+  .settingsCardButton,
+  .momentCard,
+  .momentThumb,
+  .momentThumbImage,
+  .momentCommentButton,
+  .momentEditButton,
+  .floatingAddButton,
+  .momentsPullLayer,
+  .pullRefreshIndicator,
+  .pullRefreshSpinner,
+  .draftTopAction,
+  .draftTopPrimary,
+  .lightboxClose,
+  .lightboxArrow,
+  .settingsScene,
+  .bootSplash,
+  .bootSplashLoaderBar {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+@media (max-width: 680px) {
+  .appShell {
+    padding-left: 10px;
+    padding-right: 10px;
+    padding-bottom: calc(88px + env(safe-area-inset-bottom));
+  }
+
+  .topBar {
+    padding-top: 6px;
+  }
+
+  .momentsHero {
+    min-height: 226px;
+    padding: 20px;
+  }
+
+  .momentsHeroBody {
+    grid-template-columns: 1fr;
+  }
+
+  .settingsHeroBody {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .settingsSessionBadge {
+    min-width: 0;
+  }
+
+  .settingsMenuItem {
+    min-height: 68px;
+  }
+
+  .settingsInfoRow {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .storageFlowHeroTop,
+  .storageSectionHeader,
+  .storagePairingMeta {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .storageAlbumPicker {
+    width: 100%;
+  }
+
+  .storageAlbumPicker select {
+    text-align: left;
+  }
+
+  .storageMetricsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .momentVideoPlay {
+    width: 60px;
+    height: 60px;
+  }
+
+  .momentVideoPlayTriangle {
+    border-top-width: 10px;
+    border-bottom-width: 10px;
+    border-left-width: 16px;
+  }
+
+  .floatingAddButton {
+    right: 14px;
+    bottom: calc(90px + env(safe-area-inset-bottom));
+  }
+
+  .draftSheet {
+    padding: 14px 14px calc(16px + env(safe-area-inset-bottom));
+  }
+}

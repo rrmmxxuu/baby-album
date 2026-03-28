@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
+import { Suspense } from "react";
 import "./globals.css";
 import { PwaBoot } from "../components/pwa-boot";
+import { AppSessionProvider } from "../components/app-shell/app-session-provider";
 
 export const metadata: Metadata = {
   title: "宝宝相册 | Baby Album",
@@ -37,7 +39,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="zh-CN">
       <body>
         <PwaBoot />
-        {children}
+        <Suspense fallback={<main className="appShell"><section className="panel"><p className="helperText">正在加载宝宝相册...</p></section></main>}>
+          <AppSessionProvider>{children}</AppSessionProvider>
+        </Suspense>
       </body>
     </html>
   );

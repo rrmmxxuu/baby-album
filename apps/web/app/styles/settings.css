@@ -1,0 +1,262 @@
+.settingsMenu {
+  display: grid;
+  gap: 14px;
+  padding: 0;
+}
+
+.settingsMenuItem {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px;
+  background: var(--panel);
+  color: var(--ink);
+  font-weight: 500;
+  text-align: left;
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 240ms ease, background-color 220ms ease;
+}
+
+.settingsMenuItem:disabled {
+  color: var(--muted);
+  background: rgba(255, 250, 242, 0.6);
+}
+
+.settingsMenuPrimary,
+.settingsMenuMeta {
+  display: block;
+}
+
+.settingsMenuPrimary {
+  font-weight: 600;
+}
+
+.settingsMenuMeta {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.settingsMenuDanger {
+  color: #b44d36;
+}
+
+.settingsCardButton {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  text-align: left;
+  color: var(--ink);
+  background: var(--panel);
+}
+
+.settingsCardAvatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 52px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  color: #7c391f;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.settingsCardAvatarLarge {
+  width: 72px;
+  height: 72px;
+  border-radius: 22px;
+  font-size: 1.6rem;
+}
+
+.settingsCardBody {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  flex: 1;
+  overflow: hidden;
+}
+
+.settingsMemberCard {
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  box-shadow: none;
+}
+
+.babyProfileAvatarRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.avatarUploadField {
+  flex: 1;
+  display: grid;
+  gap: 6px;
+}
+
+@media (min-width: 860px) {
+  .summaryGrid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .gridColumns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .inlineForm {
+    grid-template-columns: minmax(160px, 220px) auto;
+    align-items: flex-end;
+  }
+}
+
+@media (max-width: 680px) {
+  .appShell {
+    width: min(100vw - 16px, 1120px);
+    padding-top: 16px;
+  }
+
+  .panel,
+  .timelineDay,
+  .inviteCard,
+  .metricCard,
+  .sessionBadge {
+    border-radius: 22px;
+  }
+
+  .timelineItem,
+  .memberRow,
+  .memberActions {
+    grid-template-columns: 1fr;
+  }
+
+  .momentsHero {
+    min-height: 240px;
+    padding: 20px;
+  }
+
+  .momentsHeroBody {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .sectionHeading {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .sectionHeading > div {
+    order: 2;
+    width: 100%;
+    flex: none;
+  }
+
+  .settingsDetailPage {
+    gap: 14px;
+  }
+
+  .momentsHeroCopy {
+    order: 2;
+  }
+
+  .momentsHeroAside {
+    order: 3;
+    justify-items: start;
+    align-self: start;
+    min-width: 0;
+  }
+
+  .heroAlbumSelect {
+    width: 100%;
+  }
+
+  .momentDayHeader {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .floatingAddButton {
+    right: 16px;
+    bottom: 90px;
+  }
+
+  .draftSheet {
+    max-height: 100vh;
+    padding: 14px;
+  }
+
+  .draftSheetHeader,
+  .draftSheetFooter {
+    align-items: center;
+    flex-direction: row;
+  }
+
+  .draftHeaderActions {
+    width: auto;
+  }
+
+  .draftListItem {
+    grid-template-columns: 1fr;
+  }
+
+  .draftFloatingBar {
+    gap: 8px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  }
+
+  .draftFloatingBar button {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .draftUploadDialog {
+    width: min(100%, 340px);
+  }
+
+  .draftUploadStats {
+    grid-template-columns: 1fr;
+  }
+
+  .draftUploadStats span,
+  .draftUploadStats span:nth-child(2),
+  .draftUploadStats span:last-child {
+    text-align: left;
+  }
+
+  .settingsCardButton {
+    padding: 14px 16px;
+  }
+
+  .settingsPage {
+    width: 100%;
+  }
+
+  .settingsDetailPage {
+    width: 100%;
+  }
+
+  .lightboxShell {
+    padding: 14px;
+    border-radius: 24px;
+  }
+
+  .lightboxTopBar,
+  .lightboxBottomBar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .lightboxArrow {
+    width: 42px;
+    height: 42px;
+  }
+
+  .thumb {
+    height: 180px;
+  }
+}

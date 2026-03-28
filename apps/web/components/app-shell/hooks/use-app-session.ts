@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { acceptInvite, createAlbum, loadAppState, loadInvite, loginUser, logoutUser, registerUser, uploadBabyAvatar } from "../../../lib/api";
-import type { AlbumInvite, AppStatePayload } from "../../../lib/types";
+import { acceptInvite, createAlbum, loadAppState, loginUser, logoutUser, registerUser, uploadBabyAvatar } from "../../../lib/api";
+import type { AppStatePayload } from "../../../lib/types";
 import { ALBUM_STORAGE_KEY, BOOT_SPLASH_EXIT_MS, BOOT_SPLASH_MIN_MS, TOKEN_STORAGE_KEY } from "../model/constants";
 import type { AuthMode } from "../model/types";
 
 interface RefreshOptions {
   silent?: boolean;
+  token?: string;
 }
 
 export function useAppSession(queryInviteCode: string) {
@@ -19,7 +20,6 @@ export function useAppSession(queryInviteCode: string) {
   const [selectedAlbumId, setSelectedAlbumId] = useState("");
   const [appState, setAppState] = useState<AppStatePayload | null>(null);
   const [inviteCodeInput, setInviteCodeInput] = useState("");
-  const [invite, setInvite] = useState<AlbumInvite | null>(null);
   const [createRelation, setCreateRelation] = useState("");
   const [inviteRelation, setInviteRelation] = useState("");
   const [loading, setLoading] = useState(false);
@@ -52,7 +52,8 @@ export function useAppSession(queryInviteCode: string) {
   }, []);
 
   const refreshApp = useCallback(async (targetAlbumId?: string, options?: RefreshOptions) => {
-    if (!authToken) {
+    const sessionToken = options?.token ?? authToken;
+    if (!sessionToken) {
       return;
     }
     if (!options?.silent) {
@@ -60,7 +61,7 @@ export function useAppSession(queryInviteCode: string) {
     }
     setError(null);
     try {
-      const next = await loadAppState(authToken, targetAlbumId);
+      const next = await loadAppState(sessionToken, targetAlbumId);
       setAppState(next);
       const albumId = next.activeAlbumId ?? "";
       setSelectedAlbumId(albumId);
@@ -99,30 +100,6 @@ export function useAppSession(queryInviteCode: string) {
       window.clearTimeout(bootExitTimerRef.current);
     }
   }, []);
-
-  useEffect(() => {
-    const code = inviteCodeInput.trim();
-    if (!code) {
-      setInvite(null);
-      return;
-    }
-    let cancelled = false;
-    loadInvite(code)
-      .then((value) => {
-        if (!cancelled) {
-          setInvite(value);
-        }
-      })
-      .catch((err: Error) => {
-        if (!cancelled) {
-          setInvite(null);
-          setError(err.message);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [inviteCodeInput]);
 
   useEffect(() => {
     if (!hydrated || bootstrappedRef.current) {
@@ -187,7 +164,7 @@ export function useAppSession(queryInviteCode: string) {
       setRegisterEmail("");
       setRegisterPassword("");
       setNotice(`欢迎，${auth.user.displayName}。请继续加入已有相册，或创建第一个宝宝相册。`);
-      await refreshApp();
+      await refreshApp(undefined, { token: auth.token });
     } catch (err) {
       setError(err instanceof Error ? err.message : "注册失败。");
     }
@@ -203,21 +180,22 @@ export function useAppSession(queryInviteCode: string) {
       setLoginEmail("");
       setLoginPassword("");
       setNotice(`欢迎回来，${auth.user.displayName}。`);
-      await refreshApp();
+      await refreshApp(undefined, { token: auth.token });
     } catch (err) {
       setError(err instanceof Error ? err.message : "登录失败。");
     }
   }
 
   async function handleLogout() {
+    const sessionToken = authToken;
+    clearSession();
     try {
-      if (authToken) {
-        await logoutUser(authToken);
+      if (sessionToken) {
+        await logoutUser(sessionToken);
       }
     } catch {
       // Keep local logout deterministic even if the API call fails.
     }
-    clearSession();
   }
 
   async function handleCreateAlbum(event: React.FormEvent<HTMLFormElement>) {
@@ -284,7 +262,6 @@ export function useAppSession(queryInviteCode: string) {
       setSelectedAlbumId(accepted.albumId);
       window.localStorage.setItem(ALBUM_STORAGE_KEY, accepted.albumId);
       setInviteRelation("");
-      setNotice(`已加入 ${accepted.albumName ?? "宝宝相册"}。`);
       await refreshApp(accepted.albumId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "加入相册失败。");
@@ -302,7 +279,6 @@ export function useAppSession(queryInviteCode: string) {
     appState,
     inviteCodeInput,
     setInviteCodeInput,
-    invite,
     createRelation,
     setCreateRelation,
     inviteRelation,

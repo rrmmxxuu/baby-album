@@ -8,7 +8,7 @@ interface CreateAlbumFormProps {
 
 export function CreateAlbumForm({ session, submitLabel }: CreateAlbumFormProps) {
   return (
-    <form className="formGrid" onSubmit={session.handleCreateAlbum}>
+    <form className="formGrid noAlbumForm" onSubmit={session.handleCreateAlbum}>
       <label>
         宝宝姓名
         <input value={session.babyName} onChange={(event) => session.setBabyName(event.target.value)} />

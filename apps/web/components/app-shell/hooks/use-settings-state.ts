@@ -65,13 +65,6 @@ export function useSettingsState({ activeTab, authToken, appState, activeAlbum, 
     setRoleDrafts((current) => ({ ...current, [memberUserId]: role }));
   }
 
-  async function handleOpenAlbumSettings(albumId: string) {
-    setError(null);
-    setNotice(null);
-    await refreshApp(albumId);
-    openSettingsScreen("babyDetail");
-  }
-
   async function handleUpdateBabyProfile(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!authToken || !activeAlbum?.baby) {
@@ -197,7 +190,6 @@ export function useSettingsState({ activeTab, authToken, appState, activeAlbum, 
     setBabyAvatarFile,
     myRelationDraft,
     setMyRelationDraft,
-    handleOpenAlbumSettings,
     handleUpdateBabyProfile,
     handleRoleUpdate,
     handleUpdateMyRelation,

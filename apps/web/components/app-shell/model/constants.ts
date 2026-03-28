@@ -1,0 +1,9 @@
+export const TOKEN_STORAGE_KEY = "baby-album.authToken";
+export const ALBUM_STORAGE_KEY = "baby-album.albumId";
+export const RELATION_OPTIONS = ["爸爸", "妈妈", "爷爷", "奶奶", "外公", "外婆", "阿姨", "叔叔", "哥哥", "姐姐"];
+export const OVERLAY_EXIT_MS = 240;
+export const BOOT_SPLASH_MIN_MS = 420;
+export const BOOT_SPLASH_EXIT_MS = 280;
+export const TIMELINE_PAGE_SIZE = 10;
+export const PULL_REFRESH_TRIGGER = 72;
+export const PULL_REFRESH_MAX = 104;

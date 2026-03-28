@@ -4,7 +4,7 @@ import { useAlbumRouteContext } from "../album-route-context";
 import { SettingsTab } from "../ui/settings-tab";
 
 export function SettingsRoute() {
-  const { activeAlbum, activeBaby, albumOptions, currentUser, session, settings, appView, handleAlbumChange, handleOpenAlbumSettings, handleLogout } = useAlbumRouteContext();
+  const { activeAlbum, activeBaby, albumOptions, currentUser, session, settings, appView, handleAlbumChange, handleOpenAlbumSettings, navigateSettingsScreen, handleLogout } = useAlbumRouteContext();
 
   return (
     <SettingsTab
@@ -22,6 +22,7 @@ export function SettingsRoute() {
       currentUser={currentUser}
       onAlbumChange={handleAlbumChange}
       onLogout={handleLogout}
+      onNavigateSettings={navigateSettingsScreen}
       onOpenAlbumSettings={handleOpenAlbumSettings}
       session={session}
       settings={settings}

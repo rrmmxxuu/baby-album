@@ -21,12 +21,14 @@ interface SettingsBabyDetailSceneProps {
   canManageInvites: boolean;
   session: AppSessionState;
   settings: SettingsState;
+  onBack: () => void;
+  onOpenMemberDetail: (memberId: string) => void;
 }
 
-export function SettingsBabyDetailScene({ className, activeAlbum, activeBaby, currentUser, albumMembers, albumInvites, transferCandidates, canManageBabyProfile, canManageInvites, session, settings }: SettingsBabyDetailSceneProps) {
+export function SettingsBabyDetailScene({ className, activeAlbum, activeBaby, currentUser, albumMembers, albumInvites, transferCandidates, canManageBabyProfile, canManageInvites, session, settings, onBack, onOpenMemberDetail }: SettingsBabyDetailSceneProps) {
   return (
     <article className={className}>
-      <SettingsHeader eyebrow="宝宝管理" onBack={() => settings.openSettingsScreen("babies", "back")} title={activeBaby?.name ?? activeAlbum.album.name} />
+      <SettingsHeader eyebrow="宝宝管理" onBack={onBack} title={activeBaby?.name ?? activeAlbum.album.name} />
       <SettingsSection title="我的角色">
         <form className="formGrid" onSubmit={settings.handleUpdateMyRelation}>
           <RelationInput label="你与宝宝的关系" listId="my-relation" onChange={settings.setMyRelationDraft} placeholder="例如：妈妈" value={settings.myRelationDraft} />
@@ -55,7 +57,7 @@ export function SettingsBabyDetailScene({ className, activeAlbum, activeBaby, cu
               className="settingsMemberCard"
               key={member.userId}
               leading={<span className="settingsCardAvatar" aria-hidden="true">{babyAvatarText(member.displayName)}</span>}
-              onClick={() => settings.openSettingsScreen("memberDetail", "forward", { memberId: member.userId })}
+              onClick={() => onOpenMemberDetail(member.userId)}
               primary={member.displayName}
               secondary={memberRelationLabel(member)}
             />

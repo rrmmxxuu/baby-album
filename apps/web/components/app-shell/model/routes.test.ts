@@ -12,12 +12,13 @@ describe("route helpers", () => {
     expect(buildAlbumPath("album-1", "photos")).toBe("/album/album-1/photos");
     expect(buildAlbumPath("album-1", "settings")).toBe("/album/album-1/settings");
     expect(buildAlbumPath("album-1", "settings", { screen: "storage" })).toBe("/album/album-1/settings?screen=storage");
+    expect(buildAlbumPath("album-1", "settings", { screen: "memberDetail", memberId: "user-1" })).toBe("/album/album-1/settings?screen=memberDetail&memberId=user-1");
   });
 
   it("only accepts routable settings screens", () => {
     expect(parseSettingsScreen("storage")).toBe("storage");
     expect(parseSettingsScreen("babyDetail")).toBe("babyDetail");
-    expect(parseSettingsScreen("memberDetail")).toBeNull();
+    expect(parseSettingsScreen("memberDetail")).toBe("memberDetail");
     expect(parseSettingsScreen(null)).toBeNull();
   });
 

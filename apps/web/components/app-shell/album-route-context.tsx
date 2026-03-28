@@ -5,7 +5,7 @@ import type { AlbumSummary, AlbumWorkspace, User } from "../../lib/types";
 import type { AppSessionState } from "./hooks/use-app-session";
 import type { SettingsState } from "./hooks/use-settings-state";
 import type { TimelineState } from "./hooks/use-timeline-state";
-import type { TimelineDayGroup } from "./model/types";
+import type { NavDirection, SettingsScreen, TimelineDayGroup } from "./model/types";
 import type { AppShellViewModel } from "./model/view";
 
 export interface AlbumRouteContextValue {
@@ -21,6 +21,7 @@ export interface AlbumRouteContextValue {
   handleAlbumChange: (albumId: string) => void;
   handleOpenUploadFlow: () => void;
   handleOpenAlbumSettings: (albumId: string) => void | Promise<void>;
+  navigateSettingsScreen: (screen: SettingsScreen, direction?: NavDirection, options?: { memberId?: string }) => void;
   handleLogout: () => void;
 }
 

@@ -1,7 +1,7 @@
 import type { Route } from "next";
 import type { SettingsScreen, TabKey } from "./types";
 
-const ROUTABLE_SETTINGS_SCREENS: SettingsScreen[] = ["menu", "account", "babies", "addBaby", "babyDetail", "storage"];
+const ROUTABLE_SETTINGS_SCREENS: SettingsScreen[] = ["menu", "account", "babies", "addBaby", "babyDetail", "memberDetail", "storage"];
 
 function appendInvite(path: string, inviteCode?: string) {
   if (!inviteCode) {
@@ -19,12 +19,15 @@ export function buildAlbumsPath(inviteCode?: string) {
   return appendInvite("/albums", inviteCode);
 }
 
-export function buildAlbumPath(albumId: string, tab: TabKey, options?: { screen?: SettingsScreen | null }) {
+export function buildAlbumPath(albumId: string, tab: TabKey, options?: { screen?: SettingsScreen | null; memberId?: string | null }) {
   const basePath = `/album/${encodeURIComponent(albumId)}/${tab}`;
   if (tab !== "settings" || !options?.screen || options.screen === "menu") {
     return basePath as Route;
   }
   const query = new URLSearchParams({ screen: options.screen });
+  if (options.screen === "memberDetail" && options.memberId) {
+    query.set("memberId", options.memberId);
+  }
   return `${basePath}?${query.toString()}` as Route;
 }
 

@@ -10,12 +10,13 @@ interface SettingsMemberDetailSceneProps {
   currentUser: User | null;
   albumMembers: AlbumMember[];
   settings: SettingsState;
+  onBack: () => void;
 }
 
-export function SettingsMemberDetailScene({ className, activeAlbum, currentUser, albumMembers, settings }: SettingsMemberDetailSceneProps) {
+export function SettingsMemberDetailScene({ className, activeAlbum, currentUser, albumMembers, settings, onBack }: SettingsMemberDetailSceneProps) {
   return (
     <article className={className}>
-      <SettingsHeader eyebrow="成员详情" onBack={() => settings.openSettingsScreen("babyDetail", "back")} title={albumMembers.find((member) => member.userId === settings.settingsMemberId)?.displayName ?? "成员"} />
+      <SettingsHeader eyebrow="成员详情" onBack={onBack} title={albumMembers.find((member) => member.userId === settings.settingsMemberId)?.displayName ?? "成员"} />
       {albumMembers.filter((member) => member.userId === settings.settingsMemberId).map((member) => (
         <SettingsSection key={member.userId} title="成员信息">
           <p><strong>{member.displayName}</strong></p>

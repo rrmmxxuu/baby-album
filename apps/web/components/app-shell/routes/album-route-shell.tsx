@@ -22,6 +22,16 @@ interface AlbumRouteShellProps {
   children: React.ReactNode;
 }
 
+const SETTINGS_SCREEN_DEPTH: Record<SettingsScreen, number> = {
+  menu: 0,
+  account: 1,
+  babies: 1,
+  storage: 1,
+  addBaby: 2,
+  babyDetail: 2,
+  memberDetail: 3
+};
+
 function toTab(pathname: string): TabKey {
   return pathname.endsWith("/settings") ? "settings" : "photos";
 }
@@ -36,6 +46,7 @@ export function AlbumRouteShell({ albumId, children }: AlbumRouteShellProps) {
   const searchParams = useSearchParams();
   const session = useAppSessionContext();
   const requestedScreen = parseSettingsScreen(searchParams.get("screen"));
+  const requestedMemberId = searchParams.get("memberId") ?? "";
   const activeTab = toTab(pathname);
   const requestedScreenKeyRef = useRef("");
   const inviteCode = searchParams.get("invite") ?? "";
@@ -77,17 +88,22 @@ export function AlbumRouteShell({ albumId, children }: AlbumRouteShellProps) {
   }, [activeAlbum?.album.id, albumId, session.appState, session.authToken, session.bootPhase, session.refreshApp]);
 
   useEffect(() => {
-    if (!requestedScreen || activeTab !== "settings") {
+    if (activeTab !== "settings") {
       requestedScreenKeyRef.current = "";
       return;
     }
-    const key = `${pathname}?screen=${requestedScreen}`;
+    const routeScreen = requestedScreen ?? "menu";
+    const routeMemberId = routeScreen === "memberDetail" ? requestedMemberId : "";
+    const key = `${pathname}?screen=${routeScreen}&memberId=${routeMemberId}`;
     if (requestedScreenKeyRef.current === key) {
       return;
     }
+    const previousKey = requestedScreenKeyRef.current;
     requestedScreenKeyRef.current = key;
-    settings.openSettingsScreen(requestedScreen);
-  }, [activeTab, pathname, requestedScreen, settings]);
+    const previousScreen = previousKey ? previousKey.split("?screen=")[1]?.split("&memberId=")[0] as SettingsScreen | undefined : undefined;
+    const direction = previousScreen && SETTINGS_SCREEN_DEPTH[routeScreen] < SETTINGS_SCREEN_DEPTH[previousScreen] ? "back" : "forward";
+    settings.openSettingsScreen(routeScreen, direction, routeMemberId ? { memberId: routeMemberId } : undefined);
+  }, [activeTab, pathname, requestedMemberId, requestedScreen, settings]);
 
   const appView = useMemo(() => buildAppShellViewModel({
     activeAlbum,
@@ -130,10 +146,11 @@ export function AlbumRouteShell({ albumId, children }: AlbumRouteShellProps) {
   }
 
   function handleAlbumChange(nextAlbumId: string) {
-    const routeScreen = activeTab === "settings" && isRouteScreen(settings.settingsScreen) ? settings.settingsScreen : requestedScreen;
+    const currentSettingsScreen = requestedScreen ?? "menu";
+    const nextSettingsScreen = currentSettingsScreen === "memberDetail" ? "babyDetail" : currentSettingsScreen;
     timeline.captureTabScrollPosition(activeTab);
     startTransition(() => {
-      router.push(buildAlbumPath(nextAlbumId, activeTab, activeTab === "settings" ? { screen: routeScreen } : undefined));
+      router.push(buildAlbumPath(nextAlbumId, activeTab, activeTab === "settings" ? { screen: nextSettingsScreen } : undefined));
     });
   }
 
@@ -160,6 +177,23 @@ export function AlbumRouteShell({ albumId, children }: AlbumRouteShellProps) {
     timeline.captureTabScrollPosition(activeTab);
     startTransition(() => {
       router.push(buildAlbumPath(nextAlbumId, "settings", { screen: "babyDetail" }));
+    });
+  }
+
+  function navigateSettingsScreen(nextScreen: SettingsScreen, direction: "forward" | "back" = "forward", options?: { memberId?: string }) {
+    if (!activeAlbum) {
+      return;
+    }
+    const nextPath = buildAlbumPath(activeAlbum.album.id, "settings", {
+      screen: nextScreen,
+      memberId: nextScreen === "memberDetail" ? options?.memberId ?? null : null
+    });
+    startTransition(() => {
+      if (direction === "back") {
+        router.replace(nextPath);
+        return;
+      }
+      router.push(nextPath);
     });
   }
 
@@ -192,6 +226,7 @@ export function AlbumRouteShell({ albumId, children }: AlbumRouteShellProps) {
             handleAlbumChange,
             handleOpenUploadFlow,
             handleOpenAlbumSettings,
+            navigateSettingsScreen,
             handleLogout
           }}
         >

@@ -19,6 +19,7 @@ export function AppPageFrame({ children, session, currentUser, activeAlbum, show
       {showTopBar ? <TopBar currentUser={currentUser} /> : null}
       <AppFeedbackToasts
         error={session.error}
+        hasSession={Boolean(session.authToken)}
         notice={session.notice}
         offsetForBottomNav={Boolean(session.authToken && activeAlbum)}
         onClearError={() => session.setError(null)}

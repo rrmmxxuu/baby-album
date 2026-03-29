@@ -29,8 +29,13 @@
 }
 
 .feedbackToastNotice {
+  background: rgba(232, 242, 255, 0.96);
+  color: #154f9c;
+}
+
+.feedbackToastWarning {
   background: rgba(255, 245, 228, 0.96);
-  color: #6d4b1c;
+  color: #8a5a08;
 }
 
 .feedbackToastError {

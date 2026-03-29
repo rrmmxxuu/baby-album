@@ -1,5 +1,7 @@
 # Baby Album
 
+[中文版本](README.zh-CN.md)
+
 Open source baby photo platform for self-hosted households. The current test build focuses on four end-to-end flows:
 
 - mobile-first photo timeline and manual upload
@@ -12,10 +14,12 @@ Open source baby photo platform for self-hosted households. The current test bui
 - `apps/web`: Next.js mobile-first PWA shell for timeline, uploads, onboarding, members, and settings
 - `services/api`: Go control plane API with PostgreSQL persistence, auth sessions, invite flows, blob-cache-backed upload ingestion, health checks, and configurable CORS allow-lists
 - `services/agent`: Go NAS connector that registers, heartbeats, polls jobs, downloads original blobs from the API, generates previews for supported images, and stores originals locally
+- `deploy/vps`: production-oriented Docker Compose for `web + api + postgres`
+- `deploy/agent`: NAS-side Docker Compose for the outbound-only agent
 - `docs/architecture.md`: architecture and data-flow notes
 - `docs/test-deploy.md`: single-VM test deployment guide
 - `docs/vps-deploy.md`: Ubuntu + Docker + Nginx Proxy Manager + Cloudflare guide
-- `docker-compose.npm.yml`: override that joins `web` and `api` to an external `npm_net`
+- `docker-compose.yml`: local smoke/development stack only
 
 ## Quick start
 
@@ -83,15 +87,16 @@ The script starts PostgreSQL, API, web, and a demo agent-compatible setup, then 
 
 ## Single-host test deployment
 
-The repository already supports a simple single-VM test deployment:
+The repository ships a dedicated VPS deployment bundle under `deploy/vps`:
 
-1. Copy `.env.example` to `.env`
+1. Copy `deploy/vps/.env.example` to `deploy/vps/.env`
 2. Set `NEXT_PUBLIC_API_BASE_URL` to your public API domain
 3. Set `ALLOWED_ORIGINS` to your public web domain
-4. If your VPS already uses common ports, set `WEB_PORT`, `API_PORT`, and `POSTGRES_PORT` in `.env` before running Docker Compose
-5. If Nginx Proxy Manager runs in Docker, start with `docker compose -f docker-compose.yml -f docker-compose.npm.yml up --build -d`
-6. Otherwise, run `docker compose up --build -d`
-7. Put the published web and API host ports behind your reverse proxy, or proxy to the shared Docker network directly when using NPM
+4. If your VPS already uses common ports, set `WEB_PORT`, `API_PORT`, and `POSTGRES_PORT` in `deploy/vps/.env` before running Docker Compose
+5. `cd deploy/vps`
+6. If Nginx Proxy Manager runs in Docker, start with `docker compose -f docker-compose.yml -f docker-compose.npm.yml up --build -d`
+7. Otherwise, run `docker compose up --build -d`
+8. Put the published web and API host ports behind your reverse proxy, or proxy to the shared Docker network directly when using NPM
 
 For a fuller VPS guide built around Nginx Proxy Manager and Cloudflare, use [docs/vps-deploy.md](docs/vps-deploy.md).
 
@@ -130,7 +135,7 @@ The recommended NAS startup path is now Docker Compose, because the agent contai
 
 ```bash
 ./scripts/agent-init.sh \
-  --api-base-url http://192.168.31.200:8080 \
+  --api-base-url https://album-api.example.com \
   --pairing-code ABC123 \
   --node-name "Living Room NAS" \
   --library-path /volume1/baby-album/library

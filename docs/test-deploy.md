@@ -1,5 +1,7 @@
 # Test Deployment Guide
 
+[中文版](test-deploy.zh-CN.md)
+
 This guide is for the first public test deployment of Baby Album on a single cloud VM.
 
 ## Topology
@@ -19,22 +21,23 @@ This guide is for the first public test deployment of Baby Album on a single clo
 
 ## Environment
 
-1. Copy `.env.example` to `.env`
+1. Copy `deploy/vps/.env.example` to `deploy/vps/.env`
 2. Set `NEXT_PUBLIC_API_BASE_URL` to your public API URL
 3. Set `DATABASE_URL` to the production PostgreSQL connection string
 4. Set `CACHE_ROOT` to persistent local storage on the VM
-5. If the NAS agent runs remotely, set `AGENT_API_BASE_URL` to the public API URL
+5. If the NAS agent runs remotely, set its API base URL separately under `deploy/agent`
 
 ## First launch
 
 ```bash
+cd deploy/vps
 docker compose up --build -d
 ```
 
 Then verify:
 
-- `http://<host>:3000` opens the web UI
-- `http://<host>:8080/api/v1/healthz` is reachable if you add a health endpoint later
+- your reverse-proxied web domain opens the web UI
+- `curl -fsS http://127.0.0.1:18080/api/v1/healthz` succeeds on the VPS
 - a user can register, create an album, generate an invite link, and upload media
 - `docker compose logs api` shows one JSON log line per request with `request_id`
 
@@ -57,18 +60,9 @@ Back up the API blob cache volume:
 
 ```bash
 docker run --rm \
-  -v baby-album_media-cache:/from:ro \
+  -v baby-album-vps_media-cache:/from:ro \
   -v "$BACKUP_DIR":/to \
   alpine sh -lc 'cd /from && tar -czf /to/media-cache.tar.gz .'
-```
-
-If you are using the single-host demo agent, also back up the library volume:
-
-```bash
-docker run --rm \
-  -v baby-album_media-library:/from:ro \
-  -v "$BACKUP_DIR":/to \
-  alpine sh -lc 'cd /from && tar -czf /to/media-library.tar.gz .'
 ```
 
 Back up configuration:
@@ -77,7 +71,7 @@ Back up configuration:
 cp .env "$BACKUP_DIR/.env"
 ```
 
-If the real NAS agent runs on another machine, also copy its `AGENT_LIBRARY_ROOT`, including `.agent-state.json`, on that machine.
+If the NAS agent runs on another machine, also copy its `AGENT_LIBRARY_ROOT`, including `.agent-state.json`, on that machine.
 
 ## Release procedure
 
@@ -85,6 +79,7 @@ Pull the new code and rebuild:
 
 ```bash
 git pull
+cd deploy/vps
 docker compose up --build -d
 ```
 
@@ -92,8 +87,8 @@ Verify process health:
 
 ```bash
 curl -fsS http://127.0.0.1:3000 >/dev/null
-curl -fsS http://127.0.0.1:8080/healthz
-curl -fsS http://127.0.0.1:8080/api/v1/healthz
+curl -fsS http://127.0.0.1:18080/healthz
+curl -fsS http://127.0.0.1:18080/api/v1/healthz
 docker compose ps
 ```
 
@@ -118,6 +113,7 @@ If the new build fails, go back to the previous image or commit and restart:
 
 ```bash
 git checkout <previous-commit>
+cd deploy/vps
 docker compose up --build -d
 ```
 

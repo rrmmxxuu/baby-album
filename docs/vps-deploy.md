@@ -1,5 +1,7 @@
 # VPS Deployment Guide
 
+[中文版](vps-deploy.zh-CN.md)
+
 This guide matches your target setup:
 
 - Ubuntu VPS
@@ -28,25 +30,24 @@ For the first smoke test, DNS-only mode is the simplest path because it removes 
 
 ## 2. Server environment
 
-Create `.env` from `.env.example`, then set at least:
+Create `.env` from `deploy/vps/.env.example`, then set at least:
 
 ```env
 NEXT_PUBLIC_API_BASE_URL=https://album-api.ramonxu.com
 WEB_PORT=3000
 API_PORT=18080
 POSTGRES_PORT=15432
+POSTGRES_DB=baby_album
+POSTGRES_USER=baby_album
+POSTGRES_PASSWORD=REPLACE_ME
 API_ADDR=:8080
 DATABASE_URL=postgres://baby_album:REPLACE_ME@postgres:5432/baby_album?sslmode=disable
 CACHE_ROOT=/var/lib/baby-album/cache
 MAX_UPLOAD_MB=512
 ALLOWED_ORIGINS=https://album.ramonxu.com
-AGENT_API_BASE_URL=https://album-api.ramonxu.com
-AGENT_NODE_ID=node-demo
-AGENT_NODE_NAME=Home NAS
-AGENT_REGISTRATION_TOKEN=REPLACE_ME
-AGENT_HEARTBEAT_INTERVAL=15s
-AGENT_LIBRARY_ROOT=/var/lib/baby-album/library
 ```
+
+The VPS deployment bundle lives in `deploy/vps`, not the repository root.
 
 If you want both a production domain and a temporary preview domain, separate them with commas in `ALLOWED_ORIGINS`.
 
@@ -61,6 +62,8 @@ docker network create npm_net
 Then start Baby Album with the NPM override:
 
 ```bash
+cd deploy/vps
+cp .env.example .env
 docker compose -f docker-compose.yml -f docker-compose.npm.yml up --build -d
 ```
 
@@ -136,7 +139,7 @@ Back up the API cache volume:
 
 ```bash
 docker run --rm \
-  -v baby-album_media-cache:/from:ro \
+  -v baby-album-vps_media-cache:/from:ro \
   -v "$BACKUP_DIR":/to \
   alpine sh -lc 'cd /from && tar -czf /to/media-cache.tar.gz .'
 ```
@@ -159,6 +162,7 @@ On the VPS:
 
 ```bash
 git pull
+cd deploy/vps
 docker compose -f docker-compose.yml -f docker-compose.npm.yml up --build -d
 ```
 
@@ -205,10 +209,10 @@ If you must restore data as well:
 
 ## 9. NAS agent on the home side
 
-When you move the agent off the VPS, set:
+The NAS agent is a separate deployment under `deploy/agent`. When you move it off the VPS, set:
 
 - `AGENT_API_BASE_URL=https://album-api.ramonxu.com`
-- `AGENT_NODE_ID` and `AGENT_REGISTRATION_TOKEN` to your real pairing values
+- `AGENT_PAIRING_CODE` for first-time setup
 - `AGENT_LIBRARY_ROOT` to local NAS storage
 
 The home agent only needs outbound HTTPS access to the API domain.

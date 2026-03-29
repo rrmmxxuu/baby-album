@@ -1,12 +1,15 @@
+## Local smoke/development stack only.
+## Real VPS deployment lives under deploy/vps/.
+
 name: baby-album
 
 services:
   postgres:
     image: postgres:17-alpine
     environment:
-      POSTGRES_DB: baby_album
-      POSTGRES_USER: baby_album
-      POSTGRES_PASSWORD: baby_album
+      POSTGRES_DB: ${POSTGRES_DB:-baby_album}
+      POSTGRES_USER: ${POSTGRES_USER:-baby_album}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-baby_album}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
@@ -18,10 +21,10 @@ services:
     depends_on:
       - postgres
     environment:
-      API_ADDR: :8080
-      DATABASE_URL: postgres://baby_album:baby_album@postgres:5432/baby_album?sslmode=disable
+      API_ADDR: ${API_ADDR:-:8080}
+      DATABASE_URL: ${DATABASE_URL:-postgres://baby_album:baby_album@postgres:5432/baby_album?sslmode=disable}
       CACHE_ROOT: /var/lib/baby-album/cache
-      MAX_UPLOAD_MB: 512
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-512}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
     volumes:
       - media-cache:/var/lib/baby-album/cache

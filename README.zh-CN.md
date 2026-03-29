@@ -1,0 +1,161 @@
+# Baby Album
+
+[English Version](README.md)
+
+面向家庭自托管的宝宝照片平台。当前测试版重点覆盖 4 条端到端主链路：
+
+- 移动优先的照片时间线与手动上传
+- 相册注册、登录、创建相册与宝宝资料初始化
+- 相册成员权限、邀请码与角色管理
+- 云端控制面加 NAS agent 的出站协作模型
+
+## 仓库结构
+
+- `apps/web`：基于 Next.js 的移动优先 PWA，负责时间线、上传、引导、成员与设置界面
+- `services/api`：Go 控制面 API，负责 PostgreSQL 持久化、登录会话、邀请码、上传会话、blob 缓存接入、健康检查与 CORS
+- `services/agent`：Go 编写的 NAS 连接器，负责注册、心跳、轮询任务、从 API 下载原图、生成预览并把文件存到本地
+- `deploy/vps`：面向生产部署的 Docker Compose，只包含 `web + api + postgres`
+- `deploy/agent`：NAS 侧独立部署的 agent Compose
+- `docs/architecture.md`：架构与数据流说明
+- `docs/test-deploy.md`：单机云主机测试部署说明
+- `docs/vps-deploy.md`：Ubuntu + Docker + Nginx Proxy Manager + Cloudflare 的 VPS 部署说明
+- `docker-compose.yml`：仅用于本地开发 / 烟雾测试
+
+## 快速开始
+
+1. 复制 `.env.example` 为 `.env`
+2. 用 Docker Compose 启 PostgreSQL，或者使用你自己的本地 Postgres
+3. 给 API 配置好 `DATABASE_URL` 并启动
+4. 启动 agent 并连接到 API
+5. 在 `apps/web` 安装依赖并启动 Next.js 前端
+
+## 本地开发
+
+```powershell
+# terminal 1
+cd E:\qinbaobao\services\api
+$env:DATABASE_URL='postgres://baby_album:baby_album@localhost:5432/baby_album?sslmode=disable'
+$env:CACHE_ROOT='E:\qinbaobao\tmp\cache'
+$env:ALLOWED_ORIGINS='http://localhost:3000'
+& 'C:\Program Files\Go\bin\go.exe' run .\cmd\server
+
+# terminal 2
+cd E:\qinbaobao\services\agent
+$env:AGENT_API_BASE_URL='http://localhost:8080'
+$env:AGENT_LIBRARY_ROOT='E:\qinbaobao\tmp\library'
+& 'C:\Program Files\Go\bin\go.exe' run .\cmd\agent
+
+# terminal 3
+cd E:\qinbaobao\apps\web
+npm.cmd run dev
+```
+
+## 一键启动本地环境
+
+```bash
+./scripts/dev-up.sh 192.168.31.200
+```
+
+这会启动：
+
+- 通过 Docker Compose 启动 PostgreSQL
+- 在 `:8080` 启动 Go API
+- 在 `:3000` 启动 Next.js 前端
+
+如果你也想一起启动 NAS agent，可以先在当前 shell 里传入配对信息或节点凭据：
+
+```bash
+export AGENT_PAIRING_CODE='12345678'
+./scripts/dev-up.sh 192.168.31.200
+```
+
+停止：
+
+```bash
+./scripts/dev-down.sh
+```
+
+## 浏览器烟雾测试
+
+运行 Playwright 主链路测试：
+
+```bash
+./scripts/test-e2e.sh
+```
+
+这个脚本会启动 PostgreSQL、API、前端，以及一套可跑测试的 agent 兼容环境，然后执行 `apps/web/e2e` 下的浏览器测试。
+
+## 单机云主机测试部署
+
+仓库现在提供了独立的 VPS 部署目录 `deploy/vps`：
+
+1. 复制 `deploy/vps/.env.example` 为 `deploy/vps/.env`
+2. 把 `NEXT_PUBLIC_API_BASE_URL` 改成你的公开 API 域名
+3. 把 `ALLOWED_ORIGINS` 改成你的公开前端域名
+4. 如果 VPS 上常见端口已被占用，就在 `deploy/vps/.env` 里修改 `WEB_PORT`、`API_PORT`、`POSTGRES_PORT`
+5. `cd deploy/vps`
+6. 如果 Nginx Proxy Manager 也是用 Docker 跑的，用 `docker compose -f docker-compose.yml -f docker-compose.npm.yml up --build -d`
+7. 否则直接运行 `docker compose up --build -d`
+8. 再把前端和 API 的公开端口接到你的反向代理上；如果使用 NPM，也可以直接通过共享 Docker 网络按服务名反代
+
+更完整的 VPS 部署说明见 [docs/vps-deploy.zh-CN.md](docs/vps-deploy.zh-CN.md)。
+
+## 运维说明
+
+- API 现在会输出结构化 JSON 日志，包含 `request_id`、路径、状态码、耗时、用户与相册上下文
+- Web 会把未处理的运行时错误上报到 `POST /api/v1/client-errors`，服务端会把它记入 API 日志
+- PWA 的 service worker 现在会缓存静态壳资源，并在有新版本时提示刷新
+
+## 上传与处理流程
+
+1. Web 先创建只带元数据的上传会话
+2. 浏览器把实际文件上传到 `POST /api/v1/upload-sessions/{id}/content`
+3. API 把文件写入本地 blob 缓存，并把会话状态标记为 `uploaded`
+4. API 为被分配到的 NAS 节点创建一条媒体处理任务
+5. NAS agent 轮询任务，并通过 `GET /api/v1/agents/jobs/{id}/blob?nodeId=...` 下载原图
+6. NAS agent 把原文件落到自己的本地媒体库
+7. 对支持的图片，NAS agent 会生成 JPEG 预览图，并回传到 `POST /api/v1/agents/jobs/{id}/preview?nodeId=...`
+8. NAS agent 最终回报处理完成状态，包括宽高、预览状态、预览 blob key 和原始文件路径
+
+## NAS 配对与存储状态上报
+
+1. 相册 owner 或 admin 在网页控制台里生成一个 NAS 配对码
+2. 首次部署 NAS 时，配置 `AGENT_API_BASE_URL`、`AGENT_PAIRING_CODE`、`AGENT_NODE_NAME`、`AGENT_LIBRARY_ROOT`
+3. agent 调用 `POST /api/v1/storage-nodes/register` 完成注册，控制面会为对应相册创建并绑定存储节点
+4. 控制面返回专属 `nodeId` 和 `nodeToken`，agent 会把它们写入 `AGENT_LIBRARY_ROOT` 下的 `.agent-state.json`
+5. 后续重启和心跳直接复用保存下来的节点凭据，并持续上报 NAS 文件系统的 `total/free/available` 容量
+6. Web 控制台会读取当前相册绑定节点的最新容量状态并显示剩余空间
+
+## Agent Docker Compose
+
+推荐在 NAS 上用 Docker Compose 启动 agent，因为镜像里已经内置了 `ffmpeg`，可用于视频海报生成。
+
+1. 先在网页里生成配对码
+2. 运行：
+
+```bash
+./scripts/agent-init.sh \
+  --api-base-url https://album-api.example.com \
+  --pairing-code ABC123 \
+  --node-name "Living Room NAS" \
+  --library-path /volume1/baby-album/library
+```
+
+3. 再启动 agent：
+
+```bash
+cd deploy/agent
+docker compose up --build -d
+```
+
+这套部署会使用：
+
+- 一个挂载出来的媒体库目录，用来存原图和 `.agent-state.json`
+- 一个挂载出来的 `config/agent.json`，用于保存可读配置
+- 一个极简 `.env`，只放宿主机路径和心跳间隔
+
+如果 `config/agent.json` 不存在，并且你以前台交互方式启动容器，agent 会进入交互式配置向导并自动写入这个配置文件。首次完成后，后续就可以直接 `docker compose up -d`。
+
+## 生产说明
+
+当前实现已经不再依赖云端和 NAS 共用文件系统。API 端目前把 blob 缓存放在云主机本地磁盘，这对于第一阶段测试部署已经足够；后面也可以在不改 agent 协议的前提下，平滑换成对象存储。

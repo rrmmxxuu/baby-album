@@ -1,5 +1,7 @@
 # Architecture
 
+[中文版](architecture.zh-CN.md)
+
 ## Components
 
 - `web`: mobile-first PWA shell for browsing the album timeline, checking storage-node health, and creating upload sessions

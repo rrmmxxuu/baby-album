@@ -1,4 +1,4 @@
-import type { DraftDuplicateState, DraftMedia, UploadDraft } from "./types";
+import type { DraftMedia, UploadDraft } from "./types";
 
 export interface DraftDuplicateTarget {
   draftId: string;
@@ -35,12 +35,4 @@ export function collectDraftDuplicateTargets(drafts: UploadDraft[]) {
 
 export function buildDuplicateTargetSignature(targets: DraftDuplicateTarget[]) {
   return targets.map((target) => `${target.draftId}:${target.itemId}:${target.fileKey}`).join("|");
-}
-
-export function countDraftDuplicates(draft: UploadDraft, itemStates: Record<string, DraftDuplicateState>) {
-  return draft.items.reduce((count, item) => count + (itemStates[item.id]?.status === "duplicate" ? 1 : 0), 0);
-}
-
-export function duplicateSummaryText(count: number) {
-  return count > 0 ? `已上传 ${count} 张` : "";
 }

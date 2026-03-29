@@ -177,6 +177,12 @@
   gap: 4px;
 }
 
+.draftListThumbCard {
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+}
+
 .draftListThumbs img,
 .draftEditorMedia img {
   width: 100%;
@@ -241,8 +247,9 @@
   z-index: 1;
   padding: 6px 10px;
   border-radius: 999px;
-  background: rgba(0, 122, 255, 0.92);
-  color: white;
+  background: rgba(255, 245, 228, 0.96);
+  color: #8a5a08;
+  border: 1px solid rgba(138, 90, 8, 0.12);
   font-size: 0.74rem;
   font-weight: 700;
   line-height: 1;

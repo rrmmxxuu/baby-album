@@ -24,7 +24,7 @@ export function AuthRoute() {
   });
 
   return (
-    <AppPageFrame currentUser={currentUser} session={session} showTopBar>
+    <AppPageFrame currentUser={currentUser} session={session} showTopBar={!redirectPath && !session.loading}>
       {!session.authToken ? <AuthScreen session={session} /> : <RouteRedirectNotice label="正在同步最新状态..." to={redirectPath} />}
     </AppPageFrame>
   );

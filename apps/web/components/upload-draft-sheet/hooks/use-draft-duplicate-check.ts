@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { probeDuplicateMedia, resolveDuplicateMedia } from "../../../lib/api";
 import { chunkItems } from "../model/drafts";
-import { buildDuplicateTargetSignature, collectDraftDuplicateTargets, countDraftDuplicates } from "../model/duplicates";
+import { buildDuplicateTargetSignature, collectDraftDuplicateTargets } from "../model/duplicates";
 import { bytesToHex, sha256Hex } from "../model/sha256";
 import type { DraftDuplicateState, UploadDraft } from "../model/types";
 
@@ -75,13 +75,6 @@ export function useDraftDuplicateCheck({ albumId, authToken, open, drafts }: Use
   const targets = useMemo(() => collectDraftDuplicateTargets(drafts), [drafts]);
   const targetSignature = useMemo(() => buildDuplicateTargetSignature(targets), [targets]);
   const targetByItemId = useMemo(() => new Map(targets.map((target) => [target.itemId, target])), [targets]);
-  const duplicateCountByDraft = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const draft of drafts) {
-      counts[draft.id] = countDraftDuplicates(draft, itemStates);
-    }
-    return counts;
-  }, [drafts, itemStates]);
 
   useEffect(() => {
     if (!open) {
@@ -235,8 +228,7 @@ export function useDraftDuplicateCheck({ albumId, authToken, open, drafts }: Use
 
   return {
     checking,
-    itemStates,
-    duplicateCountByDraft
+    itemStates
   };
 }
 

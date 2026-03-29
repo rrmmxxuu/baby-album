@@ -1,6 +1,5 @@
 import type { UploadDraftState } from "../hooks/use-upload-draft-state";
 import type { DraftDuplicateCheckState } from "../hooks/use-draft-duplicate-check";
-import { duplicateSummaryText } from "../model/duplicates";
 import { draftDayLabel, timeModeLabel, visibilityLabel } from "../model/drafts";
 import { DraftCaptionField } from "./draft-caption-field";
 
@@ -16,7 +15,6 @@ export function DraftListScene({ draftState, duplicateState }: DraftListScenePro
         {duplicateState.checking ? <p className="helperText draftDuplicateChecking">正在检查这些照片是否已上传过...</p> : null}
         <div className="draftListCards">
           {draftState.drafts.map((draft) => {
-            const duplicateSummary = duplicateSummaryText(duplicateState.duplicateCountByDraft[draft.id] ?? 0);
             return (
               <article className="draftListCard panel" key={draft.id}>
                 <div className="draftListCardTop">
@@ -32,7 +30,12 @@ export function DraftListScene({ draftState, duplicateState }: DraftListScenePro
                   </button>
                 </div>
                 <div className="draftListThumbs draftPreviewSurface">
-                  {draft.items.slice(0, 4).map((item) => <img alt={item.fileName} key={item.id} src={item.previewUrl} />)}
+                  {draft.items.slice(0, 4).map((item) => (
+                    <div className="draftListThumbCard" key={item.id}>
+                      <img alt={item.fileName} src={item.previewUrl} />
+                      {duplicateState.itemStates[item.id]?.status === "duplicate" ? <span className="draftDuplicateBadge">重复</span> : null}
+                    </div>
+                  ))}
                 </div>
                 <DraftCaptionField
                   className="draftListCaption"
@@ -40,7 +43,7 @@ export function DraftListScene({ draftState, duplicateState }: DraftListScenePro
                   placeholder="添加照片说明..."
                   value={draft.caption}
                 />
-                <p className="helperText">{visibilityLabel(draft.visibility)} · {timeModeLabel(draft.timeMode)}{duplicateSummary ? ` · ${duplicateSummary}` : ""}</p>
+                <p className="helperText">{visibilityLabel(draft.visibility)} · {timeModeLabel(draft.timeMode)}</p>
               </article>
             );
           })}

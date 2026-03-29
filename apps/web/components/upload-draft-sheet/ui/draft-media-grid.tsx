@@ -14,7 +14,7 @@ export function DraftMediaGrid({ draftId, duplicateItemStates, items, onAppendFi
       {items.map((item) => (
         <div className="draftEditorMediaCard draftPreviewSurface" key={item.id}>
           <img alt={item.fileName} src={item.previewUrl} />
-          {duplicateItemStates[item.id]?.status === "duplicate" ? <span className="draftDuplicateBadge">已上传</span> : null}
+          {duplicateItemStates[item.id]?.status === "duplicate" ? <span className="draftDuplicateBadge">重复</span> : null}
           <div className="draftMediaActions">
             <button className="draftRemoveButton" onClick={() => onRemoveItem(draftId, item.id)} type="button">移除</button>
           </div>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildDuplicateTargetSignature, collectDraftDuplicateTargets, countDraftDuplicates, duplicateSummaryText } from "./duplicates";
-import type { DraftDuplicateState, UploadDraft } from "./types";
+import { buildDuplicateTargetSignature, collectDraftDuplicateTargets } from "./duplicates";
+import type { UploadDraft } from "./types";
 
 function buildDraft(items: UploadDraft["items"]): UploadDraft {
   return {
@@ -30,20 +30,5 @@ describe("draft duplicate helpers", () => {
     expect(targets).toHaveLength(1);
     expect(targets[0].itemId).toBe("image");
     expect(buildDuplicateTargetSignature(targets)).toContain("draft-1:image:");
-  });
-
-  it("counts duplicate items for each draft", () => {
-    const draft = buildDraft([
-      { id: "item-a", file: null, fileName: "a.jpg", previewUrl: "a", capturedAt: new Date().toISOString(), mediaType: "image/jpeg", existingMediaId: "a" },
-      { id: "item-b", file: null, fileName: "b.jpg", previewUrl: "b", capturedAt: new Date().toISOString(), mediaType: "image/jpeg", existingMediaId: "b" }
-    ]);
-    const states: Record<string, DraftDuplicateState> = {
-      "item-a": { status: "duplicate", duplicateCount: 2 },
-      "item-b": { status: "unique", duplicateCount: 0 }
-    };
-
-    expect(countDraftDuplicates(draft, states)).toBe(1);
-    expect(duplicateSummaryText(1)).toBe("已上传 1 张");
-    expect(duplicateSummaryText(0)).toBe("");
   });
 });

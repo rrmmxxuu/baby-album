@@ -23,13 +23,9 @@ export function HomeRoute() {
   const showLoading = !redirectPath && !showAuthScreen && !showNoAlbumScreen;
 
   return (
-    <AppPageFrame currentUser={currentUser} session={session} showTopBar>
+    <AppPageFrame currentUser={currentUser} session={session} showTopBar={showNoAlbumScreen}>
       {redirectPath ? (
-        <section className="pageStack">
-          <article className="panel">
-            <RouteRedirectNotice label="正在进入宝宝相册..." to={redirectPath} />
-          </article>
-        </section>
+        <RouteRedirectNotice label="正在进入宝宝相册..." to={redirectPath} />
       ) : null}
       {showAuthScreen ? <AuthScreen session={session} /> : null}
       {showNoAlbumScreen ? <NoAlbumScreen session={session} /> : null}

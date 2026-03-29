@@ -1,11 +1,33 @@
+import { TOKEN_STORAGE_KEY } from "../components/app-shell/model/constants";
 import type { AlbumInvite, AppStatePayload, AuthPayload, Role, StorageNodePairing, TimelineComment, TimelineEntry, TimelinePagePayload, TimelineTimeMode, TimelineVisibility } from "./types";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
 
+export class ApiError extends Error {
+  status: number;
+  requestId: string;
+
+  constructor(message: string, status: number, requestId = "") {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.requestId = requestId;
+  }
+}
+
 async function parseResponse<T>(response: Response): Promise<T> {
-  const payload = (await response.json()) as T & { error?: string };
+  const requestId = response.headers.get("X-Request-ID") ?? "";
+  const raw = await response.text();
+  let payload = {} as T & { error?: string };
+  if (raw) {
+    try {
+      payload = JSON.parse(raw) as T & { error?: string };
+    } catch {
+      payload = { error: raw } as T & { error?: string };
+    }
+  }
   if (!response.ok) {
-    throw new Error(payload.error ?? `Request failed with status ${response.status}`);
+    throw new ApiError(payload.error ?? `Request failed with status ${response.status}`, response.status, requestId);
   }
   return payload;
 }
@@ -19,6 +41,25 @@ function buildHeaders(token?: string, extra?: HeadersInit): HeadersInit {
 
 export function getApiBaseUrl() {
   return apiBaseUrl;
+}
+
+export async function reportClientError(input: {
+  message: string;
+  stack?: string;
+  path: string;
+  userAgent: string;
+  displayMode: string;
+  requestId?: string;
+  albumId?: string;
+  extra?: Record<string, unknown>;
+}) {
+  const token = typeof window === "undefined" ? "" : (window.localStorage.getItem(TOKEN_STORAGE_KEY) ?? "");
+  await fetch(`${apiBaseUrl}/api/v1/client-errors`, {
+    method: "POST",
+    headers: buildHeaders(token, { "Content-Type": "application/json" }),
+    body: JSON.stringify(input),
+    keepalive: true
+  });
 }
 
 export function getPreviewUrl(mediaId: string, albumId: string, token: string, version?: string) {

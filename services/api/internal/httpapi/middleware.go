@@ -1,34 +1,69 @@
 package httpapi
 
 import (
-	"log"
 	"net/http"
+	"runtime/debug"
 	"strings"
 	"time"
 )
 
 func (s *Server) withMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		origin := strings.TrimSpace(r.Header.Get("Origin"))
-		if origin != "" {
-			w.Header().Add("Vary", "Origin")
-			allowedOrigin, ok := s.allowedOrigin(origin)
-			if !ok {
-				writeJSON(w, http.StatusForbidden, map[string]string{"error": "origin not allowed"})
+		r, meta := withRequestMetadata(r)
+		recorder := newStatusRecorder(w)
+		recorder.Header().Set("X-Request-ID", meta.requestID)
+
+		start := time.Now()
+		defer func() {
+			durationMs := time.Since(start).Milliseconds()
+			if recovered := recover(); recovered != nil {
+				logEvent("error", "request panic", map[string]any{
+					"request_id":  meta.requestID,
+					"method":      r.Method,
+					"path":        r.URL.Path,
+					"status":      http.StatusInternalServerError,
+					"duration_ms": durationMs,
+					"user_id":     meta.userID,
+					"album_id":    meta.albumID,
+					"remote_addr": r.RemoteAddr,
+					"panic":       recovered,
+					"stack":       string(debug.Stack()),
+				})
+				if !recorder.wroteHeader {
+					writeJSON(recorder, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+				}
 				return
 			}
-			w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-User-ID, X-Node-Token")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Max-Age", "600")
+			logEvent("info", "request completed", map[string]any{
+				"request_id":  meta.requestID,
+				"method":      r.Method,
+				"path":        r.URL.Path,
+				"status":      recorder.status,
+				"duration_ms": durationMs,
+				"user_id":     meta.userID,
+				"album_id":    meta.albumID,
+				"remote_addr": r.RemoteAddr,
+			})
+		}()
+
+		origin := strings.TrimSpace(r.Header.Get("Origin"))
+		if origin != "" {
+			recorder.Header().Add("Vary", "Origin")
+			allowedOrigin, ok := s.allowedOrigin(origin)
+			if !ok {
+				writeJSON(recorder, http.StatusForbidden, map[string]string{"error": "origin not allowed"})
+				return
+			}
+			recorder.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
+			recorder.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-User-ID, X-Node-Token")
+			recorder.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+			recorder.Header().Set("Access-Control-Max-Age", "600")
 		}
 		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
+			recorder.WriteHeader(http.StatusNoContent)
 			return
 		}
-		start := time.Now()
-		next.ServeHTTP(w, r)
-		log.Printf("%s %s %s", r.Method, r.URL.Path, time.Since(start))
+		next.ServeHTTP(recorder, r)
 	})
 }
 

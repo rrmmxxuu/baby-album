@@ -26,16 +26,25 @@ interface ErrorMessageOptions {
   unauthorizedMessage?: string;
 }
 
+function requestIdFromUnknown(error: unknown) {
+  if (!error || typeof error !== "object" || !("requestId" in error)) {
+    return "";
+  }
+  const requestId = (error as { requestId?: unknown }).requestId;
+  return typeof requestId === "string" ? requestId.trim() : "";
+}
+
 export function errorMessageFromUnknown(error: unknown, fallbackMessage: string, options?: ErrorMessageOptions) {
+  let message = fallbackMessage;
   if (error instanceof Error) {
     if (options?.unauthorizedMessage && error.message.includes("unauthorized")) {
-      return options.unauthorizedMessage;
-    }
-    if (error.message.trim()) {
-      return error.message;
+      message = options.unauthorizedMessage;
+    } else if (error.message.trim()) {
+      message = error.message;
     }
   }
-  return fallbackMessage;
+  const requestId = requestIdFromUnknown(error);
+  return requestId ? `${message}（请求 ID: ${requestId}）` : message;
 }
 
 export function feedbackDurationMs(tone: AppFeedbackTone) {

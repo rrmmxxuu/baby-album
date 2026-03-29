@@ -36,6 +36,104 @@ Then verify:
 - `http://<host>:3000` opens the web UI
 - `http://<host>:8080/api/v1/healthz` is reachable if you add a health endpoint later
 - a user can register, create an album, generate an invite link, and upload media
+- `docker compose logs api` shows one JSON log line per request with `request_id`
+
+## Backups before every upgrade
+
+Create a backup directory on the host:
+
+```bash
+mkdir -p ~/baby-album-backups/$(date +%F-%H%M%S)
+BACKUP_DIR="$(ls -td ~/baby-album-backups/* | head -n 1)"
+```
+
+Back up PostgreSQL:
+
+```bash
+docker compose exec -T postgres pg_dump -U baby_album baby_album > "$BACKUP_DIR/postgres.sql"
+```
+
+Back up the API blob cache volume:
+
+```bash
+docker run --rm \
+  -v baby-album_media-cache:/from:ro \
+  -v "$BACKUP_DIR":/to \
+  alpine sh -lc 'cd /from && tar -czf /to/media-cache.tar.gz .'
+```
+
+If you are using the single-host demo agent, also back up the library volume:
+
+```bash
+docker run --rm \
+  -v baby-album_media-library:/from:ro \
+  -v "$BACKUP_DIR":/to \
+  alpine sh -lc 'cd /from && tar -czf /to/media-library.tar.gz .'
+```
+
+Back up configuration:
+
+```bash
+cp .env "$BACKUP_DIR/.env"
+```
+
+If the real NAS agent runs on another machine, also copy its `AGENT_LIBRARY_ROOT`, including `.agent-state.json`, on that machine.
+
+## Release procedure
+
+Pull the new code and rebuild:
+
+```bash
+git pull
+docker compose up --build -d
+```
+
+Verify process health:
+
+```bash
+curl -fsS http://127.0.0.1:3000 >/dev/null
+curl -fsS http://127.0.0.1:8080/healthz
+curl -fsS http://127.0.0.1:8080/api/v1/healthz
+docker compose ps
+```
+
+Run the main smoke test manually:
+
+1. Register or log in.
+2. Create or enter an album.
+3. Open the photo page and settings page, then go back.
+4. Upload one photo and wait for it to appear in the timeline.
+5. Generate an invite code.
+6. Log out and log back in.
+
+If you have a local test stack, run the automated smoke suite before the public rollout:
+
+```bash
+./scripts/test-e2e.sh
+```
+
+## Rollback
+
+If the new build fails, go back to the previous image or commit and restart:
+
+```bash
+git checkout <previous-commit>
+docker compose up --build -d
+```
+
+If you also need to restore data:
+
+1. Stop the stack with `docker compose down`.
+2. Restore `postgres.sql` into PostgreSQL.
+3. Restore `media-cache.tar.gz`.
+4. Restore the NAS library backup and `.agent-state.json` if they were changed.
+5. Start the stack again and repeat the health checks.
+
+## Known limits of the current release
+
+- The API still applies database migrations on startup.
+- Auth is still bearer-token based, and some media access still uses query tokens.
+- The PWA now caches static shell assets and supports update prompts, but it is not an offline-first product.
 
 ## Security limits of the current test build
 

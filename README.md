@@ -71,6 +71,16 @@ Stop everything with:
 ./scripts/dev-down.sh
 ```
 
+## Browser smoke tests
+
+Run the Playwright main-flow suite against a local stack:
+
+```bash
+./scripts/test-e2e.sh
+```
+
+The script starts PostgreSQL, API, web, and a demo agent-compatible setup, then runs the browser tests in `apps/web/e2e`.
+
 ## Single-host test deployment
 
 The repository already supports a simple single-VM test deployment:
@@ -84,6 +94,12 @@ The repository already supports a simple single-VM test deployment:
 7. Put the published web and API host ports behind your reverse proxy, or proxy to the shared Docker network directly when using NPM
 
 For a fuller VPS guide built around Nginx Proxy Manager and Cloudflare, use [docs/vps-deploy.md](docs/vps-deploy.md).
+
+## Operational notes
+
+- The API now emits structured JSON logs with `request_id`, path, status, duration, user, and album context.
+- The web app reports unhandled runtime errors to `POST /api/v1/client-errors`, which writes them to the API logs.
+- The PWA service worker now caches static shell assets and prompts when a new version is ready.
 
 ## Upload and processing flow
 

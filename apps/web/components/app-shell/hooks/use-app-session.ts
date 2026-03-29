@@ -6,7 +6,7 @@ import { acceptInvite, createAlbum, loadAppState, loginUser, logoutUser, registe
 import type { AppStatePayload } from "../../../lib/types";
 import { ALBUM_STORAGE_KEY, BOOT_SPLASH_EXIT_MS, BOOT_SPLASH_MIN_MS, TOKEN_STORAGE_KEY } from "../model/constants";
 import { buildFeedback, errorMessageFromUnknown } from "../model/feedback";
-import { buildAlbumPath, buildHomePath } from "../model/routes";
+import { buildAlbumPath, buildAlbumsPath } from "../model/routes";
 import type { AuthMode } from "../model/types";
 
 interface RefreshOptions {
@@ -191,7 +191,7 @@ export function useAppSession(queryInviteCode: string) {
       setRegisterPassword("");
       showSuccess("注册成功", `欢迎，${auth.user.displayName}。请继续加入已有相册，或创建第一个宝宝相册。`);
       const next = await refreshApp(undefined, { token: auth.token });
-      router.replace(next?.activeAlbumId ? buildAlbumPath(next.activeAlbumId, "photos") : buildHomePath(queryInviteCode));
+      router.replace(next?.activeAlbumId ? buildAlbumPath(next.activeAlbumId, "photos") : buildAlbumsPath(queryInviteCode));
     } catch (err) {
       showError("注册失败", errorMessageFromUnknown(err, "注册失败。"));
     }
@@ -207,7 +207,7 @@ export function useAppSession(queryInviteCode: string) {
       setLoginPassword("");
       showSuccess("登录成功", `欢迎回来，${auth.user.displayName}。`);
       const next = await refreshApp(undefined, { token: auth.token });
-      router.replace(next?.activeAlbumId ? buildAlbumPath(next.activeAlbumId, "photos") : buildHomePath(queryInviteCode));
+      router.replace(next?.activeAlbumId ? buildAlbumPath(next.activeAlbumId, "photos") : buildAlbumsPath(queryInviteCode));
     } catch (err) {
       showError("登录失败", errorMessageFromUnknown(err, "登录失败。", {
         unauthorizedMessage: "邮箱或密码不正确，或账号还不存在。"

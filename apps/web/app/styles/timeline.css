@@ -7,6 +7,8 @@
 .momentDay {
   display: grid;
   gap: 14px;
+  content-visibility: auto;
+  contain-intrinsic-size: 1px 900px;
 }
 
 .momentDayHeader {
@@ -37,6 +39,12 @@
   color: #8a5738;
   font-size: 0.84rem;
   white-space: nowrap;
+}
+
+.momentDayPlaceholder {
+  display: block;
+  border-radius: 28px;
+  background: transparent;
 }
 
 .momentCard {

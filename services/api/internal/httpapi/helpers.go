@@ -17,12 +17,15 @@ func (s *Server) actorID(r *http.Request) (string, error) {
 		if err != nil {
 			return "", err
 		}
+		setRequestUserID(r, user.ID)
 		return user.ID, nil
 	}
 	if value := r.Header.Get("X-User-ID"); value != "" {
+		setRequestUserID(r, value)
 		return value, nil
 	}
 	if value := r.URL.Query().Get("userId"); value != "" {
+		setRequestUserID(r, value)
 		return value, nil
 	}
 	return "", store.ErrUnauthorized
@@ -41,9 +44,12 @@ func bearerToken(r *http.Request) string {
 
 func albumID(r *http.Request) string {
 	if value := r.URL.Query().Get("albumId"); value != "" {
+		setRequestAlbumID(r, value)
 		return value
 	}
-	return r.URL.Query().Get("familyId")
+	value := r.URL.Query().Get("familyId")
+	setRequestAlbumID(r, value)
+	return value
 }
 
 func trimAPIPrefix(path, prefix string) string {

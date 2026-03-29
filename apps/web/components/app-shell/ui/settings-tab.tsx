@@ -42,7 +42,7 @@ interface SettingsTabProps {
 
 export function SettingsTab({ activeTab, settingsSceneClassName, activeAlbum, activeBaby, currentUser, albumOptions, albumMembers, albumInvites, transferCandidates, authToken, session, settings, storageNode, storageStatus, storageStatusSummary, storageUploadSummary, storageFlowTitle, storagePairingModeLabel, storagePairingActionLabel, activeStoragePairing, canManageInvites, canManageBabyProfile, canManageStorage, onAlbumChange, onLogout, onNavigateSettings, onOpenAlbumSettings }: SettingsTabProps) {
   return (
-    <section aria-hidden={!activeTab} className={`pageStack settingsPage tabSection ${activeTab ? "tabSectionActive" : "tabSectionInactive"}`}>
+    <section aria-hidden={!activeTab} hidden={!activeTab} className={`pageStack settingsPage tabSection ${activeTab ? "tabSectionActive" : "tabSectionInactive"}`}>
       {settings.settingsScreen === "menu" ? (
         <SettingsMenuScene
           activeAlbum={activeAlbum}

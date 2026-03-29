@@ -11,6 +11,8 @@ WEB_PID_FILE="$RUN_DIR/web.pid"
 AGENT_PID_FILE="$RUN_DIR/agent.pid"
 DATABASE_URL="postgres://baby_album:baby_album@localhost:5432/baby_album?sslmode=disable"
 PUBLIC_HOST="${1:-${DEV_HOST:-192.168.31.200}}"
+API_PORT="${DEV_API_PORT:-8080}"
+WEB_PORT="${DEV_WEB_PORT:-3000}"
 
 mkdir -p "$RUN_DIR" "$CACHE_DIR" "$LIBRARY_DIR"
 
@@ -29,9 +31,10 @@ is_running() {
 
 start_process() {
   local name="$1"
-  local pid_file="$2"
-  local log_file="$3"
-  shift 3
+  local workdir="$2"
+  local pid_file="$3"
+  local log_file="$4"
+  shift 4
 
   if is_running "$pid_file"; then
     echo "$name is already running (pid $(cat "$pid_file"))"
@@ -39,7 +42,7 @@ start_process() {
   fi
 
   (
-    cd "$ROOT_DIR"
+    cd "$workdir"
     nohup "$@" >"$log_file" 2>&1 &
     echo $! >"$pid_file"
   )
@@ -57,39 +60,42 @@ done
 echo "==> starting api"
 start_process \
   "api" \
+  "$ROOT_DIR/services/api" \
   "$API_PID_FILE" \
   "$RUN_DIR/api.log" \
   env \
   DATABASE_URL="$DATABASE_URL" \
   CACHE_ROOT="$CACHE_DIR" \
-  API_ADDR=":8080" \
-  ALLOWED_ORIGINS="http://$PUBLIC_HOST:3000,http://localhost:3000,http://127.0.0.1:3000" \
-  /usr/local/go/bin/go run ./services/api/cmd/server
+  API_ADDR=":$API_PORT" \
+  ALLOWED_ORIGINS="http://$PUBLIC_HOST:$WEB_PORT,http://localhost:$WEB_PORT,http://127.0.0.1:$WEB_PORT" \
+  /usr/local/go/bin/go run ./cmd/server
 
 echo "==> starting web"
 start_process \
   "web" \
+  "$ROOT_DIR/apps/web" \
   "$WEB_PID_FILE" \
   "$RUN_DIR/web.log" \
   env \
-  NEXT_PUBLIC_API_BASE_URL="http://$PUBLIC_HOST:8080" \
-  npm --prefix "$ROOT_DIR/apps/web" run dev -- --hostname 0.0.0.0 --port 3000
+  NEXT_PUBLIC_API_BASE_URL="http://$PUBLIC_HOST:$API_PORT" \
+  npm run dev -- --hostname 0.0.0.0 --port "$WEB_PORT"
 
 if [[ -n "${AGENT_PAIRING_CODE:-}" || -n "${AGENT_NODE_ID:-}" || -n "${AGENT_NODE_TOKEN:-}" || -n "${AGENT_REGISTRATION_TOKEN:-}" ]]; then
   echo "==> starting agent"
   start_process \
     "agent" \
+    "$ROOT_DIR/services/agent" \
     "$AGENT_PID_FILE" \
     "$RUN_DIR/agent.log" \
     env \
-    AGENT_API_BASE_URL="http://$PUBLIC_HOST:8080" \
+    AGENT_API_BASE_URL="http://$PUBLIC_HOST:$API_PORT" \
     AGENT_LIBRARY_ROOT="$LIBRARY_DIR" \
     AGENT_NODE_NAME="${AGENT_NODE_NAME:-Local NAS}" \
     AGENT_PAIRING_CODE="${AGENT_PAIRING_CODE:-}" \
     AGENT_NODE_ID="${AGENT_NODE_ID:-}" \
     AGENT_NODE_TOKEN="${AGENT_NODE_TOKEN:-}" \
     AGENT_REGISTRATION_TOKEN="${AGENT_REGISTRATION_TOKEN:-}" \
-    /usr/local/go/bin/go run ./services/agent/cmd/agent
+    /usr/local/go/bin/go run ./cmd/agent
 else
   echo "==> skipping agent (set AGENT_PAIRING_CODE or AGENT_NODE_ID/AGENT_NODE_TOKEN to auto-start it)"
 fi
@@ -98,8 +104,8 @@ cat <<EOF
 
 Dev stack is up.
 
-Web:  http://$PUBLIC_HOST:3000
-API:  http://$PUBLIC_HOST:8080
+Web:  http://$PUBLIC_HOST:$WEB_PORT
+API:  http://$PUBLIC_HOST:$API_PORT
 
 Logs:
   tail -f $RUN_DIR/api.log

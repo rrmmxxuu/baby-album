@@ -30,7 +30,7 @@ export function DraftListScene({ draftState, duplicateState }: DraftListScenePro
                   </button>
                 </div>
                 <div className="draftListThumbs draftPreviewSurface">
-                  {draft.items.slice(0, 4).map((item) => (
+                  {draft.items.map((item) => (
                     <div className="draftListThumbCard" key={item.id}>
                       <img alt={item.fileName} src={item.previewUrl} />
                       {duplicateState.itemStates[item.id]?.status === "duplicate" ? <span className="draftDuplicateBadge">重复</span> : null}

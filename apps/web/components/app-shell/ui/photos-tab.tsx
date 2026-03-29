@@ -23,6 +23,7 @@ export function PhotosTab({ activeTab, activeAlbum, activeBaby, albumOptions, au
   return (
     <section
       aria-hidden={!activeTab}
+      hidden={!activeTab}
       className={`pageStack photosPage tabSection ${activeTab ? "tabSectionActive" : "tabSectionInactive"}`}
       onTouchCancel={timeline.resetPullRefresh}
       onTouchEnd={timeline.handlePhotosTouchEnd}
@@ -41,8 +42,8 @@ export function PhotosTab({ activeTab, activeAlbum, activeBaby, albumOptions, au
           <div className="momentsFeed">
             {timeline.timelineLoading && timelineDays.length === 0 ? <PanelMessage message="正在加载时间线..." /> : null}
             {!timeline.timelineLoading && timelineDays.length === 0 ? <PanelMessage message="还没有媒体内容，先去上传一张照片吧。" /> : null}
-            {timelineDays.map((day) => (
-              <TimelineDaySection activeAlbum={activeAlbum} authToken={authToken} currentUserId={currentUserId} day={day} key={day.day} onEditEntry={onEditEntry} onOpenLightbox={onOpenLightbox} timeline={timeline} />
+            {timelineDays.map((day, index) => (
+              <TimelineDaySection activeAlbum={activeAlbum} authToken={authToken} currentUserId={currentUserId} day={day} key={day.day} onEditEntry={onEditEntry} onOpenLightbox={onOpenLightbox} priority={index < 2} timeline={timeline} />
             ))}
             {timeline.timelineLoadingMore ? <div className="timelineFooterState"><div className="pullRefreshSpinner pullRefreshSpinnerSpinning" /><span>正在加载更多</span></div> : null}
             {!timeline.timelineHasMore && timeline.timelineEntries.length > 0 ? <div className="timelineFooterState timelineFooterStateDone"><span>已经到底了</span></div> : null}

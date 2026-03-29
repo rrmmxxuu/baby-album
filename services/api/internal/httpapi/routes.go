@@ -3,6 +3,7 @@ package httpapi
 func (s *Server) routes() {
 	s.mux.HandleFunc("/healthz", s.handleHealth)
 	s.mux.HandleFunc("/api/v1/healthz", s.handleHealth)
+	s.mux.HandleFunc("/api/v1/client-errors", s.handleClientErrors)
 	s.mux.HandleFunc("/api/v1/auth/register", s.handleAuthRegister)
 	s.mux.HandleFunc("/api/v1/auth/login", s.handleAuthLogin)
 	s.mux.HandleFunc("/api/v1/auth/logout", s.handleAuthLogout)

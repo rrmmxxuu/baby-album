@@ -12,6 +12,10 @@
   will-change: opacity, transform;
 }
 
+.tabSection[hidden] {
+  display: none !important;
+}
+
 .tabSectionActive {
   position: relative;
   z-index: 1;

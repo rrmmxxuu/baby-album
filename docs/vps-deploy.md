@@ -109,7 +109,101 @@ Then validate the product flow:
 5. Upload one image
 6. Confirm the timeline loads through the public web domain
 
-## 6. NAS agent on the home side
+Also confirm the API emits structured JSON request logs:
+
+```bash
+docker compose logs --tail=20 api
+```
+
+Each request should include a `request_id`, path, status, and duration in milliseconds.
+
+## 6. Backup before every release
+
+Create a timestamped backup directory on the VPS:
+
+```bash
+mkdir -p ~/baby-album-backups/$(date +%F-%H%M%S)
+BACKUP_DIR="$(ls -td ~/baby-album-backups/* | head -n 1)"
+```
+
+Back up PostgreSQL:
+
+```bash
+docker compose exec -T postgres pg_dump -U baby_album baby_album > "$BACKUP_DIR/postgres.sql"
+```
+
+Back up the API cache volume:
+
+```bash
+docker run --rm \
+  -v baby-album_media-cache:/from:ro \
+  -v "$BACKUP_DIR":/to \
+  alpine sh -lc 'cd /from && tar -czf /to/media-cache.tar.gz .'
+```
+
+Back up your environment file:
+
+```bash
+cp .env "$BACKUP_DIR/.env"
+```
+
+On the home NAS or Linux box, also back up:
+
+- the full `AGENT_LIBRARY_ROOT`
+- the `.agent-state.json` file inside that library root
+- the agent config file if you use `deploy/agent/config/agent.json`
+
+## 7. Release flow
+
+On the VPS:
+
+```bash
+git pull
+docker compose -f docker-compose.yml -f docker-compose.npm.yml up --build -d
+```
+
+Validate health:
+
+```bash
+curl -fsS https://album-api.ramonxu.com/healthz
+curl -fsS https://album-api.ramonxu.com/api/v1/healthz
+docker compose ps
+```
+
+Validate the public app:
+
+1. Open the web domain.
+2. Log in.
+3. Switch between photos and settings.
+4. Upload one image.
+5. Confirm the preview appears after the agent processes it.
+6. Generate an invite code.
+7. Log out and log back in.
+
+If you maintain a staging or local stack, run the automated browser suite before the VPS upgrade:
+
+```bash
+./scripts/test-e2e.sh
+```
+
+## 8. Rollback
+
+If the release fails:
+
+1. Check `docker compose logs api web` for the failing service.
+2. Return to the previous git revision.
+3. Run `docker compose -f docker-compose.yml -f docker-compose.npm.yml up --build -d`.
+4. Re-run the health checks and the public smoke test.
+
+If you must restore data as well:
+
+1. Stop the stack.
+2. Restore `postgres.sql`.
+3. Restore `media-cache.tar.gz`.
+4. Restore the NAS library backup and `.agent-state.json`.
+5. Start the stack again.
+
+## 9. NAS agent on the home side
 
 When you move the agent off the VPS, set:
 
@@ -118,3 +212,9 @@ When you move the agent off the VPS, set:
 - `AGENT_LIBRARY_ROOT` to local NAS storage
 
 The home agent only needs outbound HTTPS access to the API domain.
+
+## 10. Current production caveats
+
+- API startup still performs database migrations automatically.
+- Auth is still bearer-token based, and preview/original media access still uses token-bearing URLs in some flows.
+- The PWA now caches static assets and supports update prompts, but does not offer full offline browsing.

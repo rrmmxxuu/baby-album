@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
 import "./globals.css";
+import { ClientErrorReporter } from "../components/client-error-reporter";
 import { PwaBoot } from "../components/pwa-boot";
 import { AppSessionProvider } from "../components/app-shell/app-session-provider";
 
@@ -39,6 +40,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="zh-CN">
       <body>
         <PwaBoot />
+        <ClientErrorReporter />
         <Suspense fallback={<main className="appShell"><section className="panel"><p className="helperText">正在加载宝宝相册...</p></section></main>}>
           <AppSessionProvider>{children}</AppSessionProvider>
         </Suspense>

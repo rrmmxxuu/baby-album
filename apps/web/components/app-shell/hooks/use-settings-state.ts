@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createInvite, createStorageNodePairing, leaveAlbum, updateBabyProfile, updateMemberRelation, updateMemberRole, uploadBabyAvatar } from "../../../lib/api";
 import type { AlbumWorkspace, AppStatePayload, Role, User } from "../../../lib/types";
+import { errorMessageFromUnknown } from "../model/feedback";
 import { roleLabel, toDateInputValue } from "../model/format";
 import type { NavDirection, SettingsScreen, TabKey } from "../model/types";
 
@@ -13,11 +14,13 @@ interface UseSettingsStateOptions {
   activeAlbum: AlbumWorkspace | null;
   currentUser: User | null;
   refreshApp: (targetAlbumId?: string, options?: { silent?: boolean }) => Promise<void>;
-  setError: (value: string | null) => void;
-  setNotice: (value: string | null) => void;
+  clearFeedback: () => void;
+  showSuccess: (title: string, message: string) => void;
+  showWarning: (title: string, message: string) => void;
+  showError: (title: string, message: string) => void;
 }
 
-export function useSettingsState({ activeTab, authToken, appState, activeAlbum, currentUser, refreshApp, setError, setNotice }: UseSettingsStateOptions) {
+export function useSettingsState({ activeTab, authToken, appState, activeAlbum, currentUser, refreshApp, clearFeedback, showSuccess, showWarning, showError }: UseSettingsStateOptions) {
   const [settingsScreen, setSettingsScreen] = useState<SettingsScreen>("menu");
   const [settingsNavDirection, setSettingsNavDirection] = useState<NavDirection>("forward");
   const [settingsMemberId, setSettingsMemberId] = useState("");
@@ -70,8 +73,7 @@ export function useSettingsState({ activeTab, authToken, appState, activeAlbum, 
     if (!authToken || !activeAlbum?.baby) {
       return;
     }
-    setError(null);
-    setNotice(null);
+    clearFeedback();
     try {
       await updateBabyProfile(authToken, activeAlbum.album.id, activeAlbum.baby.id, {
         name: babyProfileName.trim(),
@@ -81,10 +83,10 @@ export function useSettingsState({ activeTab, authToken, appState, activeAlbum, 
         await uploadBabyAvatar(authToken, activeAlbum.album.id, activeAlbum.baby.id, babyAvatarFile);
         setBabyAvatarFile(null);
       }
-      setNotice("宝宝信息已更新。");
+      showSuccess("保存成功", "宝宝信息已更新。");
       await refreshApp(activeAlbum.album.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "更新宝宝信息失败。");
+      showError("保存失败", errorMessageFromUnknown(err, "更新宝宝信息失败。"));
     }
   }
 
@@ -92,15 +94,14 @@ export function useSettingsState({ activeTab, authToken, appState, activeAlbum, 
     if (!authToken || !activeAlbum) {
       return;
     }
-    setError(null);
-    setNotice(null);
+    clearFeedback();
     try {
       const nextRole = roleDrafts[memberUserId];
       await updateMemberRole(authToken, activeAlbum.album.id, memberUserId, nextRole);
-      setNotice(`已更新成员权限：${roleLabel(nextRole)}。`);
+      showSuccess("权限已更新", `已更新成员权限：${roleLabel(nextRole)}。`);
       await refreshApp(activeAlbum.album.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "更新成员权限失败。");
+      showError("更新失败", errorMessageFromUnknown(err, "更新成员权限失败。"));
     }
   }
 
@@ -111,17 +112,16 @@ export function useSettingsState({ activeTab, authToken, appState, activeAlbum, 
     }
     const relation = myRelationDraft.trim();
     if (!relation) {
-      setError("请先填写你与宝宝的关系。");
+      showWarning("请补充信息", "请先填写你与宝宝的关系。");
       return;
     }
-    setError(null);
-    setNotice(null);
+    clearFeedback();
     try {
       await updateMemberRelation(authToken, activeAlbum.album.id, currentUser.id, relation);
-      setNotice("关系称呼已更新。");
+      showSuccess("保存成功", "关系称呼已更新。");
       await refreshApp(activeAlbum.album.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "更新关系称呼失败。");
+      showError("更新失败", errorMessageFromUnknown(err, "更新关系称呼失败。"));
     }
   }
 
@@ -129,15 +129,14 @@ export function useSettingsState({ activeTab, authToken, appState, activeAlbum, 
     if (!authToken || !activeAlbum) {
       return;
     }
-    setError(null);
-    setNotice(null);
+    clearFeedback();
     try {
       await leaveAlbum(authToken, activeAlbum.album.id, ownerTransferTarget || undefined);
       setOwnerTransferTarget("");
-      setNotice("你已退出当前宝宝相册。");
+      showSuccess("已退出相册", "你已退出当前宝宝相册。");
       await refreshApp();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "退出相册失败。");
+      showError("退出失败", errorMessageFromUnknown(err, "退出相册失败。"));
     }
   }
 
@@ -146,14 +145,13 @@ export function useSettingsState({ activeTab, authToken, appState, activeAlbum, 
     if (!authToken || !activeAlbum) {
       return;
     }
-    setError(null);
-    setNotice(null);
+    clearFeedback();
     try {
       const created = await createInvite(authToken, activeAlbum.album.id);
-      setNotice(`已生成邀请码：${created.code}`);
+      showSuccess("邀请码已生成", `已生成邀请码：${created.code}`);
       await refreshApp(activeAlbum.album.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "创建邀请码失败。");
+      showError("生成失败", errorMessageFromUnknown(err, "创建邀请码失败。"));
     }
   }
 
@@ -161,14 +159,16 @@ export function useSettingsState({ activeTab, authToken, appState, activeAlbum, 
     if (!authToken || !activeAlbum) {
       return;
     }
-    setError(null);
-    setNotice(null);
+    clearFeedback();
     try {
       const pairing = await createStorageNodePairing(authToken, activeAlbum.album.id);
       setStoragePairing(pairing);
-      setNotice(activeAlbum.storageNode ? "已生成替换配对码。新设备接入后会切换为当前主节点。" : "已生成储存节点配对码。请在 24 小时内用于首次部署 agent。");
+      showSuccess(
+        activeAlbum.storageNode ? "替换配对码已生成" : "储存节点配对码已生成",
+        activeAlbum.storageNode ? "已生成替换配对码。新设备接入后会切换为当前主节点。" : "已生成储存节点配对码。请在 24 小时内用于首次部署 agent。"
+      );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "生成储存节点配对码失败。");
+      showError("生成失败", errorMessageFromUnknown(err, "生成储存节点配对码失败。"));
     }
   }
 

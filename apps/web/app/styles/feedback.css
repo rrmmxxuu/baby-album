@@ -28,7 +28,7 @@
   pointer-events: auto;
 }
 
-.feedbackToastNotice {
+.feedbackToastSuccess {
   background: rgba(232, 242, 255, 0.96);
   color: #154f9c;
 }

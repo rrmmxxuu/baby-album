@@ -75,17 +75,20 @@ export function AlbumRouteShell({ albumId, children: _children }: AlbumRouteShel
     activeAlbum,
     currentUser,
     refreshApp: session.refreshApp,
-    setError: session.setError,
-    setNotice: session.setNotice
+    clearFeedback: session.clearFeedback,
+    showSuccess: session.showSuccess,
+    showWarning: session.showWarning,
+    showError: session.showError
   });
 
   const timeline = useTimelineState({
     activeTab,
     authToken: session.authToken,
     activeAlbum,
-    currentUser,
     refreshApp: session.refreshApp,
-    setError: session.setError
+    clearFeedback: session.clearFeedback,
+    showWarning: session.showWarning,
+    showError: session.showError
   });
 
   useEffect(() => {
@@ -267,13 +270,13 @@ export function AlbumRouteShell({ albumId, children: _children }: AlbumRouteShel
       return;
     }
     if (!appView.storageNode) {
-      session.setNotice("请先去设置里配对储存节点。");
+      session.showWarning("还差一步", "请先去设置里配对储存节点。");
       timeline.captureTabScrollPosition(activeTab);
       navigateAlbumScene(buildAlbumPath(activeAlbum.album.id, "settings", { screen: "storage" }));
       return;
     }
     if (activeAlbum.membership.role === "viewer") {
-      session.setNotice("当前身份没有上传权限。");
+      session.showWarning("没有权限", "当前身份没有上传权限。");
       return;
     }
     navigateAlbumScene(buildPhotosPath(activeAlbum.album.id, { composer: "new" }));

@@ -18,12 +18,9 @@ export function AppPageFrame({ children, session, currentUser, activeAlbum, show
       {session.bootPhase !== "done" ? <BootSplash phase={session.bootPhase === "exiting" ? "exiting" : "loading"} /> : null}
       {showTopBar ? <TopBar currentUser={currentUser} /> : null}
       <AppFeedbackToasts
-        error={session.error}
-        hasSession={Boolean(session.authToken)}
-        notice={session.notice}
+        feedback={session.feedback}
         offsetForBottomNav={Boolean(session.authToken && activeAlbum)}
-        onClearError={() => session.setError(null)}
-        onClearNotice={() => session.setNotice(null)}
+        onClearFeedback={session.clearFeedback}
       />
       {children}
     </main>

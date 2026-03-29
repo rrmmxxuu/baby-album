@@ -1,0 +1,281 @@
+.momentsFeed,
+.momentBatchList {
+  display: grid;
+  gap: 16px;
+}
+
+.momentDay {
+  display: grid;
+  gap: 14px;
+}
+
+.momentDayHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 6px;
+}
+
+.momentDayHeader h3 {
+  margin: 0 0 4px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.35rem;
+}
+
+.momentDayHeader p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.momentBabyDay {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(255, 241, 224, 0.9);
+  color: #8a5738;
+  font-size: 0.84rem;
+  white-space: nowrap;
+}
+
+.momentCard {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 28px;
+  border: 1px solid var(--line);
+  background: rgba(255, 251, 246, 0.92);
+  box-shadow: 0 10px 28px rgba(85, 52, 28, 0.08);
+}
+
+.momentPhotoGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.momentPhotoGrid1,
+.momentPhotoGrid2,
+.momentPhotoGrid4 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.momentPhotoGrid1 .momentThumb:first-child {
+  grid-column: 1 / -1;
+}
+
+.momentThumb {
+  display: block;
+  width: 100%;
+  position: relative;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  border-radius: 18px;
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+  background:
+    linear-gradient(135deg, rgba(255, 236, 214, 0.65), rgba(216, 145, 112, 0.55)),
+    linear-gradient(135deg, #f5d3b0, #cd7f57);
+}
+
+.momentThumbLarge {
+  aspect-ratio: 4 / 3;
+  border-radius: 24px;
+}
+
+.momentThumbImage,
+.momentThumbFallback {
+  width: 100%;
+  height: 100%;
+}
+
+.momentThumbImage {
+  object-fit: cover;
+  transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease;
+}
+
+.momentThumbFallback {
+  display: grid;
+  place-items: center;
+  color: #5a2e1b;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  font-size: 0.82rem;
+  background:
+    radial-gradient(circle at 50% 40%, rgba(255,255,255,0.22), rgba(255,255,255,0) 28%),
+    linear-gradient(135deg, rgba(255, 236, 214, 0.65), rgba(216, 145, 112, 0.55)),
+    linear-gradient(135deg, #f5d3b0, #cd7f57);
+}
+
+.momentThumbLarge .momentThumbFallback {
+  font-size: 1rem;
+}
+
+.momentVideo {
+  position: relative;
+  min-height: 0;
+}
+
+.momentVideoBadge {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(47, 37, 29, 0.78);
+  color: white;
+  font-size: 0.78rem;
+}
+
+.momentVideoPlay {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  width: 68px;
+  height: 68px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(17, 17, 17, 0.34);
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+}
+
+.momentVideoPlayTriangle {
+  width: 0;
+  height: 0;
+  margin-left: 4px;
+  border-top: 11px solid transparent;
+  border-bottom: 11px solid transparent;
+  border-left: 18px solid #ffffff;
+}
+
+.momentMeta {
+  margin: 0;
+  color: #8d8377;
+  font-size: 0.86rem;
+}
+
+.momentCardFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.momentMetaGroup {
+  display: grid;
+  gap: 4px;
+  align-content: center;
+}
+
+.momentActionGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.momentCommentButton,
+.momentEditButton {
+  align-self: center;
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #f2ede5;
+  color: #6a5849;
+  font-size: 0.84rem;
+  white-space: nowrap;
+}
+
+.momentCommentButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.momentCommentButtonActive {
+  background: #eadfce;
+  color: #5e4837;
+}
+
+.momentCaption {
+  margin: 0;
+  color: #4d3a2e;
+  line-height: 1.5;
+}
+
+.momentComments {
+  display: grid;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.momentCommentItem {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.58);
+  border: 1px solid rgba(47, 37, 29, 0.08);
+}
+
+.momentCommentItem p,
+.momentCommentHeader strong,
+.momentCommentHeader span {
+  margin: 0;
+}
+
+.momentCommentHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.momentCommentHeader strong {
+  color: #4d3a2e;
+  font-size: 0.9rem;
+}
+
+.momentCommentHeader span {
+  color: #8d8377;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.momentCommentItem p {
+  color: #5b4739;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.momentCommentComposer {
+  display: grid;
+  gap: 10px;
+  padding-top: 2px;
+}
+
+.momentCommentComposer textarea {
+  width: 100%;
+  min-height: 76px;
+  resize: vertical;
+  border-radius: 16px;
+  border: 1px solid rgba(60, 60, 67, 0.12);
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  font: inherit;
+  color: var(--ink);
+}
+
+.momentCommentComposerActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}

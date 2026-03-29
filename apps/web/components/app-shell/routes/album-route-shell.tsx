@@ -132,12 +132,12 @@ export function AlbumRouteShell({ albumId, children }: AlbumRouteShellProps) {
   });
 
   useEffect(() => {
-    if (!readyAlbum) {
+    if (!session.authToken || session.bootPhase !== "done") {
       return;
     }
-    router.prefetch(buildAlbumPath(readyAlbum.album.id, "photos"));
-    router.prefetch(buildAlbumPath(readyAlbum.album.id, "settings"));
-  }, [readyAlbum, router]);
+    router.prefetch(buildAlbumPath(albumId, "photos"));
+    router.prefetch(buildAlbumPath(albumId, "settings"));
+  }, [albumId, router, session.authToken, session.bootPhase]);
 
   useEffect(() => {
     if (activeTab !== "photos" || !readyAlbum) {
@@ -207,14 +207,14 @@ export function AlbumRouteShell({ albumId, children }: AlbumRouteShellProps) {
     }
   }, [activeTab, requestedComposer, requestedEditEntryId, timeline, timeline.timelineEntries]);
 
-  function changeTab(nextTab: TabKey) {
-    if (!activeAlbum || nextTab === activeTab) {
-      return;
+  function handleTabNavigate(nextTab: TabKey) {
+    if (nextTab !== activeTab) {
+      timeline.captureTabScrollPosition(activeTab);
     }
-    timeline.captureTabScrollPosition(activeTab);
-    startTransition(() => {
-      router.push(buildAlbumPath(activeAlbum.album.id, nextTab));
-    });
+  }
+
+  function prefetchTab(nextTab: TabKey) {
+    router.prefetch(buildAlbumPath(albumId, nextTab));
   }
 
   function handleAlbumChange(nextAlbumId: string) {
@@ -385,7 +385,16 @@ export function AlbumRouteShell({ albumId, children }: AlbumRouteShellProps) {
       ) : null}
 
       {readyAlbum && !redirectPath && activeTab === "photos" ? <FloatingAddButton onClick={handleOpenUploadFlow} /> : null}
-      {readyAlbum && !redirectPath ? <BottomNav activeTab={activeTab} hidden={timeline.draftSheetOpen} onChange={changeTab} /> : null}
+      {readyAlbum && !redirectPath ? (
+        <BottomNav
+          activeTab={activeTab}
+          hidden={timeline.draftSheetOpen}
+          onNavigate={handleTabNavigate}
+          onPrefetch={prefetchTab}
+          photosHref={buildAlbumPath(readyAlbum.album.id, "photos")}
+          settingsHref={buildAlbumPath(readyAlbum.album.id, "settings")}
+        />
+      ) : null}
     </AppPageFrame>
   );
 }

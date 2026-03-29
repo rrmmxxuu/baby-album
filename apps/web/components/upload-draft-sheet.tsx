@@ -85,13 +85,12 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
           <>
             {draftState.currentScene === "list" && !draftState.isEditMode ? <DraftListScene draftState={draftState} /> : null}
             {draftState.currentScene === "detail" || draftState.isEditMode ? <DraftDetailScene draftState={draftState} onAppendFiles={() => editAppendInputRef.current?.click()} submitState={submitState} /> : null}
-            <DraftBatchSettingsModal draftState={draftState} />
             {draftState.status ? <p className="statusNote">{draftState.status}</p> : null}
           </>
         )}
-
-        <DraftUploadProgressDialog submitState={submitState} />
       </section>
+      <DraftBatchSettingsModal draftState={draftState} />
+      <DraftUploadProgressDialog submitState={submitState} />
       {!draftState.isEditMode && draftState.currentScene === "list" ? (
         <DraftFloatingBar disabled={disabled} onOpenBatchSettings={() => draftState.setActiveModal("batchSettings")} onSave={submitState.handleUploadAll} uploading={submitState.uploading} />
       ) : null}

@@ -1,16 +1,44 @@
+import Link from "next/link";
+import type { Route } from "next";
+import type { MouseEvent } from "react";
 import type { TabKey } from "../model/types";
 
 interface BottomNavProps {
   activeTab: TabKey;
   hidden?: boolean;
-  onChange: (tab: TabKey) => void;
+  photosHref: Route;
+  settingsHref: Route;
+  onNavigate: (tab: TabKey) => void;
+  onPrefetch: (tab: TabKey) => void;
 }
 
-export function BottomNav({ activeTab, hidden, onChange }: BottomNavProps) {
+export function BottomNav({ activeTab, hidden, photosHref, settingsHref, onNavigate, onPrefetch }: BottomNavProps) {
+  function bindLink(tab: TabKey) {
+    return {
+      onClick: (event: MouseEvent<HTMLAnchorElement>) => {
+        if (activeTab === tab) {
+          event.preventDefault();
+          return;
+        }
+        onNavigate(tab);
+      },
+      onMouseEnter: () => {
+        if (activeTab !== tab) {
+          onPrefetch(tab);
+        }
+      },
+      onTouchStart: () => {
+        if (activeTab !== tab) {
+          onPrefetch(tab);
+        }
+      }
+    };
+  }
+
   return (
     <nav className={`bottomNav${hidden ? " bottomNavHidden" : ""}`}>
-      <button className={activeTab === "photos" ? "navActive" : ""} onClick={() => onChange("photos")} type="button">照片</button>
-      <button className={activeTab === "settings" ? "navActive" : ""} onClick={() => onChange("settings")} type="button">设置</button>
+      <Link aria-current={activeTab === "photos" ? "page" : undefined} className={activeTab === "photos" ? "navActive" : ""} href={photosHref} prefetch scroll={false} {...bindLink("photos")}>照片</Link>
+      <Link aria-current={activeTab === "settings" ? "page" : undefined} className={activeTab === "settings" ? "navActive" : ""} href={settingsHref} prefetch scroll={false} {...bindLink("settings")}>设置</Link>
     </nav>
   );
 }

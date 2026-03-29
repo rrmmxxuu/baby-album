@@ -37,6 +37,7 @@ export function DraftListScene({ draftState }: DraftListSceneProps) {
               <p className="helperText">{visibilityLabel(draft.visibility)} · {timeModeLabel(draft.timeMode)}</p>
             </article>
           ))}
+          <div aria-hidden="true" className="draftListBottomSpacer" />
         </div>
       </section>
     </div>

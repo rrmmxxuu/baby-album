@@ -86,6 +86,10 @@ func (s *Server) handleCollectionActions(w http.ResponseWriter, r *http.Request,
 		s.handleStoragePairing(w, r, userID, familyID)
 	case len(parts) == 2 && parts[1] == "invites":
 		s.handleFamilyInvites(w, r, userID, familyID)
+	case len(parts) == 3 && parts[1] == "duplicate-media" && parts[2] == "probe":
+		s.handleDuplicateMediaProbe(w, r, userID, familyID)
+	case len(parts) == 3 && parts[1] == "duplicate-media" && parts[2] == "resolve":
+		s.handleDuplicateMediaResolve(w, r, userID, familyID)
 	case len(parts) == 4 && parts[1] == "members" && parts[3] == "role":
 		s.handleMemberRoleUpdate(w, r, userID, familyID, parts[2])
 	case len(parts) == 4 && parts[1] == "members" && parts[3] == "relation":
@@ -250,6 +254,72 @@ func (s *Server) handleFamilyInvites(w http.ResponseWriter, r *http.Request, use
 	default:
 		writeMethodNotAllowed(w)
 	}
+}
+
+func (s *Server) handleDuplicateMediaProbe(w http.ResponseWriter, r *http.Request, userID, familyID string) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w)
+		return
+	}
+	var input struct {
+		Items []struct {
+			ClientID string `json:"clientId"`
+			ByteSize int64  `json:"byteSize"`
+		} `json:"items"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	items := make([]store.DuplicateMediaProbeItemInput, 0, len(input.Items))
+	for _, item := range input.Items {
+		items = append(items, store.DuplicateMediaProbeItemInput{
+			ClientID: item.ClientID,
+			ByteSize: item.ByteSize,
+		})
+	}
+	result, err := s.store.ProbeDuplicateMedia(userID, store.DuplicateMediaProbeInput{
+		AlbumID: familyID,
+		Items:   items,
+	})
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (s *Server) handleDuplicateMediaResolve(w http.ResponseWriter, r *http.Request, userID, familyID string) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w)
+		return
+	}
+	var input struct {
+		Items []struct {
+			ClientID string `json:"clientId"`
+			SHA256   string `json:"sha256"`
+		} `json:"items"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	items := make([]store.DuplicateMediaResolveItemInput, 0, len(input.Items))
+	for _, item := range input.Items {
+		items = append(items, store.DuplicateMediaResolveItemInput{
+			ClientID: item.ClientID,
+			SHA256:   item.SHA256,
+		})
+	}
+	result, err := s.store.ResolveDuplicateMedia(userID, store.DuplicateMediaResolveInput{
+		AlbumID: familyID,
+		Items:   items,
+	})
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (s *Server) handleInviteActions(w http.ResponseWriter, r *http.Request) {

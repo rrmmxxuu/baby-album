@@ -2,10 +2,12 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
+    id: "/",
     name: "宝宝相册",
     short_name: "宝宝相册",
     description: "Self-hosted baby photo timeline with album membership and RBAC",
     start_url: "/",
+    scope: "/",
     display: "standalone",
     orientation: "portrait",
     lang: "zh-CN",

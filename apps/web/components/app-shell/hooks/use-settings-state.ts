@@ -13,7 +13,7 @@ interface UseSettingsStateOptions {
   appState: AppStatePayload | null;
   activeAlbum: AlbumWorkspace | null;
   currentUser: User | null;
-  refreshApp: (targetAlbumId?: string, options?: { silent?: boolean }) => Promise<void>;
+  refreshApp: (targetAlbumId?: string, options?: { silent?: boolean }) => Promise<AppStatePayload | null>;
   clearFeedback: () => void;
   showSuccess: (title: string, message: string) => void;
   showWarning: (title: string, message: string) => void;

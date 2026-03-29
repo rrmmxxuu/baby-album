@@ -26,7 +26,10 @@ var (
 	ErrPairingUsed      = errors.New("pairing code already used")
 )
 
-const DefaultTimelinePageSize = 10
+const (
+	DefaultTimelinePageSize    = 10
+	MaxDuplicateMediaBatchSize = 500
+)
 
 type TimelinePageInput struct {
 	Cursor string
@@ -72,8 +75,48 @@ type CreateTimelineCommentInput struct {
 }
 
 type UploadContentInput struct {
+	ByteSize      int64
+	BlobKey       string
+	ContentSHA256 string
+}
+
+type DuplicateMediaProbeItemInput struct {
+	ClientID string
 	ByteSize int64
-	BlobKey  string
+}
+
+type DuplicateMediaProbeInput struct {
+	AlbumID string
+	Items   []DuplicateMediaProbeItemInput
+}
+
+type DuplicateMediaProbeItem struct {
+	ClientID  string `json:"clientId"`
+	NeedsHash bool   `json:"needsHash"`
+}
+
+type DuplicateMediaProbeResult struct {
+	Items []DuplicateMediaProbeItem `json:"items"`
+}
+
+type DuplicateMediaResolveItemInput struct {
+	ClientID string
+	SHA256   string
+}
+
+type DuplicateMediaResolveInput struct {
+	AlbumID string
+	Items   []DuplicateMediaResolveItemInput
+}
+
+type DuplicateMediaResolveItem struct {
+	ClientID       string `json:"clientId"`
+	Duplicate      bool   `json:"duplicate"`
+	DuplicateCount int    `json:"duplicateCount"`
+}
+
+type DuplicateMediaResolveResult struct {
+	Items []DuplicateMediaResolveItem `json:"items"`
 }
 
 type JobCompletionInput struct {
@@ -214,6 +257,8 @@ type Repository interface {
 	TimelinePage(albumID, userID string, input TimelinePageInput) (TimelinePage, error)
 	Members(albumID, userID string) ([]domain.AlbumMember, error)
 	MediaByID(albumID, userID, mediaID string) (domain.MediaAsset, error)
+	ProbeDuplicateMedia(userID string, input DuplicateMediaProbeInput) (DuplicateMediaProbeResult, error)
+	ResolveDuplicateMedia(userID string, input DuplicateMediaResolveInput) (DuplicateMediaResolveResult, error)
 	CreateTimelineEntry(userID string, input CreateTimelineEntryInput) (domain.TimelineEntry, error)
 	CreateTimelineComment(userID string, input CreateTimelineCommentInput) (domain.TimelineComment, error)
 	UpdateTimelineEntry(userID string, input UpdateTimelineEntryInput) (domain.TimelineEntry, error)

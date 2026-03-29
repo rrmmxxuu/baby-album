@@ -121,6 +121,10 @@
   gap: 14px;
 }
 
+.draftDuplicateChecking {
+  margin: 0 0 12px;
+}
+
 .draftListBottomSpacer {
   height: calc(146px + env(safe-area-inset-bottom));
   pointer-events: none;
@@ -228,6 +232,21 @@
   border-radius: 12px;
   background: transparent;
   box-shadow: none;
+}
+
+.draftDuplicateBadge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 1;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(0, 122, 255, 0.92);
+  color: white;
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
 }
 
 .draftMediaActions {

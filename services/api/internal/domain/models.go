@@ -171,9 +171,11 @@ type MediaAsset struct {
 	Source          string        `json:"source"`
 	Width           int           `json:"width"`
 	Height          int           `json:"height"`
+	ByteSize        int64         `json:"-"`
 	PreviewStatus   PreviewStatus `json:"previewStatus"`
 	PreviewBlobKey  string        `json:"previewBlobKey,omitempty"`
 	OriginalBlobKey string        `json:"-"`
+	ContentSHA256   string        `json:"-"`
 	ProcessedAt     *time.Time    `json:"processedAt,omitempty"`
 	OriginalPath    string        `json:"-"`
 }

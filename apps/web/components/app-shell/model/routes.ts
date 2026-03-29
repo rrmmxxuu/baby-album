@@ -11,6 +11,10 @@ function appendInvite(path: string, inviteCode?: string) {
   return `${path}?${query.toString()}` as Route;
 }
 
+export function buildHomePath(inviteCode?: string) {
+  return appendInvite("/", inviteCode);
+}
+
 export function buildAuthPath(inviteCode?: string) {
   return appendInvite("/auth", inviteCode);
 }
@@ -86,7 +90,7 @@ export function resolveHomeRedirect({ hydrated, authToken, inviteCode, activeAlb
     return null;
   }
   if (!authToken) {
-    return buildAuthPath(inviteCode);
+    return buildHomePath(inviteCode);
   }
   const albumId = preferredAlbumId(activeAlbumId, rememberedAlbumId);
   if (albumId) {
@@ -117,7 +121,7 @@ export function resolveAlbumsRedirect({ hydrated, authToken, inviteCode, activeA
     return null;
   }
   if (!authToken) {
-    return buildAuthPath(inviteCode);
+    return buildHomePath(inviteCode);
   }
   const albumId = preferredAlbumId(activeAlbumId, rememberedAlbumId);
   if (albumId) {
@@ -131,7 +135,7 @@ export function resolveAlbumRedirect({ bootPhaseDone, authToken, inviteCode, act
     return null;
   }
   if (!authToken) {
-    return buildAuthPath(inviteCode);
+    return buildHomePath(inviteCode);
   }
   if (loading || albumRefreshing) {
     return null;

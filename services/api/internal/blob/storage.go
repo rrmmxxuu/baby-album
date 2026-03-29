@@ -1,7 +1,10 @@
 package blob
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"hash"
 	"io"
 	"mime/multipart"
 	"os"
@@ -10,8 +13,9 @@ import (
 )
 
 type SavedBlob struct {
-	Key      string
-	ByteSize int64
+	Key           string
+	ByteSize      int64
+	ContentSHA256 string
 }
 
 type Storage struct{ root string }
@@ -33,11 +37,16 @@ func (s *Storage) Save(prefix, originalName string, file multipart.File) (SavedB
 		return SavedBlob{}, err
 	}
 	defer out.Close()
-	written, err := io.Copy(out, file)
+	hasher := sha256.New()
+	written, err := io.Copy(io.MultiWriter(out, hasher), file)
 	if err != nil {
 		return SavedBlob{}, err
 	}
-	return SavedBlob{Key: key, ByteSize: written}, nil
+	return SavedBlob{
+		Key:           key,
+		ByteSize:      written,
+		ContentSHA256: hexDigest(hasher),
+	}, nil
 }
 
 func (s *Storage) SaveBytes(prefix, originalName string, data []byte) (SavedBlob, error) {
@@ -53,7 +62,12 @@ func (s *Storage) SaveBytes(prefix, originalName string, data []byte) (SavedBlob
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return SavedBlob{}, err
 	}
-	return SavedBlob{Key: key, ByteSize: int64(len(data))}, nil
+	sum := sha256.Sum256(data)
+	return SavedBlob{
+		Key:           key,
+		ByteSize:      int64(len(data)),
+		ContentSHA256: hex.EncodeToString(sum[:]),
+	}, nil
 }
 
 func (s *Storage) Open(key string) (*os.File, error) {
@@ -63,4 +77,8 @@ func (s *Storage) Open(key string) (*os.File, error) {
 func sanitizeName(name string) string {
 	replacer := strings.NewReplacer("..", "", "/", "-", `\`, "-", ":", "-", " ", "-")
 	return replacer.Replace(name)
+}
+
+func hexDigest(hasher hash.Hash) string {
+	return hex.EncodeToString(hasher.Sum(nil))
 }

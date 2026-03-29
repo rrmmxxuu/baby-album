@@ -1,6 +1,6 @@
 "use client";
 
-import type { AlbumWorkspace } from "../../../lib/types";
+import type { AlbumWorkspace, AppStatePayload } from "../../../lib/types";
 import { useTimelineComments } from "./timeline/use-timeline-comments";
 import { useTimelineFeed } from "./timeline/use-timeline-feed";
 import { useTimelineOverlays } from "./timeline/use-timeline-overlays";
@@ -11,7 +11,7 @@ interface UseTimelineStateOptions {
   activeTab: TabKey;
   authToken: string;
   activeAlbum: AlbumWorkspace | null;
-  refreshApp: (targetAlbumId?: string, options?: { silent?: boolean }) => Promise<void>;
+  refreshApp: (targetAlbumId?: string, options?: { silent?: boolean }) => Promise<AppStatePayload | null>;
   clearFeedback: () => void;
   showWarning: (title: string, message: string) => void;
   showError: (title: string, message: string) => void;

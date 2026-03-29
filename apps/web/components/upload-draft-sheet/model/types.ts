@@ -33,3 +33,10 @@ export type UploadProgressState = {
 
 export type DraftScene = "list" | "detail";
 export type DraftModal = "batchSettings" | null;
+
+export type DraftDuplicateStatus = "idle" | "probing" | "hashing" | "duplicate" | "unique" | "unsupported" | "error";
+
+export type DraftDuplicateState = {
+  status: DraftDuplicateStatus;
+  duplicateCount: number;
+};

@@ -2,6 +2,7 @@
 
 import { useRef } from "react";
 import type { TimelineEntry } from "../lib/types";
+import { useDraftDuplicateCheck } from "./upload-draft-sheet/hooks/use-draft-duplicate-check";
 import { useUploadDraftState } from "./upload-draft-sheet/hooks/use-upload-draft-state";
 import { useUploadSubmit } from "./upload-draft-sheet/hooks/use-upload-submit";
 import { DraftBatchSettingsModal } from "./upload-draft-sheet/ui/draft-batch-settings-modal";
@@ -31,6 +32,12 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
   const appendInputRef = useRef<HTMLInputElement | null>(null);
   const editAppendInputRef = useRef<HTMLInputElement | null>(null);
   const draftState = useUploadDraftState({ albumId, authToken, open, editingEntry });
+  const duplicateState = useDraftDuplicateCheck({
+    albumId,
+    authToken,
+    open,
+    drafts: draftState.drafts
+  });
   const submitState = useUploadSubmit({
     albumId,
     authToken,
@@ -83,8 +90,8 @@ export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled,
           />
         ) : (
           <>
-            {draftState.currentScene === "list" && !draftState.isEditMode ? <DraftListScene draftState={draftState} /> : null}
-            {draftState.currentScene === "detail" || draftState.isEditMode ? <DraftDetailScene draftState={draftState} onAppendFiles={() => editAppendInputRef.current?.click()} submitState={submitState} /> : null}
+            {draftState.currentScene === "list" && !draftState.isEditMode ? <DraftListScene draftState={draftState} duplicateState={duplicateState} /> : null}
+            {draftState.currentScene === "detail" || draftState.isEditMode ? <DraftDetailScene draftState={draftState} duplicateState={duplicateState} onAppendFiles={() => editAppendInputRef.current?.click()} submitState={submitState} /> : null}
             {draftState.status ? <p className="statusNote">{draftState.status}</p> : null}
           </>
         )}

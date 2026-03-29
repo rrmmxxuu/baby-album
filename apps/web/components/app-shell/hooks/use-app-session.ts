@@ -1,10 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { acceptInvite, createAlbum, loadAppState, loginUser, logoutUser, registerUser, uploadBabyAvatar } from "../../../lib/api";
 import type { AppStatePayload } from "../../../lib/types";
 import { ALBUM_STORAGE_KEY, BOOT_SPLASH_EXIT_MS, BOOT_SPLASH_MIN_MS, TOKEN_STORAGE_KEY } from "../model/constants";
 import { buildFeedback, errorMessageFromUnknown } from "../model/feedback";
+import { buildAlbumPath, buildHomePath } from "../model/routes";
 import type { AuthMode } from "../model/types";
 
 interface RefreshOptions {
@@ -13,6 +15,7 @@ interface RefreshOptions {
 }
 
 export function useAppSession(queryInviteCode: string) {
+  const router = useRouter();
   const [origin, setOrigin] = useState("");
   const [hydrated, setHydrated] = useState(false);
   const [bootPhase, setBootPhase] = useState<"loading" | "exiting" | "done">("loading");
@@ -74,7 +77,7 @@ export function useAppSession(queryInviteCode: string) {
   const refreshApp = useCallback(async (targetAlbumId?: string, options?: RefreshOptions) => {
     const sessionToken = options?.token ?? authToken;
     if (!sessionToken) {
-      return;
+      return null;
     }
     if (!options?.silent) {
       setLoading(true);
@@ -89,6 +92,7 @@ export function useAppSession(queryInviteCode: string) {
       } else {
         window.localStorage.removeItem(ALBUM_STORAGE_KEY);
       }
+      return next;
     } catch (err) {
       const unauthorized = err instanceof Error && err.message.includes("unauthorized");
       const message = errorMessageFromUnknown(err, "加载数据失败。", {
@@ -98,6 +102,7 @@ export function useAppSession(queryInviteCode: string) {
         clearSession(false);
       }
       showError(message === "请重新登录后再试。" ? "登录状态已失效" : "同步失败", message);
+      return null;
     } finally {
       if (!options?.silent) {
         setLoading(false);
@@ -185,7 +190,8 @@ export function useAppSession(queryInviteCode: string) {
       setRegisterEmail("");
       setRegisterPassword("");
       showSuccess("注册成功", `欢迎，${auth.user.displayName}。请继续加入已有相册，或创建第一个宝宝相册。`);
-      await refreshApp(undefined, { token: auth.token });
+      const next = await refreshApp(undefined, { token: auth.token });
+      router.replace(next?.activeAlbumId ? buildAlbumPath(next.activeAlbumId, "photos") : buildHomePath(queryInviteCode));
     } catch (err) {
       showError("注册失败", errorMessageFromUnknown(err, "注册失败。"));
     }
@@ -200,7 +206,8 @@ export function useAppSession(queryInviteCode: string) {
       setLoginEmail("");
       setLoginPassword("");
       showSuccess("登录成功", `欢迎回来，${auth.user.displayName}。`);
-      await refreshApp(undefined, { token: auth.token });
+      const next = await refreshApp(undefined, { token: auth.token });
+      router.replace(next?.activeAlbumId ? buildAlbumPath(next.activeAlbumId, "photos") : buildHomePath(queryInviteCode));
     } catch (err) {
       showError("登录失败", errorMessageFromUnknown(err, "登录失败。", {
         unauthorizedMessage: "邮箱或密码不正确，或账号还不存在。"
@@ -260,6 +267,7 @@ export function useAppSession(queryInviteCode: string) {
       window.localStorage.setItem(ALBUM_STORAGE_KEY, album.id);
       showSuccess("创建成功", "宝宝相册已创建。");
       await refreshApp(album.id);
+      router.replace(buildAlbumPath(album.id, "photos"));
     } catch (err) {
       showError("创建失败", errorMessageFromUnknown(err, "创建宝宝相册失败。"));
     }
@@ -287,6 +295,7 @@ export function useAppSession(queryInviteCode: string) {
       setInviteRelation("");
       showSuccess("加入成功", "你已加入这个宝宝相册。");
       await refreshApp(accepted.albumId);
+      router.replace(buildAlbumPath(accepted.albumId, "photos"));
     } catch (err) {
       showError("加入失败", errorMessageFromUnknown(err, "加入相册失败。"));
     }

@@ -63,7 +63,7 @@ func (s *PostgresStore) migrate() error {
 		`create table if not exists storage_node_pairings (code text primary key, family_id text not null references families(id), created_by text not null references users(id), created_at timestamptz not null, expires_at timestamptz not null, used_at timestamptz)`,
 		`create table if not exists timeline_entries (id text primary key, family_id text not null references families(id), caption text not null default '', visibility text not null default 'members', time_mode text not null default 'captured_at', display_at timestamptz not null, timeline_day text not null, uploaded_by text not null default '', uploaded_by_name text not null default '', uploaded_at timestamptz not null, created_at timestamptz not null)`,
 		`create table if not exists timeline_comments (id text primary key, family_id text not null references families(id), entry_id text not null references timeline_entries(id), user_id text not null references users(id), display_name text not null, content text not null, created_at timestamptz not null)`,
-		`create table if not exists media_assets (id text primary key, family_id text not null references families(id), entry_id text not null default '', upload_batch_id text not null default '', uploaded_by text not null default '', uploaded_by_name text not null default '', file_name text not null, media_type text not null, captured_at timestamptz not null, uploaded_at timestamptz not null, timeline_day text not null, status text not null, source text not null, width integer not null default 0, height integer not null default 0, preview_status text not null default 'pending', preview_blob_key text not null default '', original_blob_key text not null default '', processed_at timestamptz, original_path text not null default '')`,
+		`create table if not exists media_assets (id text primary key, family_id text not null references families(id), entry_id text not null default '', upload_batch_id text not null default '', uploaded_by text not null default '', uploaded_by_name text not null default '', file_name text not null, media_type text not null, captured_at timestamptz not null, uploaded_at timestamptz not null, timeline_day text not null, status text not null, source text not null, width integer not null default 0, height integer not null default 0, byte_size bigint not null default 0, preview_status text not null default 'pending', preview_blob_key text not null default '', original_blob_key text not null default '', content_sha256 text not null default '', processed_at timestamptz, original_path text not null default '')`,
 		`create table if not exists media_placements (media_id text not null references media_assets(id), family_id text not null references families(id), node_id text not null references storage_nodes(id), kind text not null default 'primary', status text not null default 'pending', local_path text not null default '', created_at timestamptz not null, updated_at timestamptz not null, last_verified_at timestamptz, primary key (media_id, node_id))`,
 		`create index if not exists idx_media_placements_family_node_status on media_placements (family_id, node_id, status)`,
 		`create index if not exists idx_media_placements_media_kind on media_placements (media_id, kind)`,
@@ -71,7 +71,9 @@ func (s *PostgresStore) migrate() error {
 		`alter table media_assets add column if not exists upload_batch_id text not null default ''`,
 		`alter table media_assets add column if not exists uploaded_by text not null default ''`,
 		`alter table media_assets add column if not exists uploaded_by_name text not null default ''`,
+		`alter table media_assets add column if not exists byte_size bigint not null default 0`,
 		`alter table media_assets add column if not exists original_blob_key text not null default ''`,
+		`alter table media_assets add column if not exists content_sha256 text not null default ''`,
 		`update media_assets set upload_batch_id = id where upload_batch_id = ''`,
 		`update media_assets set uploaded_by_name = '家人' where uploaded_by_name = ''`,
 		`update media_assets set entry_id = upload_batch_id where entry_id = ''`,
@@ -93,6 +95,8 @@ func (s *PostgresStore) migrate() error {
 		`create index if not exists idx_timeline_entries_family_display on timeline_entries (family_id, display_at desc, uploaded_at desc)`,
 		`create index if not exists idx_timeline_comments_entry_created on timeline_comments (entry_id, created_at asc, id asc)`,
 		`create index if not exists idx_media_assets_family_captured on media_assets (family_id, captured_at desc)`,
+		`create index if not exists idx_media_assets_family_byte_size on media_assets (family_id, byte_size)`,
+		`create index if not exists idx_media_assets_family_sha256 on media_assets (family_id, content_sha256) where content_sha256 <> ''`,
 		`create index if not exists idx_media_assets_entry on media_assets (entry_id, captured_at asc)`,
 		`create index if not exists idx_agent_jobs_node_status_created on agent_jobs (node_id, status, created_at asc)`,
 	}
@@ -408,7 +412,7 @@ func (s *PostgresStore) TimelinePage(familyID, userID string, input TimelinePage
 		queryArgs = append(queryArgs, entry.ID)
 	}
 	mediaQuery := fmt.Sprintf(
-		`select id, family_id, entry_id, upload_batch_id, uploaded_by, uploaded_by_name, file_name, media_type, captured_at, uploaded_at, timeline_day, status, source, width, height, preview_status, preview_blob_key, original_blob_key, processed_at, original_path from media_assets where family_id = $1 and entry_id in (%s) order by captured_at asc, uploaded_at asc, id asc`,
+		`select id, family_id, entry_id, upload_batch_id, uploaded_by, uploaded_by_name, file_name, media_type, captured_at, uploaded_at, timeline_day, status, source, width, height, byte_size, preview_status, preview_blob_key, original_blob_key, content_sha256, processed_at, original_path from media_assets where family_id = $1 and entry_id in (%s) order by captured_at asc, uploaded_at asc, id asc`,
 		strings.Join(placeholders, ","),
 	)
 	mediaRows, err := s.db.Query(mediaQuery, queryArgs...)
@@ -467,7 +471,7 @@ func (s *PostgresStore) MediaByID(familyID, userID, mediaID string) (domain.Medi
 	if err := s.authorize(familyID, userID, domain.RoleViewer); err != nil {
 		return domain.MediaAsset{}, err
 	}
-	row := s.db.QueryRow(`select id, family_id, entry_id, upload_batch_id, uploaded_by, uploaded_by_name, file_name, media_type, captured_at, uploaded_at, timeline_day, status, source, width, height, preview_status, preview_blob_key, original_blob_key, processed_at, original_path from media_assets where family_id = $1 and id = $2`, familyID, mediaID)
+	row := s.db.QueryRow(`select id, family_id, entry_id, upload_batch_id, uploaded_by, uploaded_by_name, file_name, media_type, captured_at, uploaded_at, timeline_day, status, source, width, height, byte_size, preview_status, preview_blob_key, original_blob_key, content_sha256, processed_at, original_path from media_assets where family_id = $1 and id = $2`, familyID, mediaID)
 	item, err := scanMediaAsset(row)
 	if err == sql.ErrNoRows {
 		return domain.MediaAsset{}, ErrNotFound
@@ -476,6 +480,137 @@ func (s *PostgresStore) MediaByID(familyID, userID, mediaID string) (domain.Medi
 		return domain.MediaAsset{}, err
 	}
 	return item, nil
+}
+
+func (s *PostgresStore) ProbeDuplicateMedia(userID string, input DuplicateMediaProbeInput) (DuplicateMediaProbeResult, error) {
+	if err := s.authorize(input.AlbumID, userID, domain.RoleMember); err != nil {
+		return DuplicateMediaProbeResult{}, err
+	}
+	if len(input.Items) == 0 {
+		return DuplicateMediaProbeResult{Items: []DuplicateMediaProbeItem{}}, nil
+	}
+	if len(input.Items) > MaxDuplicateMediaBatchSize {
+		return DuplicateMediaProbeResult{}, fmt.Errorf("at most %d items are allowed", MaxDuplicateMediaBatchSize)
+	}
+
+	sizeLookup := make(map[int64]bool, len(input.Items))
+	queryArgs := make([]any, 0, len(input.Items)+1)
+	queryArgs = append(queryArgs, input.AlbumID)
+	placeholders := make([]string, 0, len(input.Items))
+	placeholderIndex := 2
+	for _, item := range input.Items {
+		if item.ClientID == "" || item.ByteSize <= 0 {
+			continue
+		}
+		if _, exists := sizeLookup[item.ByteSize]; exists {
+			continue
+		}
+		placeholders = append(placeholders, fmt.Sprintf("$%d", placeholderIndex))
+		queryArgs = append(queryArgs, item.ByteSize)
+		sizeLookup[item.ByteSize] = false
+		placeholderIndex += 1
+	}
+	if len(placeholders) > 0 {
+		rows, err := s.db.Query(
+			fmt.Sprintf(
+				`select byte_size from media_assets where family_id = $1 and media_type like 'image/%%' and content_sha256 <> '' and byte_size in (%s) group by byte_size`,
+				strings.Join(placeholders, ","),
+			),
+			queryArgs...,
+		)
+		if err != nil {
+			return DuplicateMediaProbeResult{}, err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var byteSize int64
+			if scanErr := rows.Scan(&byteSize); scanErr != nil {
+				return DuplicateMediaProbeResult{}, scanErr
+			}
+			sizeLookup[byteSize] = true
+		}
+		if err := rows.Err(); err != nil {
+			return DuplicateMediaProbeResult{}, err
+		}
+	}
+
+	result := DuplicateMediaProbeResult{Items: make([]DuplicateMediaProbeItem, 0, len(input.Items))}
+	for _, item := range input.Items {
+		result.Items = append(result.Items, DuplicateMediaProbeItem{
+			ClientID:  item.ClientID,
+			NeedsHash: item.ClientID != "" && item.ByteSize > 0 && sizeLookup[item.ByteSize],
+		})
+	}
+	return result, nil
+}
+
+func (s *PostgresStore) ResolveDuplicateMedia(userID string, input DuplicateMediaResolveInput) (DuplicateMediaResolveResult, error) {
+	if err := s.authorize(input.AlbumID, userID, domain.RoleMember); err != nil {
+		return DuplicateMediaResolveResult{}, err
+	}
+	if len(input.Items) == 0 {
+		return DuplicateMediaResolveResult{Items: []DuplicateMediaResolveItem{}}, nil
+	}
+	if len(input.Items) > MaxDuplicateMediaBatchSize {
+		return DuplicateMediaResolveResult{}, fmt.Errorf("at most %d items are allowed", MaxDuplicateMediaBatchSize)
+	}
+
+	hashCounts := make(map[string]int, len(input.Items))
+	queryArgs := make([]any, 0, len(input.Items)+1)
+	queryArgs = append(queryArgs, input.AlbumID)
+	placeholders := make([]string, 0, len(input.Items))
+	placeholderIndex := 2
+	for _, item := range input.Items {
+		normalized := strings.ToLower(strings.TrimSpace(item.SHA256))
+		if item.ClientID == "" || normalized == "" {
+			continue
+		}
+		if _, exists := hashCounts[normalized]; exists {
+			continue
+		}
+		placeholders = append(placeholders, fmt.Sprintf("$%d", placeholderIndex))
+		queryArgs = append(queryArgs, normalized)
+		hashCounts[normalized] = 0
+		placeholderIndex += 1
+	}
+	if len(placeholders) > 0 {
+		rows, err := s.db.Query(
+			fmt.Sprintf(
+				`select content_sha256, count(*) from media_assets where family_id = $1 and media_type like 'image/%%' and content_sha256 in (%s) group by content_sha256`,
+				strings.Join(placeholders, ","),
+			),
+			queryArgs...,
+		)
+		if err != nil {
+			return DuplicateMediaResolveResult{}, err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var (
+				hash  string
+				count int
+			)
+			if scanErr := rows.Scan(&hash, &count); scanErr != nil {
+				return DuplicateMediaResolveResult{}, scanErr
+			}
+			hashCounts[hash] = count
+		}
+		if err := rows.Err(); err != nil {
+			return DuplicateMediaResolveResult{}, err
+		}
+	}
+
+	result := DuplicateMediaResolveResult{Items: make([]DuplicateMediaResolveItem, 0, len(input.Items))}
+	for _, item := range input.Items {
+		normalized := strings.ToLower(strings.TrimSpace(item.SHA256))
+		count := hashCounts[normalized]
+		result.Items = append(result.Items, DuplicateMediaResolveItem{
+			ClientID:       item.ClientID,
+			Duplicate:      item.ClientID != "" && normalized != "" && count > 0,
+			DuplicateCount: count,
+		})
+	}
+	return result, nil
 }
 
 func (s *PostgresStore) CreateTimelineEntry(userID string, input CreateTimelineEntryInput) (domain.TimelineEntry, error) {
@@ -1072,7 +1207,7 @@ func (s *PostgresStore) AttachUploadContent(userID, sessionID string, input Uplo
 	if _, err := tx.Exec(`update upload_sessions set status = $1, byte_size = $2, blob_key = $3 where id = $4`, "uploaded", input.ByteSize, input.BlobKey, sessionID); err != nil {
 		return domain.UploadSession{}, err
 	}
-	if _, err := tx.Exec(`update media_assets set original_blob_key = $1 where id = $2`, input.BlobKey, session.MediaID); err != nil {
+	if _, err := tx.Exec(`update media_assets set byte_size = $1, original_blob_key = $2, content_sha256 = $3 where id = $4`, input.ByteSize, input.BlobKey, strings.ToLower(strings.TrimSpace(input.ContentSHA256)), session.MediaID); err != nil {
 		return domain.UploadSession{}, err
 	}
 	if _, err := tx.Exec(`insert into agent_jobs (id, node_id, family_id, media_id, type, status, created_at, updated_at) values ($1,$2,$3,$4,$5,$6,$7,$8)`, jobID, session.AssignedTo, session.FamilyID, session.MediaID, "ingest_media", domain.JobPending, now, now); err != nil {
@@ -1713,7 +1848,7 @@ type scanner interface {
 func scanMediaAsset(row scanner) (domain.MediaAsset, error) {
 	var item domain.MediaAsset
 	var processedAt sql.NullTime
-	err := row.Scan(&item.ID, &item.FamilyID, &item.EntryID, &item.UploadBatchID, &item.UploadedBy, &item.UploadedByName, &item.FileName, &item.MediaType, &item.CapturedAt, &item.UploadedAt, &item.TimelineDay, &item.Status, &item.Source, &item.Width, &item.Height, &item.PreviewStatus, &item.PreviewBlobKey, &item.OriginalBlobKey, &processedAt, &item.OriginalPath)
+	err := row.Scan(&item.ID, &item.FamilyID, &item.EntryID, &item.UploadBatchID, &item.UploadedBy, &item.UploadedByName, &item.FileName, &item.MediaType, &item.CapturedAt, &item.UploadedAt, &item.TimelineDay, &item.Status, &item.Source, &item.Width, &item.Height, &item.ByteSize, &item.PreviewStatus, &item.PreviewBlobKey, &item.OriginalBlobKey, &item.ContentSHA256, &processedAt, &item.OriginalPath)
 	if err != nil {
 		return domain.MediaAsset{}, err
 	}

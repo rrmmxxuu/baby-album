@@ -85,8 +85,9 @@ func (s *Server) handleUploadSessionActions(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	session, err := s.store.AttachUploadContent(userID, sessionID, store.UploadContentInput{
-		ByteSize: saved.ByteSize,
-		BlobKey:  saved.Key,
+		ByteSize:      saved.ByteSize,
+		BlobKey:       saved.Key,
+		ContentSHA256: saved.ContentSHA256,
 	})
 	if err != nil {
 		writeStoreError(w, err)

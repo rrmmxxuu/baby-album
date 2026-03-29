@@ -1,5 +1,7 @@
 import type { UploadDraftState } from "../hooks/use-upload-draft-state";
+import type { DraftDuplicateCheckState } from "../hooks/use-draft-duplicate-check";
 import type { UploadSubmitState } from "../hooks/use-upload-submit";
+import { duplicateSummaryText } from "../model/duplicates";
 import { SectionHeading } from "../../ui/section-heading";
 import { DraftCaptionField } from "./draft-caption-field";
 import { DraftMediaGrid } from "./draft-media-grid";
@@ -7,24 +9,29 @@ import { DraftPublishSettings } from "./draft-publish-settings";
 
 interface DraftDetailSceneProps {
   draftState: UploadDraftState;
+  duplicateState: DraftDuplicateCheckState;
   submitState: UploadSubmitState;
   onAppendFiles: () => void;
 }
 
-export function DraftDetailScene({ draftState, submitState, onAppendFiles }: DraftDetailSceneProps) {
+export function DraftDetailScene({ draftState, duplicateState, submitState, onAppendFiles }: DraftDetailSceneProps) {
   const draft = draftState.selectedDraft;
 
   if (!draft) {
     return null;
   }
 
+  const duplicateSummary = duplicateSummaryText(duplicateState.duplicateCountByDraft[draft.id] ?? 0);
+
   return (
     <div className="draftPage draftScene draftSceneDetail">
       <section className="draftEditorPage panel">
         <div className="panelStack">
-          <SectionHeading eyebrow="记录编辑" title={`${draft.items.length} 个文件`} aside={<span className="draftEditMeta">{draft.items.length} 张</span>} />
+          <SectionHeading eyebrow="记录编辑" title={`${draft.items.length} 个文件`} aside={<span className="draftEditMeta">{draft.items.length} 张{duplicateSummary ? ` · ${duplicateSummary}` : ""}</span>} />
 
-          <DraftMediaGrid draftId={draft.id} items={draft.items} onAppendFiles={onAppendFiles} onRemoveItem={draftState.removeDraftItem} />
+          {duplicateState.checking ? <p className="helperText draftDuplicateChecking">正在检查这些照片是否已上传过...</p> : null}
+
+          <DraftMediaGrid draftId={draft.id} duplicateItemStates={duplicateState.itemStates} items={draft.items} onAppendFiles={onAppendFiles} onRemoveItem={draftState.removeDraftItem} />
 
           <DraftCaptionField
             className="draftTextarea draftTextareaStandalone"

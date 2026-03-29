@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { loadTimelinePage } from "../../../../lib/api";
-import type { AlbumWorkspace, TimelineEntry } from "../../../../lib/types";
+import type { AlbumWorkspace, AppStatePayload, TimelineEntry } from "../../../../lib/types";
 import { TIMELINE_PAGE_SIZE } from "../../model/constants";
 import { errorMessageFromUnknown } from "../../model/feedback";
 import { mergeTimelineEntries } from "../../model/timeline";
@@ -12,7 +12,7 @@ interface UseTimelineFeedOptions {
   activeTab: TabKey;
   authToken: string;
   activeAlbum: AlbumWorkspace | null;
-  refreshApp: (targetAlbumId?: string, options?: { silent?: boolean }) => Promise<void>;
+  refreshApp: (targetAlbumId?: string, options?: { silent?: boolean }) => Promise<AppStatePayload | null>;
   showError: (title: string, message: string) => void;
 }
 

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { Route } from "next";
 import { useRouter } from "next/navigation";
 import { useLayoutEffect, useRef } from "react";
@@ -25,31 +26,22 @@ export function RouteRedirectNotice({ label, to }: RouteRedirectNoticeProps) {
 
     lastTargetRef.current = to;
     router.replace(to as Route);
-
-    const fallbackTimer = window.setTimeout(() => {
+    const retryTimer = window.setTimeout(() => {
       const nextPath = `${window.location.pathname}${window.location.search}`;
       if (nextPath !== to) {
-        window.location.replace(to);
+        router.replace(to as Route);
       }
     }, 120);
 
-    const hardFallbackTimer = window.setTimeout(() => {
-      const nextPath = `${window.location.pathname}${window.location.search}`;
-      if (nextPath !== to) {
-        window.location.assign(to);
-      }
-    }, 360);
-
     return () => {
-      window.clearTimeout(fallbackTimer);
-      window.clearTimeout(hardFallbackTimer);
+      window.clearTimeout(retryTimer);
     };
   }, [router, to]);
 
   return (
     <p className="helperText loadingRow">
       {label}
-      {to ? <> 若没有自动跳转，<a href={to}>点这里继续</a>。</> : null}
+      {to ? <> 若没有自动跳转，<Link href={to as Route} replace scroll={false}>点这里继续</Link>。</> : null}
     </p>
   );
 }

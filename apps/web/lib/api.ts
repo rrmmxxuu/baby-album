@@ -220,3 +220,23 @@ export async function uploadBabyAvatar(token: string, albumId: string, babyId: s
   });
   return parseResponse<{ id: string; hasAvatar?: boolean }>(response);
 }
+
+export async function probeDuplicateMedia(token: string, albumId: string, input: { items: Array<{ clientId: string; byteSize: number }> }, signal?: AbortSignal): Promise<{ items: Array<{ clientId: string; needsHash: boolean }> }> {
+  const response = await fetch(`${apiBaseUrl}/api/v1/albums/${encodeURIComponent(albumId)}/duplicate-media/probe`, {
+    method: "POST",
+    headers: buildHeaders(token, { "Content-Type": "application/json" }),
+    body: JSON.stringify(input),
+    signal
+  });
+  return parseResponse<{ items: Array<{ clientId: string; needsHash: boolean }> }>(response);
+}
+
+export async function resolveDuplicateMedia(token: string, albumId: string, input: { items: Array<{ clientId: string; sha256: string }> }, signal?: AbortSignal): Promise<{ items: Array<{ clientId: string; duplicate: boolean; duplicateCount: number }> }> {
+  const response = await fetch(`${apiBaseUrl}/api/v1/albums/${encodeURIComponent(albumId)}/duplicate-media/resolve`, {
+    method: "POST",
+    headers: buildHeaders(token, { "Content-Type": "application/json" }),
+    body: JSON.stringify(input),
+    signal
+  });
+  return parseResponse<{ items: Array<{ clientId: string; duplicate: boolean; duplicateCount: number }> }>(response);
+}

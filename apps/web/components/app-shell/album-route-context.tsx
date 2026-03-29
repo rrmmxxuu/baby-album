@@ -5,10 +5,11 @@ import type { AlbumSummary, AlbumWorkspace, User } from "../../lib/types";
 import type { AppSessionState } from "./hooks/use-app-session";
 import type { SettingsState } from "./hooks/use-settings-state";
 import type { TimelineState } from "./hooks/use-timeline-state";
-import type { NavDirection, SettingsScreen, TimelineDayGroup } from "./model/types";
+import type { NavDirection, SettingsScreen, TabKey, TimelineDayGroup } from "./model/types";
 import type { AppShellViewModel } from "./model/view";
 
 export interface AlbumRouteContextValue {
+  activeTab: TabKey;
   session: AppSessionState;
   activeAlbum: AlbumWorkspace;
   activeBaby: AppShellViewModel["activeBaby"];

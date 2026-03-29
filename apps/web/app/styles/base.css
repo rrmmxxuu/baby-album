@@ -221,23 +221,6 @@ code {
   color: var(--muted);
 }
 
-.noticeBanner,
-.errorBanner {
-  margin: 12px 0 0;
-  padding: 12px 14px;
-  border-radius: 18px;
-}
-
-.noticeBanner {
-  background: #fff1dd;
-  color: #734b1d;
-}
-
-.errorBanner {
-  background: #f8ddda;
-  color: #8a2c1d;
-}
-
 .sessionBadge,
 .metricCard,
 .inviteCard,

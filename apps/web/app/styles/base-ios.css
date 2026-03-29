@@ -151,8 +151,6 @@ label {
   color: var(--muted);
 }
 
-.noticeBanner,
-.errorBanner,
 .statusNote {
   border-radius: 16px;
   padding: 14px 16px;
@@ -160,15 +158,9 @@ label {
   backdrop-filter: blur(20px);
 }
 
-.noticeBanner,
 .statusNote {
   background: rgba(255, 249, 230, 0.86);
   color: #6d5311;
-}
-
-.errorBanner {
-  background: rgba(255, 235, 234, 0.92);
-  color: #b3261e;
 }
 
 .gridColumns,

@@ -11,36 +11,6 @@
   padding: 0;
 }
 
-.tabViewport {
-  position: relative;
-  overflow: clip;
-  background: transparent;
-}
-
-.tabSection {
-  width: 100%;
-  min-width: 0;
-  background: transparent;
-  transition: opacity 260ms ease, transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: opacity, transform;
-}
-
-.tabSectionActive {
-  position: relative;
-  z-index: 1;
-  opacity: 1;
-  transform: translate3d(0, 0, 0);
-}
-
-.tabSectionInactive {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  opacity: 0;
-  pointer-events: none;
-  transform: translate3d(22px, 0, 0);
-}
-
 .settingsScene {
   animation-duration: 320ms;
   animation-fill-mode: both;
@@ -123,15 +93,6 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-}
-
-.settingsPage.pageStack,
-.settingsDetailPage.panelStack {
-  margin-top: 0;
-}
-
-.photosPage.pageStack {
-  margin-top: 0;
 }
 
 .settingsNavTitle {
@@ -468,4 +429,3 @@
   display: grid;
   gap: 14px;
 }
-

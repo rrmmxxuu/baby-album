@@ -16,8 +16,11 @@ export function BottomNav({ activeTab, hidden, photosHref, settingsHref, onNavig
   function bindLink(tab: TabKey) {
     return {
       onClick: (event: MouseEvent<HTMLAnchorElement>) => {
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+          return;
+        }
+        event.preventDefault();
         if (activeTab === tab) {
-          event.preventDefault();
           return;
         }
         onNavigate(tab);

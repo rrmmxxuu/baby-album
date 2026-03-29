@@ -1,0 +1,79 @@
+.feedbackStack {
+  position: fixed;
+  left: 50%;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  z-index: 52;
+  width: min(560px, calc(100vw - 28px));
+  display: grid;
+  gap: 10px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.feedbackStackOffset {
+  bottom: calc(92px + env(safe-area-inset-bottom));
+}
+
+.feedbackToast {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+  padding: 14px 16px;
+  border-radius: 22px;
+  border: 1px solid rgba(47, 37, 29, 0.08);
+  box-shadow: 0 18px 40px rgba(47, 37, 29, 0.14);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  pointer-events: auto;
+}
+
+.feedbackToastNotice {
+  background: rgba(255, 245, 228, 0.96);
+  color: #6d4b1c;
+}
+
+.feedbackToastError {
+  background: rgba(253, 236, 234, 0.96);
+  color: #8a2c1d;
+}
+
+.feedbackToastBody {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.feedbackToastTitle,
+.feedbackToastMessage {
+  margin: 0;
+}
+
+.feedbackToastTitle {
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.feedbackToastMessage {
+  color: inherit;
+  line-height: 1.45;
+  opacity: 0.92;
+}
+
+.feedbackToastClose {
+  min-height: 36px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.7);
+  color: inherit;
+  font-size: 0.84rem;
+  font-weight: 600;
+  box-shadow: none;
+}
+
+.loadingRow {
+  margin-top: 16px;
+  text-align: center;
+}

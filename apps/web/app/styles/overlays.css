@@ -655,11 +655,6 @@
   color: #734b1d;
 }
 
-.loadingRow {
-  margin-top: 16px;
-  text-align: center;
-}
-
 .bottomNav {
   position: fixed;
   z-index: 20;

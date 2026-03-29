@@ -2,8 +2,11 @@
 @import "./styles/photos.css";
 @import "./styles/overlays.css";
 @import "./styles/settings.css";
+@import "./styles/tabs.css";
+@import "./styles/feedback.css";
 @import "./styles/base-ios.css";
 @import "./styles/photos-ios.css";
 @import "./styles/settings-ios.css";
 @import "./styles/overlays-ios.css";
+@import "./styles/feedback-ios.css";
 @import "./styles/motion.css";

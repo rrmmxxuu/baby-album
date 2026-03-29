@@ -1,5 +1,6 @@
 import type { AlbumWorkspace, User } from "../../../lib/types";
 import type { AppSessionState } from "../hooks/use-app-session";
+import { AppFeedbackToasts } from "./app-feedback-toasts";
 import { BootSplash } from "./boot-splash";
 import { TopBar } from "./top-bar";
 
@@ -16,8 +17,13 @@ export function AppPageFrame({ children, session, currentUser, activeAlbum, show
     <main className={`appShell${session.authToken && activeAlbum ? " appShellAuthenticated" : ""}${session.bootPhase !== "done" ? " appShellBooting" : ""}`}>
       {session.bootPhase !== "done" ? <BootSplash phase={session.bootPhase === "exiting" ? "exiting" : "loading"} /> : null}
       {showTopBar ? <TopBar currentUser={currentUser} /> : null}
-      {session.notice ? <p className="noticeBanner">{session.notice}</p> : null}
-      {session.error ? <p className="errorBanner">{session.error}</p> : null}
+      <AppFeedbackToasts
+        error={session.error}
+        notice={session.notice}
+        offsetForBottomNav={Boolean(session.authToken && activeAlbum)}
+        onClearError={() => session.setError(null)}
+        onClearNotice={() => session.setNotice(null)}
+      />
       {children}
     </main>
   );

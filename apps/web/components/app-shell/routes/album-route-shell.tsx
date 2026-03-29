@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useEffect, useMemo, useRef } from "react";
+import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { UploadDraftSheet } from "../../upload-draft-sheet";
 import { AlbumRouteProvider } from "../album-route-context";
@@ -15,7 +15,9 @@ import { AppPageFrame } from "../ui/app-page-frame";
 import { BottomNav } from "../ui/bottom-nav";
 import { FloatingAddButton } from "../ui/floating-add-button";
 import { LightboxViewer } from "../ui/lightbox-viewer";
+import { PhotosRoute } from "./photos-route";
 import { RouteRedirectNotice } from "./route-redirect-notice";
+import { SettingsRoute } from "./settings-route";
 
 interface AlbumRouteShellProps {
   albumId: string;
@@ -40,20 +42,24 @@ function isRouteScreen(screen: SettingsScreen) {
   return screen !== "menu";
 }
 
-export function AlbumRouteShell({ albumId, children }: AlbumRouteShellProps) {
+export function AlbumRouteShell({ albumId, children: _children }: AlbumRouteShellProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const search = searchParams.toString();
   const session = useAppSessionContext();
-  const requestedScreen = parseSettingsScreen(searchParams.get("screen"));
-  const requestedMemberId = searchParams.get("memberId") ?? "";
-  const requestedLightboxEntryId = searchParams.get("lightbox") ?? "";
-  const requestedLightboxMediaId = searchParams.get("media") ?? "";
-  const requestedComposer = searchParams.get("composer") ?? "";
-  const requestedEditEntryId = searchParams.get("edit") ?? "";
-  const activeTab = toTab(pathname);
+  const [scenePathname, setScenePathname] = useState(pathname);
+  const [sceneSearch, setSceneSearch] = useState(search);
+  const sceneSearchParams = useMemo(() => new URLSearchParams(sceneSearch), [sceneSearch]);
+  const requestedScreen = parseSettingsScreen(sceneSearchParams.get("screen"));
+  const requestedMemberId = sceneSearchParams.get("memberId") ?? "";
+  const requestedLightboxEntryId = sceneSearchParams.get("lightbox") ?? "";
+  const requestedLightboxMediaId = sceneSearchParams.get("media") ?? "";
+  const requestedComposer = sceneSearchParams.get("composer") ?? "";
+  const requestedEditEntryId = sceneSearchParams.get("edit") ?? "";
+  const activeTab = toTab(scenePathname);
   const requestedScreenKeyRef = useRef("");
-  const inviteCode = searchParams.get("invite") ?? "";
+  const inviteCode = sceneSearchParams.get("invite") ?? "";
 
   const activeAlbum = session.appState?.activeAlbum ?? null;
   const albumOptions = session.appState?.albums ?? [];
@@ -83,6 +89,23 @@ export function AlbumRouteShell({ albumId, children }: AlbumRouteShellProps) {
   });
 
   useEffect(() => {
+    const nextPathname = window.location.pathname;
+    const nextSearch = window.location.search.replace(/^\?/, "");
+    setScenePathname((current) => current === nextPathname ? current : nextPathname);
+    setSceneSearch((current) => current === nextSearch ? current : nextSearch);
+  }, [pathname, search]);
+
+  useEffect(() => {
+    function syncSceneFromLocation() {
+      setScenePathname(window.location.pathname);
+      setSceneSearch(window.location.search.replace(/^\?/, ""));
+    }
+
+    window.addEventListener("popstate", syncSceneFromLocation);
+    return () => window.removeEventListener("popstate", syncSceneFromLocation);
+  }, []);
+
+  useEffect(() => {
     if (!session.authToken || session.bootPhase !== "done") {
       return;
     }
@@ -98,7 +121,7 @@ export function AlbumRouteShell({ albumId, children }: AlbumRouteShellProps) {
     }
     const routeScreen = requestedScreen ?? "menu";
     const routeMemberId = routeScreen === "memberDetail" ? requestedMemberId : "";
-    const key = `${pathname}?screen=${routeScreen}&memberId=${routeMemberId}`;
+    const key = `${scenePathname}?screen=${routeScreen}&memberId=${routeMemberId}`;
     if (requestedScreenKeyRef.current === key) {
       return;
     }
@@ -107,7 +130,7 @@ export function AlbumRouteShell({ albumId, children }: AlbumRouteShellProps) {
     const previousScreen = previousKey ? previousKey.split("?screen=")[1]?.split("&memberId=")[0] as SettingsScreen | undefined : undefined;
     const direction = previousScreen && SETTINGS_SCREEN_DEPTH[routeScreen] < SETTINGS_SCREEN_DEPTH[previousScreen] ? "back" : "forward";
     settings.openSettingsScreen(routeScreen, direction, routeMemberId ? { memberId: routeMemberId } : undefined);
-  }, [activeTab, pathname, requestedMemberId, requestedScreen, settings]);
+  }, [activeTab, requestedMemberId, requestedScreen, scenePathname, settings]);
 
   const appView = useMemo(() => buildAppShellViewModel({
     activeAlbum,
@@ -207,10 +230,23 @@ export function AlbumRouteShell({ albumId, children }: AlbumRouteShellProps) {
     }
   }, [activeTab, requestedComposer, requestedEditEntryId, timeline, timeline.timelineEntries]);
 
-  function handleTabNavigate(nextTab: TabKey) {
-    if (nextTab !== activeTab) {
-      timeline.captureTabScrollPosition(activeTab);
+  function navigateAlbumScene(nextPath: string, mode: "push" | "replace" = "push") {
+    const nextUrl = new URL(nextPath, window.location.origin);
+    if (mode === "replace") {
+      window.history.replaceState(null, "", nextUrl);
+    } else {
+      window.history.pushState(null, "", nextUrl);
     }
+    setScenePathname(nextUrl.pathname);
+    setSceneSearch(nextUrl.search.replace(/^\?/, ""));
+  }
+
+  function handleTabNavigate(nextTab: TabKey) {
+    if (!activeAlbum || nextTab === activeTab) {
+      return;
+    }
+    timeline.captureTabScrollPosition(activeTab);
+    navigateAlbumScene(buildAlbumPath(activeAlbum.album.id, nextTab));
   }
 
   function prefetchTab(nextTab: TabKey) {
@@ -233,22 +269,22 @@ export function AlbumRouteShell({ albumId, children }: AlbumRouteShellProps) {
     if (!appView.storageNode) {
       session.setNotice("请先去设置里配对储存节点。");
       timeline.captureTabScrollPosition(activeTab);
-      startTransition(() => {
-        router.push(buildAlbumPath(activeAlbum.album.id, "settings", { screen: "storage" }));
-      });
+      navigateAlbumScene(buildAlbumPath(activeAlbum.album.id, "settings", { screen: "storage" }));
       return;
     }
     if (activeAlbum.membership.role === "viewer") {
       session.setNotice("当前身份没有上传权限。");
       return;
     }
-    startTransition(() => {
-      router.push(buildPhotosPath(activeAlbum.album.id, { composer: "new" }));
-    });
+    navigateAlbumScene(buildPhotosPath(activeAlbum.album.id, { composer: "new" }));
   }
 
   async function handleOpenAlbumSettings(nextAlbumId: string) {
     timeline.captureTabScrollPosition(activeTab);
+    if (activeAlbum?.album.id === nextAlbumId) {
+      navigateAlbumScene(buildAlbumPath(nextAlbumId, "settings", { screen: "babyDetail" }));
+      return;
+    }
     startTransition(() => {
       router.push(buildAlbumPath(nextAlbumId, "settings", { screen: "babyDetail" }));
     });
@@ -262,25 +298,17 @@ export function AlbumRouteShell({ albumId, children }: AlbumRouteShellProps) {
       screen: nextScreen,
       memberId: nextScreen === "memberDetail" ? options?.memberId ?? null : null
     });
-    startTransition(() => {
-      if (direction === "back") {
-        router.replace(nextPath);
-        return;
-      }
-      router.push(nextPath);
-    });
+    navigateAlbumScene(nextPath, direction === "back" ? "replace" : "push");
   }
 
   function handleOpenLightbox(entryId: string, mediaId: string) {
     if (!activeAlbum) {
       return;
     }
-    startTransition(() => {
-      router.push(buildPhotosPath(activeAlbum.album.id, {
-        lightboxEntryId: entryId,
-        mediaId
-      }));
-    });
+    navigateAlbumScene(buildPhotosPath(activeAlbum.album.id, {
+      lightboxEntryId: entryId,
+      mediaId
+    }));
   }
 
   function handleNavigateLightbox(direction: -1 | 1) {
@@ -291,39 +319,31 @@ export function AlbumRouteShell({ albumId, children }: AlbumRouteShellProps) {
     if (!nextItem) {
       return;
     }
-    startTransition(() => {
-      router.replace(buildPhotosPath(activeAlbum.album.id, {
-        lightboxEntryId: timeline.lightbox?.batch.entry.id,
-        mediaId: nextItem.id
-      }));
-    });
+    navigateAlbumScene(buildPhotosPath(activeAlbum.album.id, {
+      lightboxEntryId: timeline.lightbox?.batch.entry.id,
+      mediaId: nextItem.id
+    }), "replace");
   }
 
   function handleCloseLightbox() {
     if (!activeAlbum) {
       return;
     }
-    startTransition(() => {
-      router.replace(buildPhotosPath(activeAlbum.album.id));
-    });
+    navigateAlbumScene(buildPhotosPath(activeAlbum.album.id), "replace");
   }
 
   function handleOpenEditEntry(entryId: string) {
     if (!activeAlbum) {
       return;
     }
-    startTransition(() => {
-      router.push(buildPhotosPath(activeAlbum.album.id, { editEntryId: entryId }));
-    });
+    navigateAlbumScene(buildPhotosPath(activeAlbum.album.id, { editEntryId: entryId }));
   }
 
   function handleCloseDraftSheet() {
     if (!activeAlbum) {
       return;
     }
-    startTransition(() => {
-      router.replace(buildPhotosPath(activeAlbum.album.id));
-    });
+    navigateAlbumScene(buildPhotosPath(activeAlbum.album.id), "replace");
   }
 
   function handleLogout() {
@@ -343,6 +363,7 @@ export function AlbumRouteShell({ albumId, children }: AlbumRouteShellProps) {
       {readyAlbum && !redirectPath ? (
         <AlbumRouteProvider
           value={{
+            activeTab,
             session,
             activeAlbum: readyAlbum,
             activeBaby: appView.activeBaby,
@@ -361,7 +382,10 @@ export function AlbumRouteShell({ albumId, children }: AlbumRouteShellProps) {
             handleLogout
           }}
         >
-          <div className="tabViewport">{children}</div>
+          <div className="tabViewport">
+            <PhotosRoute />
+            <SettingsRoute />
+          </div>
         </AlbumRouteProvider>
       ) : null}
 

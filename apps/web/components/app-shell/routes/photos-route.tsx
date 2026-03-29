@@ -4,13 +4,13 @@ import { useAlbumRouteContext } from "../album-route-context";
 import { PhotosTab } from "../ui/photos-tab";
 
 export function PhotosRoute() {
-  const { activeAlbum, activeBaby, albumOptions, currentUser, session, timeline, timelineDays, handleAlbumChange, handleOpenEditEntry, handleOpenLightbox } = useAlbumRouteContext();
+  const { activeAlbum, activeBaby, activeTab, albumOptions, currentUser, session, timeline, timelineDays, handleAlbumChange, handleOpenEditEntry, handleOpenLightbox } = useAlbumRouteContext();
 
   return (
     <PhotosTab
       activeAlbum={activeAlbum}
       activeBaby={activeBaby}
-      activeTab
+      activeTab={activeTab === "photos"}
       albumOptions={albumOptions}
       authToken={session.authToken}
       currentUserId={currentUser?.id}

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { babyAvatarText, formatBabyAge, formatRelativeUploadTime, memberRelationLabel, roleLabel } from "./format";
+import { babyAvatarText, formatBabyAge, formatBirthSummary, formatDaysSinceBirth, formatRelativeUploadTime, memberRelationLabel, roleLabel } from "./format";
 
 describe("app-shell format helpers", () => {
   afterEach(() => {
@@ -20,6 +20,11 @@ describe("app-shell format helpers", () => {
   it("formats baby age across days and months", () => {
     expect(formatBabyAge("2026-03-01T00:00:00.000Z", "2026-03-01T12:00:00.000Z")).toBe("1天");
     expect(formatBabyAge("2026-01-01T00:00:00.000Z", "2026-02-15T00:00:00.000Z")).toBe("1个月16天");
+  });
+
+  it("formats birth summaries with exact day counts", () => {
+    expect(formatDaysSinceBirth("2026-03-01T00:00:00.000Z", "2026-03-01T12:00:00.000Z")).toBe(1);
+    expect(formatBirthSummary("2026-03-01T00:00:00.000Z", "2026-03-05T12:00:00.000Z")).toContain("出生了5天");
   });
 
   it("formats relative upload time against the current clock", () => {

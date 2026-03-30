@@ -33,6 +33,20 @@ export function formatDate(value: string) {
   return new Date(value).toLocaleDateString("zh-CN", { dateStyle: "medium" });
 }
 
+export function formatDaysSinceBirth(birthDate: string, targetDate = new Date().toISOString()) {
+  const start = startOfDay(new Date(birthDate));
+  const end = startOfDay(new Date(targetDate));
+  const diffMs = end.getTime() - start.getTime();
+  if (!Number.isFinite(diffMs) || diffMs < 0) {
+    return 1;
+  }
+  return Math.floor(diffMs / 86400000) + 1;
+}
+
+export function formatBirthSummary(birthDate: string, targetDate = new Date().toISOString()) {
+  return `${formatDate(birthDate)} · 出生了${formatDaysSinceBirth(birthDate, targetDate)}天`;
+}
+
 export function formatDateTime(value: string) {
   return new Date(value).toLocaleString("zh-CN", { dateStyle: "medium", timeStyle: "short" });
 }
@@ -70,13 +84,7 @@ export function formatTimelineDate(value: string) {
 }
 
 export function formatBabyAge(birthDate: string, targetDate = new Date().toISOString()) {
-  const start = startOfDay(new Date(birthDate));
-  const end = startOfDay(new Date(targetDate));
-  const diffMs = end.getTime() - start.getTime();
-  if (!Number.isFinite(diffMs) || diffMs < 0) {
-    return "1天";
-  }
-  const totalDays = Math.floor(diffMs / 86400000) + 1;
+  const totalDays = formatDaysSinceBirth(birthDate, targetDate);
   if (totalDays < 30) {
     return `${totalDays}天`;
   }

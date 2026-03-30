@@ -25,6 +25,7 @@ export function useSettingsState({ activeTab, authToken, appState, activeAlbum, 
   const [settingsNavDirection, setSettingsNavDirection] = useState<NavDirection>("forward");
   const [settingsMemberId, setSettingsMemberId] = useState("");
   const [storagePairing, setStoragePairing] = useState<Awaited<ReturnType<typeof createStorageNodePairing>> | null>(null);
+  const [storagePairingBaseNodeId, setStoragePairingBaseNodeId] = useState("");
   const [roleDrafts, setRoleDrafts] = useState<Record<string, Role>>({});
   const [ownerTransferTarget, setOwnerTransferTarget] = useState("");
   const [babyProfileName, setBabyProfileName] = useState("");
@@ -52,6 +53,38 @@ export function useSettingsState({ activeTab, authToken, appState, activeAlbum, 
       setSettingsMemberId("");
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    if (!storagePairing || !activeAlbum || storagePairing.albumId !== activeAlbum.album.id) {
+      return;
+    }
+
+    const targetAlbum = activeAlbum;
+    let cancelled = false;
+    async function pollStoragePairing() {
+      const next = await refreshApp(targetAlbum.album.id, { silent: true });
+      const nextStorageNode = next?.activeAlbum?.storageNode ?? null;
+      const pairingCompleted = nextStorageNode && (!storagePairingBaseNodeId || nextStorageNode.id !== storagePairingBaseNodeId);
+      if (!cancelled && pairingCompleted) {
+        setStoragePairing(null);
+        setStoragePairingBaseNodeId("");
+        showSuccess(
+          targetAlbum.storageNode ? "新主节点已接入" : "储存节点已接入",
+          targetAlbum.storageNode ? "新设备已完成配对，页面已自动切换到当前主节点状态。" : "储存设备已完成配对，上传入口现在可以直接使用。"
+        );
+      }
+    }
+
+    void pollStoragePairing();
+    const interval = window.setInterval(() => {
+      void pollStoragePairing();
+    }, 3000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [activeAlbum, refreshApp, showSuccess, storagePairing, storagePairingBaseNodeId]);
 
   function openSettingsScreen(screen: SettingsScreen, direction: NavDirection = "forward", options?: { memberId?: string }) {
     setSettingsNavDirection(direction);
@@ -163,6 +196,7 @@ export function useSettingsState({ activeTab, authToken, appState, activeAlbum, 
     try {
       const pairing = await createStorageNodePairing(authToken, activeAlbum.album.id);
       setStoragePairing(pairing);
+      setStoragePairingBaseNodeId(activeAlbum.storageNode?.id ?? "");
       showSuccess(
         activeAlbum.storageNode ? "替换配对码已生成" : "储存节点配对码已生成",
         activeAlbum.storageNode ? "已生成替换配对码。新设备接入后会切换为当前主节点。" : "已生成储存节点配对码。请在 24 小时内用于首次部署 agent。"

@@ -1,5 +1,5 @@
 import type { AlbumSummary, AlbumWorkspace, BabyProfile } from "../../../lib/types";
-import { formatDate } from "../model/format";
+import { formatBirthSummary } from "../model/format";
 import { BabyAvatar } from "./baby-avatar";
 
 interface PhotosHeroProps {
@@ -20,7 +20,7 @@ export function PhotosHero({ activeAlbum, activeBaby, albumOptions, authToken, t
         <BabyAvatar albumId={activeAlbum.album.id} baby={activeBaby} className="momentsHeroAvatar" token={authToken} />
         <div className="momentsHeroCopy">
           <h2>{activeBaby?.name ?? activeAlbum.album.name}</h2>
-          <p className="momentsHeroMeta">{activeBaby?.birthDate ? `出生 ${formatDate(activeBaby.birthDate)}` : "还没有填写出生日期"}</p>
+          <p className="momentsHeroMeta">{activeBaby?.birthDate ? formatBirthSummary(activeBaby.birthDate) : "还没有填写出生日期"}</p>
         </div>
         <div className="momentsHeroAside">
           <p className="momentsHeroMeta">{timelineLoading && timelineCount === 0 ? "正在加载" : `${timelineCount} 条内容`}</p>

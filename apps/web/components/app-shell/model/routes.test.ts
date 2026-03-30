@@ -34,7 +34,7 @@ describe("route helpers", () => {
       hydrated: true,
       authToken: "",
       inviteCode: "ABCD1234"
-    })).toBe("/?invite=ABCD1234");
+    })).toBeNull();
 
     expect(resolveAuthRedirect({
       hydrated: true,
@@ -44,8 +44,14 @@ describe("route helpers", () => {
 
     expect(resolveAlbumsRedirect({
       hydrated: true,
+      authToken: "",
+      inviteCode: "ABCD1234"
+    })).toBe("/auth?invite=ABCD1234");
+
+    expect(resolveAlbumsRedirect({
+      hydrated: true,
       authToken: "token",
-      rememberedAlbumId: "album-2"
+      activeAlbumId: "album-2"
     })).toBe("/album/album-2/photos");
   });
 
@@ -58,7 +64,7 @@ describe("route helpers", () => {
       requestedAlbumId: "album-1",
       loading: false,
       albumRefreshing: false
-    })).toBe("/?invite=ABCD1234");
+    })).toBe("/auth?invite=ABCD1234");
 
     expect(resolveAlbumRedirect({
       bootPhaseDone: true,

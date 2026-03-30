@@ -20,12 +20,12 @@ export function AlbumsRoute() {
     activeAlbumId: activeAlbum?.album.id,
     rememberedAlbumId: session.selectedAlbumId
   });
+  const blocking = Boolean(redirectPath || (session.authToken && session.loading && !activeAlbum));
 
   return (
-    <AppPageFrame currentUser={currentUser} session={session} showTopBar={!redirectPath && !session.loading}>
+    <AppPageFrame blocking={blocking} currentUser={currentUser} session={session} showTopBar={!redirectPath && !session.loading}>
       {redirectPath ? <RouteRedirectNotice label="正在同步最新状态..." to={redirectPath} /> : null}
-      {session.authToken && !activeAlbum && !session.loading ? <NoAlbumScreen session={session} /> : null}
-      {session.loading && !redirectPath ? <p className="helperText loadingRow">正在同步最新状态...</p> : null}
+      {!blocking && session.authToken && !activeAlbum && !session.loading ? <NoAlbumScreen session={session} /> : null}
     </AppPageFrame>
   );
 }

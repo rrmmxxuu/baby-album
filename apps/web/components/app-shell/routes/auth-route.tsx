@@ -22,12 +22,12 @@ export function AuthRoute() {
     appStateReady: Boolean(session.appState),
     bootPhaseDone: session.bootPhase === "done"
   });
+  const blocking = Boolean(session.authToken);
 
   return (
-    <AppPageFrame currentUser={currentUser} session={session} showTopBar={!redirectPath && !session.loading}>
+    <AppPageFrame blocking={blocking} currentUser={currentUser} session={session} showTopBar={!redirectPath && !session.loading}>
       {!session.authToken ? <AuthScreen session={session} /> : null}
       {session.authToken && redirectPath ? <RouteRedirectNotice label="正在同步最新状态..." to={redirectPath} /> : null}
-      {session.authToken && !redirectPath ? <p className="helperText loadingRow">正在同步最新状态...</p> : null}
     </AppPageFrame>
   );
 }

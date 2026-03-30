@@ -23,13 +23,12 @@ export function HomeRoute() {
     bootPhaseDone: session.bootPhase === "done"
   });
   const showAuthScreen = session.hydrated && !session.authToken;
-  const showLoading = Boolean(session.authToken) && !redirectPath;
+  const blocking = Boolean(redirectPath || (session.authToken && !session.appState));
 
   return (
-    <AppPageFrame currentUser={currentUser} session={session} showTopBar={false}>
+    <AppPageFrame blocking={blocking} currentUser={currentUser} session={session} showTopBar={false}>
       {redirectPath ? <RouteRedirectNotice label="正在进入宝宝相册..." to={redirectPath} /> : null}
-      {showAuthScreen ? <AuthScreen session={session} /> : null}
-      {showLoading ? <p className="helperText loadingRow">{inviteCode ? "正在准备邀请信息..." : "正在同步最新状态..."}</p> : null}
+      {!blocking && showAuthScreen ? <AuthScreen session={session} /> : null}
     </AppPageFrame>
   );
 }

@@ -90,11 +90,10 @@ export function resolveHomeRedirect({ hydrated, authToken, inviteCode, activeAlb
     return null;
   }
   if (!authToken) {
-    return buildHomePath(inviteCode);
+    return null;
   }
-  const albumId = preferredAlbumId(activeAlbumId, rememberedAlbumId);
-  if (albumId) {
-    return buildAlbumPath(albumId, "photos");
+  if (activeAlbumId) {
+    return buildAlbumPath(activeAlbumId, "photos");
   }
   if (appStateReady || bootPhaseDone) {
     return buildAlbumsPath(inviteCode);
@@ -106,9 +105,8 @@ export function resolveAuthRedirect({ hydrated, authToken, inviteCode, activeAlb
   if (!hydrated || !authToken) {
     return null;
   }
-  const albumId = preferredAlbumId(activeAlbumId, rememberedAlbumId);
-  if (albumId) {
-    return buildAlbumPath(albumId, "photos");
+  if (activeAlbumId) {
+    return buildAlbumPath(activeAlbumId, "photos");
   }
   if (appStateReady || bootPhaseDone) {
     return buildAlbumsPath(inviteCode);
@@ -121,11 +119,10 @@ export function resolveAlbumsRedirect({ hydrated, authToken, inviteCode, activeA
     return null;
   }
   if (!authToken) {
-    return buildHomePath(inviteCode);
+    return buildAuthPath(inviteCode);
   }
-  const albumId = preferredAlbumId(activeAlbumId, rememberedAlbumId);
-  if (albumId) {
-    return buildAlbumPath(albumId, "photos");
+  if (activeAlbumId) {
+    return buildAlbumPath(activeAlbumId, "photos");
   }
   return null;
 }
@@ -135,15 +132,12 @@ export function resolveAlbumRedirect({ bootPhaseDone, authToken, inviteCode, act
     return null;
   }
   if (!authToken) {
-    return buildHomePath(inviteCode);
+    return buildAuthPath(inviteCode);
   }
   if (loading || albumRefreshing) {
     return null;
   }
   if (!activeAlbumId) {
-    if (rememberedAlbumId && rememberedAlbumId !== requestedAlbumId) {
-      return buildAlbumPath(rememberedAlbumId, activeTab);
-    }
     return buildAlbumsPath(inviteCode);
   }
   if (activeAlbumId !== requestedAlbumId) {

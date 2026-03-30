@@ -115,8 +115,14 @@ export function useAppSession(queryInviteCode: string) {
     bootStartedAtRef.current = performance.now();
     setHydrated(true);
     setOrigin(window.location.origin);
-    setAuthToken(window.localStorage.getItem(TOKEN_STORAGE_KEY) ?? "");
-    setSelectedAlbumId(window.localStorage.getItem(ALBUM_STORAGE_KEY) ?? "");
+    const storedToken = window.localStorage.getItem(TOKEN_STORAGE_KEY) ?? "";
+    setAuthToken(storedToken);
+    if (storedToken) {
+      setSelectedAlbumId(window.localStorage.getItem(ALBUM_STORAGE_KEY) ?? "");
+    } else {
+      window.localStorage.removeItem(ALBUM_STORAGE_KEY);
+      setSelectedAlbumId("");
+    }
     setInviteCodeInput(queryInviteCode);
   }, [queryInviteCode]);
 

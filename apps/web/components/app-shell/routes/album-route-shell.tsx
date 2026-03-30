@@ -358,9 +358,10 @@ export function AlbumRouteShell({ albumId, children: _children }: AlbumRouteShel
   }
 
   const showAlbumContent = Boolean(readyAlbum);
+  const blocking = Boolean(redirectPath || !showAlbumContent);
 
   return (
-    <AppPageFrame activeAlbum={activeAlbum} currentUser={currentUser} session={session}>
+    <AppPageFrame activeAlbum={activeAlbum} blocking={blocking} currentUser={currentUser} session={session}>
       {redirectPath ? <RouteRedirectNotice label="正在同步最新状态..." to={redirectPath} /> : null}
 
       {readyAlbum && !redirectPath ? (
@@ -391,8 +392,6 @@ export function AlbumRouteShell({ albumId, children: _children }: AlbumRouteShel
           </div>
         </AlbumRouteProvider>
       ) : null}
-
-      {!redirectPath && (session.loading || !showAlbumContent) ? <p className="helperText loadingRow">正在同步最新状态...</p> : null}
 
       {timeline.lightbox ? <LightboxViewer authToken={session.authToken} closing={timeline.lightboxClosing} lightbox={timeline.lightbox} onClose={handleCloseLightbox} onNavigate={handleNavigateLightbox} /> : null}
 

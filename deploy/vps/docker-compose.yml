@@ -13,7 +13,8 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
 
-  api:
+  baby-album-api:
+    container_name: baby-album-api
     build:
       context: ../../services/api
     restart: unless-stopped
@@ -30,14 +31,15 @@ services:
     ports:
       - "127.0.0.1:${API_PORT:-18080}:8080"
 
-  web:
+  baby-album-web:
+    container_name: baby-album-web
     build:
       context: ../../apps/web
       args:
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-https://album-api.example.com}
     restart: unless-stopped
     depends_on:
-      - api
+      - baby-album-api
     environment:
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-https://album-api.example.com}
     ports:

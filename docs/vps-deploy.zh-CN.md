@@ -67,7 +67,7 @@ cp .env.example .env
 docker compose -f docker-compose.yml -f docker-compose.npm.yml up --build -d
 ```
 
-这样 `web` 和 `api` 会加入和 NPM 相同的 Docker 网络，NPM 可以直接按服务名反代，而不是走宿主机端口。
+这样 `baby-album-web` 和 `baby-album-api` 会加入和 NPM 相同的 Docker 网络，NPM 可以直接按服务名反代，而不是走宿主机端口。
 
 ## 4. 配置 Nginx Proxy Manager
 
@@ -77,7 +77,7 @@ docker compose -f docker-compose.yml -f docker-compose.npm.yml up --build -d
 
 - Domain: `album.ramonxu.com`
 - Scheme: `http`
-- Forward host: `web`
+- Forward host: `baby-album-web`
 - Forward port: `3000`
 - Websockets: 开启
 - Block common exploits: 开启
@@ -87,7 +87,7 @@ docker compose -f docker-compose.yml -f docker-compose.npm.yml up --build -d
 
 - Domain: `album-api.ramonxu.com`
 - Scheme: `http`
-- Forward host: `api`
+- Forward host: `baby-album-api`
 - Forward port: `8080`
 - Websockets: 开启
 - Block common exploits: 开启
@@ -115,7 +115,7 @@ NPM 配好之后，检查这些地址：
 同时确认 API 结构化日志正常输出：
 
 ```bash
-docker compose logs --tail=20 api
+docker compose logs --tail=20 baby-album-api
 ```
 
 每条请求日志都应该至少包含 `request_id`、path、status 和 `duration_ms`。
@@ -194,7 +194,7 @@ docker compose ps
 
 如果发布失败：
 
-1. 先看 `docker compose logs api web`
+1. 先看 `docker compose logs baby-album-api baby-album-web`
 2. 切回上一个 git 版本
 3. 重新执行 `docker compose -f docker-compose.yml -f docker-compose.npm.yml up --build -d`
 4. 再跑一次健康检查和公开链路烟雾验证

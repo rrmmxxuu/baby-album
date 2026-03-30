@@ -15,7 +15,8 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
 
-  api:
+  baby-album-api:
+    container_name: baby-album-api
     build:
       context: ./services/api
     depends_on:
@@ -35,9 +36,9 @@ services:
     build:
       context: ./services/agent
     depends_on:
-      - api
+      - baby-album-api
     environment:
-      AGENT_API_BASE_URL: ${AGENT_API_BASE_URL:-http://api:8080}
+      AGENT_API_BASE_URL: ${AGENT_API_BASE_URL:-http://baby-album-api:8080}
       AGENT_NODE_ID: ${AGENT_NODE_ID:-node-demo}
       AGENT_NODE_NAME: ${AGENT_NODE_NAME:-Living Room NAS}
       AGENT_REGISTRATION_TOKEN: ${AGENT_REGISTRATION_TOKEN:-demo-registration-token}
@@ -46,13 +47,14 @@ services:
     volumes:
       - media-library:/var/lib/baby-album/library
 
-  web:
+  baby-album-web:
+    container_name: baby-album-web
     build:
       context: ./apps/web
       args:
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8080}
     depends_on:
-      - api
+      - baby-album-api
     environment:
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8080}
     ports:

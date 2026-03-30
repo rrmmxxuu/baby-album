@@ -1,10 +1,10 @@
 services:
-  api:
+  baby-album-api:
     networks:
       - default
       - npm_net
 
-  web:
+  baby-album-web:
     networks:
       - default
       - npm_net

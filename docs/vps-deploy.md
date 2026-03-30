@@ -67,7 +67,7 @@ cp .env.example .env
 docker compose -f docker-compose.yml -f docker-compose.npm.yml up --build -d
 ```
 
-This puts the `web` and `api` services onto the same Docker network as NPM, so NPM can proxy to them by service name instead of by host port.
+This puts the `baby-album-web` and `baby-album-api` services onto the same Docker network as NPM, so NPM can proxy to them by service name instead of by host port.
 
 ## 4. Nginx Proxy Manager
 
@@ -77,7 +77,7 @@ Create two proxy hosts.
 
 - Domain: `album.ramonxu.com`
 - Scheme: `http`
-- Forward host: `web`
+- Forward host: `baby-album-web`
 - Forward port: `3000`
 - Websockets: enabled
 - Block common exploits: enabled
@@ -87,7 +87,7 @@ Create two proxy hosts.
 
 - Domain: `album-api.ramonxu.com`
 - Scheme: `http`
-- Forward host: `api`
+- Forward host: `baby-album-api`
 - Forward port: `8080`
 - Websockets: enabled
 - Block common exploits: enabled
@@ -115,7 +115,7 @@ Then validate the product flow:
 Also confirm the API emits structured JSON request logs:
 
 ```bash
-docker compose logs --tail=20 api
+docker compose logs --tail=20 baby-album-api
 ```
 
 Each request should include a `request_id`, path, status, and duration in milliseconds.
@@ -194,7 +194,7 @@ If you maintain a staging or local stack, run the automated browser suite before
 
 If the release fails:
 
-1. Check `docker compose logs api web` for the failing service.
+1. Check `docker compose logs baby-album-api baby-album-web` for the failing service.
 2. Return to the previous git revision.
 3. Run `docker compose -f docker-compose.yml -f docker-compose.npm.yml up --build -d`.
 4. Re-run the health checks and the public smoke test.

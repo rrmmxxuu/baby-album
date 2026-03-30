@@ -8,7 +8,7 @@ interface StorageNodeSectionProps {
 
 export function StorageNodeSection({ storageNode }: StorageNodeSectionProps) {
   return (
-    <StorageSection subtitle={storageNode ? storageNode.name : "还没有接入储存设备"} title="当前主节点">
+    <StorageSection subtitle={storageNode ? storageNode.name : "尚未绑定"} title="当前主节点">
       {storageNode ? (
         <>
           <div className="storageNodeHeader">

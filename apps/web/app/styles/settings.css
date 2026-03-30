@@ -1,26 +1,189 @@
+.settingsPage {
+  width: min(780px, 100%);
+  margin-top: 0;
+  margin-left: auto;
+  margin-right: auto;
+  position: relative;
+  background: transparent;
+}
+
+.settingsDetailPage {
+  width: min(720px, 100%);
+  margin-left: auto;
+  margin-right: auto;
+  min-width: 0;
+  gap: 14px;
+  padding: 0;
+}
+
+.settingsDetailPage .panel {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.settingsDetailPage .sectionHeading > div {
+  padding-left: 8px;
+}
+
+.settingsDetailPage > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.settingsDetailPage label,
+.settingsDetailPage input,
+.settingsDetailPage select,
+.settingsDetailPage button,
+.settingsDetailPage textarea {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.settingsScene {
+  animation-duration: 320ms;
+  animation-fill-mode: both;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.settingsSceneForward {
+  animation-name: settingsScenePushIn;
+}
+
+.settingsSceneBack {
+  animation-name: settingsScenePopIn;
+}
+
+.settingsRootSceneForward {
+  animation-name: settingsRootFadeIn;
+}
+
+.settingsRootSceneBack {
+  animation-name: settingsRootReturnIn;
+}
+
+.settingsRootScene {
+  display: grid;
+  gap: 16px;
+}
+
+.settingsHero {
+  position: relative;
+  overflow: hidden;
+  min-height: 176px;
+  padding: 20px;
+  border-radius: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0) 32%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.74));
+}
+
+.settingsHeroBackdrop {
+  position: absolute;
+  inset: 0;
+  background: none;
+}
+
+.settingsHeroBody {
+  position: relative;
+  z-index: 1;
+  min-height: 136px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px;
+  align-items: end;
+}
+
+.settingsHeroCopy {
+  display: grid;
+  gap: 8px;
+}
+
+.settingsHeroCopy h2 {
+  margin: 0;
+  font-size: clamp(1.8rem, 4vw, 2.35rem);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+}
+
+.settingsHeroCopy p {
+  margin: 0;
+}
+
+.settingsSessionBadge {
+  align-self: start;
+  min-width: min(280px, 100%);
+}
+
+.settingsNavBar {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settingsNavTitle {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+}
+
+.settingsNavTitle p,
+.settingsNavTitle h2 {
+  margin: 0;
+}
+
+.settingsNavTitle h2 {
+  font-size: 1.3rem;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+}
+
+.settingsNavBack {
+  flex: 0 0 64px;
+}
+
+.settingsNavAction,
+.settingsNavSpacer {
+  flex: 0 0 64px;
+}
+
+.settingsNavSpacer {
+  width: 64px;
+}
+
 .settingsMenu {
   display: grid;
-  gap: 14px;
+  gap: 12px;
   padding: 0;
 }
 
 .settingsMenuItem {
   width: 100%;
+  min-height: 72px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 18px 20px;
-  background: var(--panel);
-  color: var(--ink);
-  font-weight: 500;
+  padding: 16px 18px;
+  color: #1c1c1e;
+  font-weight: 600;
   text-align: left;
-  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 240ms ease, background-color 220ms ease;
 }
 
 .settingsMenuItem:disabled {
   color: var(--muted);
-  background: rgba(255, 250, 242, 0.6);
+  opacity: 0.58;
+}
+
+.settingsMenuBody {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  text-align: left;
+  flex: 1;
 }
 
 .settingsMenuPrimary,
@@ -33,23 +196,31 @@
 }
 
 .settingsMenuMeta {
+  margin: 0;
   color: var(--muted);
   font-size: 0.9rem;
 }
 
+.settingsChevron {
+  color: #aeaeb2;
+  font-size: 1.05rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .settingsMenuDanger {
-  color: #b44d36;
+  color: #ff3b30;
 }
 
 .settingsCardButton {
   width: 100%;
+  min-height: 58px;
   display: flex;
   align-items: center;
   gap: 14px;
   padding: 16px 18px;
   text-align: left;
   color: var(--ink);
-  background: var(--panel);
 }
 
 .settingsCardAvatar {
@@ -59,9 +230,9 @@
   display: grid;
   place-items: center;
   flex: 0 0 52px;
-  background: rgba(255, 255, 255, 0.82);
-  border: 1px solid rgba(255, 255, 255, 0.92);
-  color: #7c391f;
+  background: linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%);
+  border: 1px solid rgba(255, 255, 255, 0.94);
+  color: #007aff;
   font-size: 1.2rem;
   font-weight: 700;
 }
@@ -81,22 +252,291 @@
   overflow: hidden;
 }
 
-.settingsMemberCard {
-  border: 1px solid var(--line);
-  border-radius: 22px;
-  box-shadow: none;
+.settingsCardTitle {
+  margin: 0;
+  color: #6d6d72;
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
 }
 
+.settingsStatusChip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 6px 11px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  border: 1px solid rgba(60, 60, 67, 0.08);
+  background: rgba(120, 120, 128, 0.12);
+  color: #636366;
+}
+
+.settingsStatusChipLarge {
+  min-height: 34px;
+  padding: 8px 14px;
+}
+
+.settingsStatusChipOnline {
+  background: rgba(52, 199, 89, 0.16);
+  color: #137333;
+}
+
+.settingsStatusChipOffline {
+  background: rgba(255, 159, 10, 0.16);
+  color: #935900;
+}
+
+.settingsStatusChipPending {
+  background: rgba(0, 122, 255, 0.12);
+  color: #0057b8;
+}
+
+.settingsStatusChipIdle {
+  background: rgba(120, 120, 128, 0.12);
+  color: #636366;
+}
+
+.settingsIdentityRow,
 .babyProfileAvatarRow {
   display: flex;
   align-items: center;
   gap: 14px;
 }
 
+.settingsIdentityAvatar {
+  width: 60px;
+  height: 60px;
+  border-radius: 20px;
+  flex: 0 0 60px;
+  font-size: 1.35rem;
+}
+
+.settingsIdentityBody {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.settingsIdentityBody strong,
+.storageNodeHeader p {
+  margin: 0;
+}
+
 .avatarUploadField {
   flex: 1;
   display: grid;
   gap: 6px;
+}
+
+.settingsInfoList {
+  display: grid;
+  gap: 0;
+}
+
+.settingsInfoRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 0;
+  border-top: 1px solid rgba(60, 60, 67, 0.1);
+}
+
+.settingsInfoRow:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.settingsInfoRow:last-child {
+  padding-bottom: 0;
+}
+
+.settingsInfoRow strong {
+  text-align: right;
+  color: #1c1c1e;
+}
+
+.storageFlowHero {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+}
+
+.storageFlowHeroTop,
+.storageSectionHeader,
+.storagePairingMeta {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.storageFlowHeroCopy {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.storageFlowHeroCopy h3,
+.storageSectionHeader strong,
+.storageEmptyState strong {
+  margin: 0;
+  color: #1c1c1e;
+  font-size: 1.24rem;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+}
+
+.storageFlowHeroCopy p,
+.storageInfoItem,
+.storagePairingMeta p {
+  margin: 0;
+}
+
+.storageFlowSummary {
+  gap: 0;
+}
+
+.storageAlbumPicker {
+  min-width: min(180px, 100%);
+}
+
+.storageAlbumPicker select {
+  min-height: 36px;
+  text-align: right;
+}
+
+.storageStepList,
+.storageInfoList {
+  display: grid;
+  gap: 12px;
+}
+
+.storageStepCard,
+.storageInfoItem {
+  border-radius: 18px;
+  border: 1px solid rgba(60, 60, 67, 0.08);
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.storageStepCard {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 15px;
+}
+
+.storageStepCardCurrent {
+  background: rgba(0, 122, 255, 0.08);
+  border-color: rgba(0, 122, 255, 0.16);
+}
+
+.storageStepCardActive {
+  background: rgba(255, 159, 10, 0.08);
+  border-color: rgba(255, 159, 10, 0.16);
+}
+
+.storageStepCardDone {
+  background: rgba(52, 199, 89, 0.08);
+  border-color: rgba(52, 199, 89, 0.16);
+}
+
+.storageStepIndex {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  flex: 0 0 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 122, 255, 0.12);
+  color: #007aff;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.storageStepCardDone .storageStepIndex {
+  background: rgba(52, 199, 89, 0.16);
+  color: #137333;
+}
+
+.storageStepCardActive .storageStepIndex {
+  background: rgba(255, 159, 10, 0.16);
+  color: #935900;
+}
+
+.storageStepBody {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.storageStepBody strong {
+  color: #1c1c1e;
+}
+
+.storageNodeHeader {
+  display: grid;
+  gap: 8px;
+}
+
+.storageNodeStatusRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.storageNodeStatusLabel {
+  color: #1c1c1e;
+  font-weight: 600;
+}
+
+.storageNodeDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  flex: 0 0 10px;
+  box-shadow: 0 0 0 4px rgba(120, 120, 128, 0.12);
+}
+
+.storageNodeDotOnline {
+  background: #34c759;
+  box-shadow: 0 0 0 4px rgba(52, 199, 89, 0.16);
+}
+
+.storageNodeDotOffline {
+  background: #ff9f0a;
+  box-shadow: 0 0 0 4px rgba(255, 159, 10, 0.16);
+}
+
+.storageNodeHeartbeat {
+  margin: 0;
+}
+
+.storageMetricsGrid {
+  margin-top: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.storageInfoItem {
+  padding: 13px 14px;
+  color: #3a3a3c;
+  line-height: 1.45;
+}
+
+.storageEmptyState {
+  display: grid;
+  gap: 6px;
+}
+
+.storagePairingCard {
+  display: grid;
+  gap: 14px;
 }
 
 @media (min-width: 860px) {
@@ -115,148 +555,50 @@
 }
 
 @media (max-width: 680px) {
-  .appShell {
-    width: min(100vw - 16px, 1120px);
-    padding-top: 16px;
-  }
-
-  .panel,
-  .timelineDay,
-  .inviteCard,
-  .metricCard,
-  .sessionBadge {
-    border-radius: 22px;
-  }
-
-  .timelineItem,
-  .memberRow,
-  .memberActions {
-    grid-template-columns: 1fr;
-  }
-
-  .momentsHero {
-    min-height: 240px;
-    padding: 20px;
-  }
-
-  .momentsHeroBody {
-    grid-template-columns: 1fr;
-    align-items: start;
-  }
-
-  .sectionHeading {
-    align-items: flex-start;
-    flex-wrap: wrap;
-  }
-
-  .sectionHeading > div {
-    order: 2;
-    width: 100%;
-    flex: none;
-  }
-
+  .settingsPage,
   .settingsDetailPage {
-    gap: 14px;
-  }
-
-  .momentsHeroCopy {
-    order: 2;
-  }
-
-  .momentsHeroAside {
-    order: 3;
-    justify-items: start;
-    align-self: start;
-    min-width: 0;
-  }
-
-  .heroAlbumSelect {
     width: 100%;
   }
 
-  .momentDayHeader {
-    align-items: start;
-    flex-direction: column;
-  }
-
-  .floatingAddButton {
-    right: 16px;
-    bottom: 90px;
-  }
-
-  .draftSheet {
-    max-height: 100vh;
-    padding: 14px;
-  }
-
-  .draftSheetHeader,
-  .draftSheetFooter {
-    align-items: center;
-    flex-direction: row;
-  }
-
-  .draftHeaderActions {
-    width: auto;
-  }
-
-  .draftListItem {
+  .settingsHeroBody {
     grid-template-columns: 1fr;
+    align-items: start;
   }
 
-  .draftFloatingBar {
-    gap: 8px;
-    bottom: calc(12px + env(safe-area-inset-bottom));
-    padding: 10px 12px;
-  }
-
-  .draftFloatingBar button {
-    flex: 1;
+  .settingsSessionBadge {
     min-width: 0;
   }
 
-  .draftUploadDialog {
-    width: min(100%, 340px);
+  .settingsMenuItem {
+    min-height: 68px;
   }
 
-  .draftUploadStats {
-    grid-template-columns: 1fr;
+  .settingsInfoRow {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
   }
 
-  .draftUploadStats span,
-  .draftUploadStats span:nth-child(2),
-  .draftUploadStats span:last-child {
+  .storageFlowHeroTop,
+  .storageSectionHeader,
+  .storagePairingMeta {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .storageAlbumPicker {
+    width: 100%;
+  }
+
+  .storageAlbumPicker select {
     text-align: left;
+  }
+
+  .storageMetricsGrid {
+    grid-template-columns: 1fr;
   }
 
   .settingsCardButton {
     padding: 14px 16px;
-  }
-
-  .settingsPage {
-    width: 100%;
-  }
-
-  .settingsDetailPage {
-    width: 100%;
-  }
-
-  .lightboxShell {
-    padding: 14px;
-    border-radius: 24px;
-  }
-
-  .lightboxTopBar,
-  .lightboxBottomBar {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .lightboxArrow {
-    width: 42px;
-    height: 42px;
-  }
-
-  .thumb {
-    height: 180px;
   }
 }

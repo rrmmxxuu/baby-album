@@ -11,7 +11,7 @@ interface SettingsListButtonProps {
 
 export function SettingsListButton({ className, leading, primary, secondary, trailing, onClick }: SettingsListButtonProps) {
   return (
-    <button className={className ? `settingsCardButton panel ${className}` : "settingsCardButton panel"} onClick={() => void onClick()} type="button">
+    <button className={className ? `settingsCardButton surfaceCard surfaceCardAction ${className}` : "settingsCardButton surfaceCard surfaceCardAction"} onClick={() => void onClick()} type="button">
       {leading}
       <span className="settingsCardBody">
         <span className="settingsMenuPrimary">{primary}</span>

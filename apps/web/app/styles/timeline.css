@@ -7,8 +7,6 @@
 .momentDay {
   display: grid;
   gap: 14px;
-  content-visibility: auto;
-  contain-intrinsic-size: 1px 900px;
 }
 
 .momentDayHeader {
@@ -21,8 +19,9 @@
 
 .momentDayHeader h3 {
   margin: 0 0 4px;
-  font-family: Georgia, "Times New Roman", serif;
   font-size: 1.35rem;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
 }
 
 .momentDayHeader p {
@@ -35,8 +34,9 @@
   align-items: center;
   padding: 7px 12px;
   border-radius: 999px;
-  background: rgba(255, 241, 224, 0.9);
-  color: #8a5738;
+  background: rgba(0, 122, 255, 0.14);
+  color: #005ecb;
+  border: 1px solid rgba(0, 122, 255, 0.08);
   font-size: 0.84rem;
   white-space: nowrap;
 }
@@ -49,12 +49,8 @@
 
 .momentCard {
   display: grid;
-  gap: 10px;
+  gap: 12px;
   padding: 16px;
-  border-radius: 28px;
-  border: 1px solid var(--line);
-  background: rgba(255, 251, 246, 0.92);
-  box-shadow: 0 10px 28px rgba(85, 52, 28, 0.08);
 }
 
 .momentPhotoGrid {
@@ -84,8 +80,11 @@
   border: 0;
   cursor: pointer;
   background:
-    linear-gradient(135deg, rgba(255, 236, 214, 0.65), rgba(216, 145, 112, 0.55)),
-    linear-gradient(135deg, #f5d3b0, #cd7f57);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.04)),
+    linear-gradient(145deg, #f4f4f8, #ebebf0 50%, #f4f4f8 100%);
+  box-shadow: none;
+  filter: none;
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 240ms ease, filter 240ms ease;
 }
 
 .momentThumbLarge {
@@ -107,14 +106,13 @@
 .momentThumbFallback {
   display: grid;
   place-items: center;
-  color: #5a2e1b;
+  color: #6d6d72;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.02em;
   font-size: 0.82rem;
   background:
-    radial-gradient(circle at 50% 40%, rgba(255,255,255,0.22), rgba(255,255,255,0) 28%),
-    linear-gradient(135deg, rgba(255, 236, 214, 0.65), rgba(216, 145, 112, 0.55)),
-    linear-gradient(135deg, #f5d3b0, #cd7f57);
+    radial-gradient(circle at 50% 40%, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0) 28%),
+    linear-gradient(145deg, #f4f4f8, #ebebf0 50%, #f4f4f8 100%);
 }
 
 .momentThumbLarge .momentThumbFallback {
@@ -132,8 +130,9 @@
   bottom: 12px;
   padding: 6px 10px;
   border-radius: 999px;
-  background: rgba(47, 37, 29, 0.78);
-  color: white;
+  background: rgba(0, 122, 255, 0.14);
+  color: #005ecb;
+  border: 1px solid rgba(0, 122, 255, 0.08);
   font-size: 0.78rem;
 }
 
@@ -165,7 +164,7 @@
 
 .momentMeta {
   margin: 0;
-  color: #8d8377;
+  color: var(--muted);
   font-size: 0.86rem;
 }
 
@@ -192,10 +191,11 @@
 .momentEditButton {
   align-self: center;
   min-height: 32px;
-  padding: 6px 10px;
+  padding: 6px 14px;
   border-radius: 999px;
-  background: #f2ede5;
-  color: #6a5849;
+  background: rgba(120, 120, 128, 0.12);
+  color: #007aff;
+  box-shadow: none;
   font-size: 0.84rem;
   white-space: nowrap;
 }
@@ -207,13 +207,13 @@
 }
 
 .momentCommentButtonActive {
-  background: #eadfce;
-  color: #5e4837;
+  background: rgba(0, 122, 255, 0.16);
+  color: #0057b8;
 }
 
 .momentCaption {
   margin: 0;
-  color: #4d3a2e;
+  color: #1c1c1e;
   line-height: 1.5;
 }
 
@@ -228,8 +228,8 @@
   gap: 4px;
   padding: 10px 12px;
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.58);
-  border: 1px solid rgba(47, 37, 29, 0.08);
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(60, 60, 67, 0.08);
 }
 
 .momentCommentItem p,
@@ -246,18 +246,18 @@
 }
 
 .momentCommentHeader strong {
-  color: #4d3a2e;
+  color: #1c1c1e;
   font-size: 0.9rem;
 }
 
 .momentCommentHeader span {
-  color: #8d8377;
+  color: #8e8e93;
   font-size: 0.78rem;
   white-space: nowrap;
 }
 
 .momentCommentItem p {
-  color: #5b4739;
+  color: #3a3a3c;
   line-height: 1.45;
   white-space: pre-wrap;
   word-break: break-word;
@@ -286,4 +286,22 @@
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+}
+
+.momentCommentActionButton {
+  min-height: 32px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(120, 120, 128, 0.12);
+  color: #007aff;
+  box-shadow: none;
+}
+
+.momentCommentActionButtonPrimary {
+  background: linear-gradient(180deg, #0a84ff 0%, #007aff 100%);
+  color: #ffffff;
+  box-shadow: 0 10px 24px rgba(0, 122, 255, 0.22);
 }

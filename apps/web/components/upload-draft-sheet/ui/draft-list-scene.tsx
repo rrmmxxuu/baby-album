@@ -16,7 +16,7 @@ export function DraftListScene({ draftState, duplicateState }: DraftListScenePro
         <div className="draftListCards">
           {draftState.drafts.map((draft) => {
             return (
-              <article className="draftListCard panel" key={draft.id}>
+              <article className="draftListCard surfaceCard" key={draft.id}>
                 <div className="draftListCardTop">
                   <strong>{draftDayLabel(draft.manualDate)}</strong>
                   <button

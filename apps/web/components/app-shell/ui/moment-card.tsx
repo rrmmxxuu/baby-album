@@ -25,7 +25,7 @@ export function MomentCard({ albumId, batch, canEdit, commentComposerOpen, comme
   const isVideoBatch = batch.items.length === 1 && batch.items[0].mediaType.startsWith("video/");
 
   return (
-    <article className="momentCard">
+    <article className="momentCard surfaceCard">
       {isVideoBatch ? (
         <MomentVideo albumId={albumId} item={batch.items[0]} onOpen={() => onOpen(0)} />
       ) : (

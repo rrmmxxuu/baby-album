@@ -17,12 +17,12 @@ export function AppPageFrame({ children, session, currentUser, activeAlbum, bloc
   const showBootSplash = session.bootPhase !== "done" || blocking;
 
   return (
-    <main className={`appShell${session.authToken && activeAlbum ? " appShellAuthenticated" : ""}${showBootSplash ? " appShellBooting" : ""}`}>
+    <main className={`appShell${session.isAuthenticated && activeAlbum ? " appShellAuthenticated" : ""}${showBootSplash ? " appShellBooting" : ""}`}>
       {showBootSplash ? <BootSplash phase={session.bootPhase === "exiting" && !blocking ? "exiting" : "loading"} /> : null}
       {showTopBar ? <TopBar currentUser={currentUser} /> : null}
       <AppFeedbackToasts
         feedback={session.feedback}
-        offsetForBottomNav={Boolean(session.authToken && activeAlbum)}
+        offsetForBottomNav={Boolean(session.isAuthenticated && activeAlbum)}
         onClearFeedback={session.clearFeedback}
       />
       {children}

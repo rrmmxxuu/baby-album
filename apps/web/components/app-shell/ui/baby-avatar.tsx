@@ -7,12 +7,11 @@ import { babyAvatarText } from "../model/format";
 interface BabyAvatarProps {
   baby?: { id: string; name: string; hasAvatar?: boolean; avatarUpdatedAt?: string; createdAt?: string } | null;
   albumId: string;
-  token: string;
   className: string;
   previewFile?: File | null;
 }
 
-export function BabyAvatar({ baby, albumId, token, className, previewFile }: BabyAvatarProps) {
+export function BabyAvatar({ baby, albumId, className, previewFile }: BabyAvatarProps) {
   const [previewUrl, setPreviewUrl] = useState("");
 
   useEffect(() => {
@@ -26,7 +25,7 @@ export function BabyAvatar({ baby, albumId, token, className, previewFile }: Bab
   }, [previewFile]);
 
   const avatarVersion = baby?.avatarUpdatedAt ?? baby?.createdAt;
-  const avatarUrl = previewUrl || (baby?.hasAvatar ? getBabyAvatarUrl(baby.id, albumId, token, avatarVersion) : "");
+  const avatarUrl = previewUrl || (baby?.hasAvatar ? getBabyAvatarUrl(baby.id, albumId, avatarVersion) : "");
   if (avatarUrl) {
     return <img alt={baby?.name ?? "宝宝头像"} className={className} src={avatarUrl} />;
   }

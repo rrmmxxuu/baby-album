@@ -9,7 +9,6 @@ import type { TabKey } from "../model/types";
 
 interface UseTimelineStateOptions {
   activeTab: TabKey;
-  authToken: string;
   activeAlbum: AlbumWorkspace | null;
   refreshApp: (targetAlbumId?: string, options?: { silent?: boolean }) => Promise<AppStatePayload | null>;
   clearFeedback: () => void;
@@ -17,10 +16,9 @@ interface UseTimelineStateOptions {
   showError: (title: string, message: string) => void;
 }
 
-export function useTimelineState({ activeTab, authToken, activeAlbum, refreshApp, clearFeedback, showWarning, showError }: UseTimelineStateOptions) {
+export function useTimelineState({ activeTab, activeAlbum, refreshApp, clearFeedback, showWarning, showError }: UseTimelineStateOptions) {
   const feed = useTimelineFeed({
     activeTab,
-    authToken,
     activeAlbum,
     refreshApp,
     showError
@@ -31,7 +29,6 @@ export function useTimelineState({ activeTab, authToken, activeAlbum, refreshApp
   });
 
   const comments = useTimelineComments({
-    authToken,
     activeAlbum,
     setTimelineEntries: feed.setTimelineEntries,
     clearFeedback,

@@ -12,7 +12,6 @@ const RESOLVE_BATCH_SIZE = 100;
 
 interface UseDraftDuplicateCheckOptions {
   albumId: string;
-  authToken: string;
   open: boolean;
   drafts: UploadDraft[];
 }
@@ -65,7 +64,7 @@ function hashFileWithWorker(worker: Worker, requestId: string, file: File) {
   });
 }
 
-export function useDraftDuplicateCheck({ albumId, authToken, open, drafts }: UseDraftDuplicateCheckOptions) {
+export function useDraftDuplicateCheck({ albumId, open, drafts }: UseDraftDuplicateCheckOptions) {
   const [itemStates, setItemStates] = useState<Record<string, DraftDuplicateState>>({});
   const [checking, setChecking] = useState(false);
   const hashCacheRef = useRef(new Map<string, string>());
@@ -120,7 +119,6 @@ export function useDraftDuplicateCheck({ albumId, authToken, open, drafts }: Use
       const needsHashByItemId = new Map<string, boolean>();
       for (const batch of chunkItems(uncachedTargets, PROBE_BATCH_SIZE)) {
         const response = await probeDuplicateMedia(
-          authToken,
           albumId,
           {
             items: batch.map((target) => ({
@@ -179,7 +177,7 @@ export function useDraftDuplicateCheck({ albumId, authToken, open, drafts }: Use
           }
         }
 
-        const response = await resolveDuplicateMedia(authToken, albumId, { items: resolveItems }, abortController.signal);
+        const response = await resolveDuplicateMedia(albumId, { items: resolveItems }, abortController.signal);
         if (disposed || runId !== runIdRef.current) {
           return;
         }
@@ -224,7 +222,7 @@ export function useDraftDuplicateCheck({ albumId, authToken, open, drafts }: Use
       abortController.abort();
       worker?.terminate();
     };
-  }, [albumId, authToken, open, targetSignature]);
+  }, [albumId, open, targetSignature]);
 
   return {
     checking,

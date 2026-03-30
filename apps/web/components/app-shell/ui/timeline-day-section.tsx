@@ -10,7 +10,6 @@ import { MomentCard } from "./moment-card";
 
 interface TimelineDaySectionProps {
   activeAlbum: AlbumWorkspace;
-  authToken: string;
   day: TimelineDayGroup;
   timeline: TimelineState;
   currentUserId?: string;
@@ -19,7 +18,7 @@ interface TimelineDaySectionProps {
   priority?: boolean;
 }
 
-export function TimelineDaySection({ activeAlbum, authToken, day, timeline, currentUserId, onEditEntry, onOpenLightbox, priority }: TimelineDaySectionProps) {
+export function TimelineDaySection({ activeAlbum, day, timeline, currentUserId, onEditEntry, onOpenLightbox, priority }: TimelineDaySectionProps) {
   const containerRef = useRef<HTMLElement | null>(null);
   const [shouldRenderBatches, setShouldRenderBatches] = useState(Boolean(priority));
   const placeholderHeight = useMemo(() => Math.max(320, Math.min(2200, day.batches.length * 280)), [day.batches.length]);
@@ -57,7 +56,6 @@ export function TimelineDaySection({ activeAlbum, authToken, day, timeline, curr
           {day.batches.map((batch) => (
             <MomentCard
               albumId={activeAlbum.album.id}
-              authToken={authToken}
               batch={batch}
               canEdit={canEditTimelineEntry(activeAlbum.membership.role, currentUserId, batch.uploadedBy)}
               commentComposerOpen={timeline.commentComposerEntryId === batch.entry.id}

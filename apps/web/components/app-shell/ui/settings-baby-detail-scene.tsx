@@ -40,7 +40,7 @@ export function SettingsBabyDetailScene({ className, activeAlbum, activeBaby, cu
         <form className="formGrid panelStack panel" onSubmit={settings.handleUpdateBabyProfile}>
           <p className="settingsCardTitle">修改宝宝信息</p>
           <div className="babyProfileAvatarRow">
-            <BabyAvatar albumId={activeAlbum.album.id} baby={activeBaby} className="settingsCardAvatar settingsCardAvatarLarge" previewFile={settings.babyAvatarFile} token={session.authToken} />
+            <BabyAvatar albumId={activeAlbum.album.id} baby={activeBaby} className="settingsCardAvatar settingsCardAvatarLarge" previewFile={settings.babyAvatarFile} />
             <label className="avatarUploadField">
               更换头像
               <input accept="image/*" disabled={!canManageBabyProfile} onChange={(event) => settings.setBabyAvatarFile(event.target.files?.[0] ?? null)} type="file" />

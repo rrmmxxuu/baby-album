@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildAlbumPath, buildAlbumsPath, buildAuthPath, buildPhotosPath, parseSettingsScreen, resolveAlbumRedirect, resolveAlbumsRedirect, resolveAuthRedirect, resolveHomeRedirect } from "./routes";
+import { buildAlbumPath, buildAlbumsPath, buildAuthPath, buildPhotosPath, parseSettingsScreen, resolveAlbumRedirect, resolveAlbumsRedirect } from "./routes";
 
 describe("route helpers", () => {
   it("builds auth and albums paths with optional invite codes", () => {
@@ -29,28 +29,9 @@ describe("route helpers", () => {
     expect(parseSettingsScreen(null)).toBeNull();
   });
 
-  it("resolves public route redirects from shared session state", () => {
-    expect(resolveHomeRedirect({
-      hydrated: true,
-      authToken: "",
-      inviteCode: "ABCD1234"
-    })).toBeNull();
-
-    expect(resolveAuthRedirect({
-      hydrated: true,
-      authToken: "token",
-      activeAlbumId: "album-1"
-    })).toBe("/album/album-1/photos");
-
+  it("redirects the albums screen into the active album when available", () => {
     expect(resolveAlbumsRedirect({
       hydrated: true,
-      authToken: "",
-      inviteCode: "ABCD1234"
-    })).toBe("/auth?invite=ABCD1234");
-
-    expect(resolveAlbumsRedirect({
-      hydrated: true,
-      authToken: "token",
       activeAlbumId: "album-2"
     })).toBe("/album/album-2/photos");
   });
@@ -58,17 +39,15 @@ describe("route helpers", () => {
   it("resolves protected album redirects consistently", () => {
     expect(resolveAlbumRedirect({
       bootPhaseDone: true,
-      authToken: "",
       inviteCode: "ABCD1234",
       activeTab: "settings",
       requestedAlbumId: "album-1",
       loading: false,
       albumRefreshing: false
-    })).toBe("/auth?invite=ABCD1234");
+    })).toBe("/albums?invite=ABCD1234");
 
     expect(resolveAlbumRedirect({
       bootPhaseDone: true,
-      authToken: "token",
       activeTab: "photos",
       requestedAlbumId: "album-1",
       activeAlbumId: "album-2",
@@ -78,7 +57,6 @@ describe("route helpers", () => {
 
     expect(resolveAlbumRedirect({
       bootPhaseDone: true,
-      authToken: "token",
       activeTab: "photos",
       requestedAlbumId: "album-1",
       loading: false,

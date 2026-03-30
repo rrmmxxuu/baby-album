@@ -32,9 +32,8 @@ async function parseResponse<T>(response: Response): Promise<T> {
   return payload;
 }
 
-function buildHeaders(token?: string, extra?: HeadersInit): HeadersInit {
+function buildHeaders(extra?: HeadersInit): HeadersInit {
   return {
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...extra
   };
 }
@@ -61,30 +60,29 @@ export async function reportClientError(input: {
   });
 }
 
-export function getPreviewUrl(mediaId: string, albumId: string, _token: string, version?: string) {
+export function getPreviewUrl(mediaId: string, albumId: string, version?: string) {
   const suffix = version ? `&v=${encodeURIComponent(version)}` : "";
   return `${apiBaseUrl}/api/v1/media/${encodeURIComponent(mediaId)}/preview?albumId=${encodeURIComponent(albumId)}${suffix}`;
 }
 
-export function getOriginalUrl(mediaId: string, albumId: string, _token: string) {
+export function getOriginalUrl(mediaId: string, albumId: string) {
   return `${apiBaseUrl}/api/v1/media/${encodeURIComponent(mediaId)}/original?albumId=${encodeURIComponent(albumId)}`;
 }
 
-export function getBabyAvatarUrl(babyId: string, albumId: string, _token: string, version?: string) {
+export function getBabyAvatarUrl(babyId: string, albumId: string, version?: string) {
   const suffix = version ? `&v=${encodeURIComponent(version)}` : "";
   return `${apiBaseUrl}/api/v1/babies/${encodeURIComponent(babyId)}/avatar?albumId=${encodeURIComponent(albumId)}${suffix}`;
 }
 
-export async function loadAppState(token: string, albumId?: string): Promise<AppStatePayload> {
+export async function loadAppState(albumId?: string): Promise<AppStatePayload> {
   const albumQuery = albumId ? `?albumId=${encodeURIComponent(albumId)}` : "";
   const response = await fetch(`${apiBaseUrl}/api/v1/auth/app${albumQuery}`, {
-    headers: buildHeaders(token),
     cache: "no-store"
   });
   return parseResponse<AppStatePayload>(response);
 }
 
-export async function loadTimelinePage(token: string, albumId: string, input?: { cursor?: string; limit?: number }): Promise<TimelinePagePayload> {
+export async function loadTimelinePage(albumId: string, input?: { cursor?: string; limit?: number }): Promise<TimelinePagePayload> {
   const query = new URLSearchParams({ albumId });
   if (input?.cursor) {
     query.set("cursor", input.cursor);
@@ -93,7 +91,6 @@ export async function loadTimelinePage(token: string, albumId: string, input?: {
     query.set("limit", `${input.limit}`);
   }
   const response = await fetch(`${apiBaseUrl}/api/v1/timeline?${query.toString()}`, {
-    headers: buildHeaders(token),
     cache: "no-store"
   });
   return parseResponse<TimelinePagePayload>(response);
@@ -125,19 +122,19 @@ export async function logoutUser(_token?: string): Promise<void> {
   }
 }
 
-export async function createAlbum(token: string, input: { name: string; timezone: string; babyName: string; birthDate?: string; relation: string }) {
+export async function createAlbum(input: { name: string; timezone: string; babyName: string; birthDate?: string; relation: string }) {
   const response = await fetch(`${apiBaseUrl}/api/v1/albums`, {
     method: "POST",
-    headers: buildHeaders(token, { "Content-Type": "application/json" }),
+    headers: buildHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(input)
   });
   return parseResponse<{ id: string; name: string; timezone: string }>(response);
 }
 
-export async function leaveAlbum(token: string, albumId: string, transferOwnerTo?: string): Promise<void> {
+export async function leaveAlbum(albumId: string, transferOwnerTo?: string): Promise<void> {
   const response = await fetch(`${apiBaseUrl}/api/v1/albums/${encodeURIComponent(albumId)}/leave`, {
     method: "POST",
-    headers: buildHeaders(token, { "Content-Type": "application/json" }),
+    headers: buildHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ transferOwnerTo: transferOwnerTo ?? "" })
   });
   if (!response.ok) {
@@ -146,37 +143,36 @@ export async function leaveAlbum(token: string, albumId: string, transferOwnerTo
   }
 }
 
-export async function updateMemberRole(token: string, albumId: string, memberUserId: string, role: Role) {
+export async function updateMemberRole(albumId: string, memberUserId: string, role: Role) {
   const response = await fetch(`${apiBaseUrl}/api/v1/albums/${encodeURIComponent(albumId)}/members/${encodeURIComponent(memberUserId)}/role`, {
     method: "POST",
-    headers: buildHeaders(token, { "Content-Type": "application/json" }),
+    headers: buildHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ role })
   });
   return parseResponse<{ userId: string; role: Role }>(response);
 }
 
-export async function updateMemberRelation(token: string, albumId: string, memberUserId: string, relation: string) {
+export async function updateMemberRelation(albumId: string, memberUserId: string, relation: string) {
   const response = await fetch(`${apiBaseUrl}/api/v1/albums/${encodeURIComponent(albumId)}/members/${encodeURIComponent(memberUserId)}/relation`, {
     method: "POST",
-    headers: buildHeaders(token, { "Content-Type": "application/json" }),
+    headers: buildHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ relation })
   });
   return parseResponse<{ userId: string; relation?: string }>(response);
 }
 
-export async function createInvite(token: string, albumId: string): Promise<AlbumInvite> {
+export async function createInvite(albumId: string): Promise<AlbumInvite> {
   const response = await fetch(`${apiBaseUrl}/api/v1/albums/${encodeURIComponent(albumId)}/invites`, {
     method: "POST",
-    headers: buildHeaders(token, { "Content-Type": "application/json" }),
+    headers: buildHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({})
   });
   return parseResponse<AlbumInvite>(response);
 }
 
-export async function createStorageNodePairing(token: string, albumId: string): Promise<StorageNodePairing> {
+export async function createStorageNodePairing(albumId: string): Promise<StorageNodePairing> {
   const response = await fetch(`${apiBaseUrl}/api/v1/albums/${encodeURIComponent(albumId)}/storage-pairing`, {
-    method: "POST",
-    headers: buildHeaders(token)
+    method: "POST"
   });
   return parseResponse<StorageNodePairing>(response);
 }
@@ -186,92 +182,89 @@ export async function loadInvite(code: string): Promise<AlbumInvite> {
   return parseResponse<AlbumInvite>(response);
 }
 
-export async function acceptInvite(token: string, code: string, relation: string): Promise<AlbumInvite> {
+export async function acceptInvite(code: string, relation: string): Promise<AlbumInvite> {
   const response = await fetch(`${apiBaseUrl}/api/v1/invites/${encodeURIComponent(code)}/accept`, {
     method: "POST",
-    headers: buildHeaders(token, { "Content-Type": "application/json" }),
+    headers: buildHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ relation })
   });
   return parseResponse<AlbumInvite>(response);
 }
 
-export async function createTimelineEntry(token: string, input: { albumId: string; caption: string; visibility: TimelineVisibility; timeMode: TimelineTimeMode; displayAt: string }): Promise<TimelineEntry> {
+export async function createTimelineEntry(input: { albumId: string; caption: string; visibility: TimelineVisibility; timeMode: TimelineTimeMode; displayAt: string }): Promise<TimelineEntry> {
   const response = await fetch(`${apiBaseUrl}/api/v1/timeline-entries`, {
     method: "POST",
-    headers: buildHeaders(token, { "Content-Type": "application/json" }),
+    headers: buildHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(input)
   });
   return parseResponse<TimelineEntry>(response);
 }
 
-export async function updateTimelineEntry(token: string, entryId: string, input: { albumId: string; caption: string; visibility: TimelineVisibility; timeMode: TimelineTimeMode; displayAt: string }): Promise<TimelineEntry> {
+export async function updateTimelineEntry(entryId: string, input: { albumId: string; caption: string; visibility: TimelineVisibility; timeMode: TimelineTimeMode; displayAt: string }): Promise<TimelineEntry> {
   const response = await fetch(`${apiBaseUrl}/api/v1/timeline-entries/${encodeURIComponent(entryId)}`, {
     method: "POST",
-    headers: buildHeaders(token, { "Content-Type": "application/json" }),
+    headers: buildHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(input)
   });
   return parseResponse<TimelineEntry>(response);
 }
 
-export async function createTimelineComment(token: string, entryId: string, input: { albumId: string; content: string }): Promise<TimelineComment> {
+export async function createTimelineComment(entryId: string, input: { albumId: string; content: string }): Promise<TimelineComment> {
   const response = await fetch(`${apiBaseUrl}/api/v1/timeline-entries/${encodeURIComponent(entryId)}/comments`, {
     method: "POST",
-    headers: buildHeaders(token, { "Content-Type": "application/json" }),
+    headers: buildHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(input)
   });
   return parseResponse<TimelineComment>(response);
 }
 
-export async function deleteTimelineEntry(token: string, albumId: string, entryId: string): Promise<void> {
+export async function deleteTimelineEntry(albumId: string, entryId: string): Promise<void> {
   const response = await fetch(`${apiBaseUrl}/api/v1/timeline-entries/${encodeURIComponent(entryId)}?albumId=${encodeURIComponent(albumId)}`, {
-    method: "DELETE",
-    headers: buildHeaders(token)
+    method: "DELETE"
   });
   await parseResponse<{ deleted: boolean }>(response);
 }
 
-export async function deleteTimelineEntryMedia(token: string, albumId: string, entryId: string, mediaId: string): Promise<void> {
+export async function deleteTimelineEntryMedia(albumId: string, entryId: string, mediaId: string): Promise<void> {
   const response = await fetch(`${apiBaseUrl}/api/v1/timeline-entries/${encodeURIComponent(entryId)}/media/${encodeURIComponent(mediaId)}?albumId=${encodeURIComponent(albumId)}`, {
-    method: "DELETE",
-    headers: buildHeaders(token)
+    method: "DELETE"
   });
   await parseResponse<{ deleted: boolean }>(response);
 }
 
-export async function updateBabyProfile(token: string, albumId: string, babyId: string, input: { name: string; birthDate?: string }) {
+export async function updateBabyProfile(albumId: string, babyId: string, input: { name: string; birthDate?: string }) {
   const response = await fetch(`${apiBaseUrl}/api/v1/albums/${encodeURIComponent(albumId)}/babies/${encodeURIComponent(babyId)}`, {
     method: "POST",
-    headers: buildHeaders(token, { "Content-Type": "application/json" }),
+    headers: buildHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(input)
   });
   return parseResponse<{ id: string; name: string; birthDate?: string }>(response);
 }
 
-export async function uploadBabyAvatar(token: string, albumId: string, babyId: string, file: File) {
+export async function uploadBabyAvatar(albumId: string, babyId: string, file: File) {
   const formData = new FormData();
   formData.append("file", file);
   const response = await fetch(`${apiBaseUrl}/api/v1/albums/${encodeURIComponent(albumId)}/babies/${encodeURIComponent(babyId)}/avatar`, {
     method: "POST",
-    headers: buildHeaders(token),
     body: formData
   });
   return parseResponse<{ id: string; hasAvatar?: boolean }>(response);
 }
 
-export async function probeDuplicateMedia(token: string, albumId: string, input: { items: Array<{ clientId: string; byteSize: number }> }, signal?: AbortSignal): Promise<{ items: Array<{ clientId: string; needsHash: boolean }> }> {
+export async function probeDuplicateMedia(albumId: string, input: { items: Array<{ clientId: string; byteSize: number }> }, signal?: AbortSignal): Promise<{ items: Array<{ clientId: string; needsHash: boolean }> }> {
   const response = await fetch(`${apiBaseUrl}/api/v1/albums/${encodeURIComponent(albumId)}/duplicate-media/probe`, {
     method: "POST",
-    headers: buildHeaders(token, { "Content-Type": "application/json" }),
+    headers: buildHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(input),
     signal
   });
   return parseResponse<{ items: Array<{ clientId: string; needsHash: boolean }> }>(response);
 }
 
-export async function resolveDuplicateMedia(token: string, albumId: string, input: { items: Array<{ clientId: string; sha256: string }> }, signal?: AbortSignal): Promise<{ items: Array<{ clientId: string; duplicate: boolean; duplicateCount: number }> }> {
+export async function resolveDuplicateMedia(albumId: string, input: { items: Array<{ clientId: string; sha256: string }> }, signal?: AbortSignal): Promise<{ items: Array<{ clientId: string; duplicate: boolean; duplicateCount: number }> }> {
   const response = await fetch(`${apiBaseUrl}/api/v1/albums/${encodeURIComponent(albumId)}/duplicate-media/resolve`, {
     method: "POST",
-    headers: buildHeaders(token, { "Content-Type": "application/json" }),
+    headers: buildHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(input),
     signal
   });

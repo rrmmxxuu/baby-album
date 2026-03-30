@@ -1,6 +1,5 @@
 export const SESSION_COOKIE_NAME = "baby-album.session";
 export const SESSION_EXP_COOKIE_NAME = "baby-album.session-exp";
-export const SESSION_AUTH_MARKER = "session";
 
 interface CookieReader {
   get(name: string): { value?: string } | undefined;

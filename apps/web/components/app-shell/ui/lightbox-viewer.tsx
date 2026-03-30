@@ -6,20 +6,19 @@ import { formatDateTime, formatRelativeUploadTime } from "../model/format";
 import type { LightboxState } from "../model/types";
 
 interface LightboxViewerProps {
-  authToken: string;
   lightbox: LightboxState;
   closing: boolean;
   onClose: () => void;
   onNavigate: (direction: -1 | 1) => void;
 }
 
-export function LightboxViewer({ authToken, lightbox, closing, onClose, onNavigate }: LightboxViewerProps) {
+export function LightboxViewer({ lightbox, closing, onClose, onNavigate }: LightboxViewerProps) {
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [visible, setVisible] = useState(false);
   const currentItem = lightbox.batch.items[lightbox.index];
   const isVideo = currentItem.mediaType.startsWith("video/");
-  const originalUrl = getOriginalUrl(currentItem.id, lightbox.albumId, authToken);
-  const previewUrl = getPreviewUrl(currentItem.id, lightbox.albumId, authToken, currentItem.processedAt ?? currentItem.uploadedAt);
+  const originalUrl = getOriginalUrl(currentItem.id, lightbox.albumId);
+  const previewUrl = getPreviewUrl(currentItem.id, lightbox.albumId, currentItem.processedAt ?? currentItem.uploadedAt);
   const hasMultiple = lightbox.batch.items.length > 1;
   const [displayUrl, setDisplayUrl] = useState(originalUrl);
 

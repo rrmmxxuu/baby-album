@@ -6,18 +6,17 @@ interface PhotosHeroProps {
   activeAlbum: AlbumWorkspace;
   activeBaby: BabyProfile | null;
   albumOptions: AlbumSummary[];
-  authToken: string;
   timelineCount: number;
   timelineLoading: boolean;
   onAlbumChange: (albumId: string) => void;
 }
 
-export function PhotosHero({ activeAlbum, activeBaby, albumOptions, authToken, timelineCount, timelineLoading, onAlbumChange }: PhotosHeroProps) {
+export function PhotosHero({ activeAlbum, activeBaby, albumOptions, timelineCount, timelineLoading, onAlbumChange }: PhotosHeroProps) {
   return (
     <article className="momentsHero panel">
       <div className="momentsHeroBackdrop" />
       <div className="momentsHeroBody">
-        <BabyAvatar albumId={activeAlbum.album.id} baby={activeBaby} className="momentsHeroAvatar" token={authToken} />
+        <BabyAvatar albumId={activeAlbum.album.id} baby={activeBaby} className="momentsHeroAvatar" />
         <div className="momentsHeroCopy">
           <h2>{activeBaby?.name ?? activeAlbum.album.name}</h2>
           <p className="momentsHeroMeta">{activeBaby?.birthDate ? formatBirthSummary(activeBaby.birthDate) : "还没有填写出生日期"}</p>

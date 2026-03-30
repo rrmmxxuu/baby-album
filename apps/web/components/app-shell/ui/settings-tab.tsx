@@ -20,7 +20,6 @@ interface SettingsTabProps {
   albumMembers: AlbumMember[];
   albumInvites: AlbumInvite[];
   transferCandidates: AlbumMember[];
-  authToken: string;
   session: AppSessionState;
   settings: SettingsState;
   storageNode: StorageNode | null;
@@ -40,7 +39,7 @@ interface SettingsTabProps {
   onOpenAlbumSettings: (albumId: string) => void | Promise<void>;
 }
 
-export function SettingsTab({ activeTab, settingsSceneClassName, activeAlbum, activeBaby, currentUser, albumOptions, albumMembers, albumInvites, transferCandidates, authToken, session, settings, storageNode, storageStatus, storageStatusSummary, storageUploadSummary, storageFlowTitle, storagePairingModeLabel, storagePairingActionLabel, activeStoragePairing, canManageInvites, canManageBabyProfile, canManageStorage, onAlbumChange, onLogout, onNavigateSettings, onOpenAlbumSettings }: SettingsTabProps) {
+export function SettingsTab({ activeTab, settingsSceneClassName, activeAlbum, activeBaby, currentUser, albumOptions, albumMembers, albumInvites, transferCandidates, session, settings, storageNode, storageStatus, storageStatusSummary, storageUploadSummary, storageFlowTitle, storagePairingModeLabel, storagePairingActionLabel, activeStoragePairing, canManageInvites, canManageBabyProfile, canManageStorage, onAlbumChange, onLogout, onNavigateSettings, onOpenAlbumSettings }: SettingsTabProps) {
   return (
     <section aria-hidden={!activeTab} hidden={!activeTab} className={`pageStack settingsPage tabSection ${activeTab ? "tabSectionActive" : "tabSectionInactive"}`}>
       {settings.settingsScreen === "menu" ? (
@@ -69,7 +68,6 @@ export function SettingsTab({ activeTab, settingsSceneClassName, activeAlbum, ac
       {settings.settingsScreen === "babies" ? (
         <SettingsBabiesScene
           albumOptions={albumOptions}
-          authToken={authToken}
           className={settingsSceneClassName}
           onAdd={() => onNavigateSettings("addBaby")}
           onBack={() => onNavigateSettings("menu", "back")}

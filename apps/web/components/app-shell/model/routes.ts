@@ -11,10 +11,6 @@ function appendInvite(path: string, inviteCode?: string) {
   return `${path}?${query.toString()}` as Route;
 }
 
-export function buildHomePath(inviteCode?: string) {
-  return appendInvite("/", inviteCode);
-}
-
 export function buildAuthPath(inviteCode?: string) {
   return appendInvite("/auth", inviteCode);
 }
@@ -59,80 +55,34 @@ export function parseSettingsScreen(value: string | null): SettingsScreen | null
   return ROUTABLE_SETTINGS_SCREENS.includes(value as SettingsScreen) ? value as SettingsScreen : null;
 }
 
-interface SessionRedirectState {
+interface AlbumsRedirectState {
   hydrated: boolean;
-  authToken: string;
-  inviteCode?: string;
   activeAlbumId?: string | null;
-  rememberedAlbumId?: string | null;
-  appStateReady?: boolean;
-  bootPhaseDone?: boolean;
 }
 
 interface AlbumRedirectState {
   bootPhaseDone: boolean;
-  authToken: string;
   inviteCode?: string;
   activeTab: TabKey;
   requestedAlbumId: string;
   activeAlbumId?: string | null;
-  rememberedAlbumId?: string | null;
   loading: boolean;
   albumRefreshing: boolean;
 }
 
-function preferredAlbumId(activeAlbumId?: string | null, rememberedAlbumId?: string | null) {
-  return activeAlbumId ?? rememberedAlbumId ?? "";
-}
-
-export function resolveHomeRedirect({ hydrated, authToken, inviteCode, activeAlbumId, rememberedAlbumId, appStateReady, bootPhaseDone }: SessionRedirectState) {
+export function resolveAlbumsRedirect({ hydrated, activeAlbumId }: AlbumsRedirectState) {
   if (!hydrated) {
     return null;
   }
-  if (!authToken) {
-    return null;
-  }
-  if (activeAlbumId) {
-    return buildAlbumPath(activeAlbumId, "photos");
-  }
-  if (appStateReady || bootPhaseDone) {
-    return buildAlbumsPath(inviteCode);
-  }
-  return null;
-}
-
-export function resolveAuthRedirect({ hydrated, authToken, inviteCode, activeAlbumId, rememberedAlbumId, appStateReady, bootPhaseDone }: SessionRedirectState) {
-  if (!hydrated || !authToken) {
-    return null;
-  }
-  if (activeAlbumId) {
-    return buildAlbumPath(activeAlbumId, "photos");
-  }
-  if (appStateReady || bootPhaseDone) {
-    return buildAlbumsPath(inviteCode);
-  }
-  return null;
-}
-
-export function resolveAlbumsRedirect({ hydrated, authToken, inviteCode, activeAlbumId, rememberedAlbumId }: SessionRedirectState) {
-  if (!hydrated) {
-    return null;
-  }
-  if (!authToken) {
-    return buildAuthPath(inviteCode);
-  }
   if (activeAlbumId) {
     return buildAlbumPath(activeAlbumId, "photos");
   }
   return null;
 }
 
-export function resolveAlbumRedirect({ bootPhaseDone, authToken, inviteCode, activeTab, requestedAlbumId, activeAlbumId, rememberedAlbumId, loading, albumRefreshing }: AlbumRedirectState) {
+export function resolveAlbumRedirect({ bootPhaseDone, inviteCode, activeTab, requestedAlbumId, activeAlbumId, loading, albumRefreshing }: AlbumRedirectState) {
   if (!bootPhaseDone) {
     return null;
-  }
-  if (!authToken) {
-    return buildAuthPath(inviteCode);
   }
   if (loading || albumRefreshing) {
     return null;

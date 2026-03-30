@@ -84,7 +84,7 @@ export function buildDrafts(files: File[]) {
   return drafts.sort((left, right) => draftDisplayAt(right).localeCompare(draftDisplayAt(left)));
 }
 
-export function buildDraftFromEntry(entry: TimelineEntry, albumId: string, authToken: string): UploadDraft {
+export function buildDraftFromEntry(entry: TimelineEntry, albumId: string): UploadDraft {
   return {
     id: entry.id,
     caption: entry.caption,
@@ -95,7 +95,7 @@ export function buildDraftFromEntry(entry: TimelineEntry, albumId: string, authT
       id: createClientId("media"),
       file: null,
       fileName: item.fileName,
-      previewUrl: getPreviewUrl(item.id, albumId, authToken, item.processedAt ?? item.uploadedAt),
+      previewUrl: getPreviewUrl(item.id, albumId, item.processedAt ?? item.uploadedAt),
       capturedAt: item.capturedAt,
       mediaType: item.mediaType,
       existingMediaId: item.id

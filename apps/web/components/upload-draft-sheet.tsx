@@ -16,7 +16,6 @@ import { HiddenFileInput } from "./ui/hidden-file-input";
 
 interface UploadDraftSheetProps {
   albumId: string;
-  authToken: string;
   babyName?: string;
   open: boolean;
   disabled?: boolean;
@@ -27,20 +26,18 @@ interface UploadDraftSheetProps {
   onDeleted?: () => void;
 }
 
-export function UploadDraftSheet({ albumId, authToken, babyName, open, disabled, disabledReason, editingEntry, onClose, onUploaded, onDeleted }: UploadDraftSheetProps) {
+export function UploadDraftSheet({ albumId, babyName, open, disabled, disabledReason, editingEntry, onClose, onUploaded, onDeleted }: UploadDraftSheetProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const appendInputRef = useRef<HTMLInputElement | null>(null);
   const editAppendInputRef = useRef<HTMLInputElement | null>(null);
-  const draftState = useUploadDraftState({ albumId, authToken, open, editingEntry });
+  const draftState = useUploadDraftState({ albumId, open, editingEntry });
   const duplicateState = useDraftDuplicateCheck({
     albumId,
-    authToken,
     open,
     drafts: draftState.drafts
   });
   const submitState = useUploadSubmit({
     albumId,
-    authToken,
     open,
     disabled,
     disabledReason,

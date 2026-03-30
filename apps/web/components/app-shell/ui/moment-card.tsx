@@ -8,7 +8,6 @@ import { MomentThumb } from "./moment-thumb";
 import { MomentVideo } from "./moment-video";
 
 interface MomentCardProps {
-  authToken: string;
   albumId: string;
   batch: TimelineBatch;
   canEdit: boolean;
@@ -22,16 +21,16 @@ interface MomentCardProps {
   onOpen: (index: number) => void;
 }
 
-export function MomentCard({ authToken, albumId, batch, canEdit, commentComposerOpen, commentDraft, commentSubmitting, onCommentDraftChange, onCommentSubmit, onCommentToggle, onEdit, onOpen }: MomentCardProps) {
+export function MomentCard({ albumId, batch, canEdit, commentComposerOpen, commentDraft, commentSubmitting, onCommentDraftChange, onCommentSubmit, onCommentToggle, onEdit, onOpen }: MomentCardProps) {
   const isVideoBatch = batch.items.length === 1 && batch.items[0].mediaType.startsWith("video/");
 
   return (
     <article className="momentCard">
       {isVideoBatch ? (
-        <MomentVideo authToken={authToken} albumId={albumId} item={batch.items[0]} onOpen={() => onOpen(0)} />
+        <MomentVideo albumId={albumId} item={batch.items[0]} onOpen={() => onOpen(0)} />
       ) : (
         <div className={`momentPhotoGrid momentPhotoGrid${Math.min(batch.items.length, 9)}`}>
-          {batch.items.map((item, index) => <MomentThumb albumId={albumId} authToken={authToken} item={item} key={item.id} onOpen={() => onOpen(index)} />)}
+          {batch.items.map((item, index) => <MomentThumb albumId={albumId} item={item} key={item.id} onOpen={() => onOpen(index)} />)}
         </div>
       )}
       {batch.caption ? <p className="momentCaption">{batch.caption}</p> : null}

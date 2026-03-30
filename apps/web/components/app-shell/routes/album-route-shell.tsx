@@ -16,7 +16,7 @@ import { BottomNav } from "../ui/bottom-nav";
 import { FloatingAddButton } from "../ui/floating-add-button";
 import { LightboxViewer } from "../ui/lightbox-viewer";
 import { PhotosRoute } from "./photos-route";
-import { RouteRedirectNotice } from "./route-redirect-notice";
+import { RouteRedirect } from "./route-redirect-notice";
 import { SettingsRoute } from "./settings-route";
 
 interface AlbumRouteShellProps {
@@ -64,13 +64,11 @@ export function AlbumRouteShell({ albumId, children: _children }: AlbumRouteShel
   const activeAlbum = session.appState?.activeAlbum ?? null;
   const albumOptions = session.appState?.albums ?? [];
   const currentUser = session.appState?.currentUser ?? null;
-  const rememberedAlbumId = session.selectedAlbumId;
   const activeAlbumId = activeAlbum?.album.id ?? null;
-  const albumRefreshing = Boolean(session.authToken && albumId && activeAlbumId && activeAlbumId !== albumId);
+  const albumRefreshing = Boolean(session.isAuthenticated && albumId && activeAlbumId && activeAlbumId !== albumId);
 
   const settings = useSettingsState({
     activeTab,
-    authToken: session.authToken,
     appState: session.appState,
     activeAlbum,
     currentUser,
@@ -83,7 +81,6 @@ export function AlbumRouteShell({ albumId, children: _children }: AlbumRouteShel
 
   const timeline = useTimelineState({
     activeTab,
-    authToken: session.authToken,
     activeAlbum,
     refreshApp: session.refreshApp,
     clearFeedback: session.clearFeedback,
@@ -109,13 +106,13 @@ export function AlbumRouteShell({ albumId, children: _children }: AlbumRouteShel
   }, []);
 
   useEffect(() => {
-    if (!session.authToken || session.bootPhase !== "done") {
+    if (!session.isAuthenticated || session.bootPhase !== "done") {
       return;
     }
     if (albumId && activeAlbum?.album.id !== albumId) {
       void session.refreshApp(albumId, { silent: Boolean(session.appState) });
     }
-  }, [activeAlbum?.album.id, albumId, session.appState, session.authToken, session.bootPhase, session.refreshApp]);
+  }, [activeAlbum?.album.id, albumId, session.appState, session.bootPhase, session.isAuthenticated, session.refreshApp]);
 
   useEffect(() => {
     if (activeTab !== "settings") {
@@ -147,23 +144,21 @@ export function AlbumRouteShell({ albumId, children: _children }: AlbumRouteShel
   const readyAlbum = activeAlbum?.album.id === albumId ? activeAlbum : null;
   const redirectPath = resolveAlbumRedirect({
     bootPhaseDone: session.bootPhase === "done",
-    authToken: session.authToken,
     inviteCode,
     activeTab,
     requestedAlbumId: albumId,
     activeAlbumId,
-    rememberedAlbumId,
     loading: session.loading,
     albumRefreshing
   });
 
   useEffect(() => {
-    if (!session.authToken || session.bootPhase !== "done") {
+    if (!session.isAuthenticated || session.bootPhase !== "done") {
       return;
     }
     router.prefetch(buildAlbumPath(albumId, "photos"));
     router.prefetch(buildAlbumPath(albumId, "settings"));
-  }, [albumId, router, session.authToken, session.bootPhase]);
+  }, [albumId, router, session.bootPhase, session.isAuthenticated]);
 
   useEffect(() => {
     if (activeTab !== "photos" || !readyAlbum) {
@@ -362,8 +357,7 @@ export function AlbumRouteShell({ albumId, children: _children }: AlbumRouteShel
 
   return (
     <AppPageFrame activeAlbum={activeAlbum} blocking={blocking} currentUser={currentUser} session={session}>
-      {redirectPath ? <RouteRedirectNotice label="正在同步最新状态..." to={redirectPath} /> : null}
-
+      {redirectPath ? <RouteRedirect to={redirectPath} /> : null}
       {readyAlbum && !redirectPath ? (
         <AlbumRouteProvider
           value={{
@@ -393,12 +387,11 @@ export function AlbumRouteShell({ albumId, children: _children }: AlbumRouteShel
         </AlbumRouteProvider>
       ) : null}
 
-      {timeline.lightbox ? <LightboxViewer authToken={session.authToken} closing={timeline.lightboxClosing} lightbox={timeline.lightbox} onClose={handleCloseLightbox} onNavigate={handleNavigateLightbox} /> : null}
+      {timeline.lightbox ? <LightboxViewer closing={timeline.lightboxClosing} lightbox={timeline.lightbox} onClose={handleCloseLightbox} onNavigate={handleNavigateLightbox} /> : null}
 
       {readyAlbum && !redirectPath ? (
         <UploadDraftSheet
           albumId={readyAlbum.album.id}
-          authToken={session.authToken}
           babyName={appView.activeBaby?.name}
           disabled={!appView.canUploadMedia && !timeline.editingEntry}
           disabledReason={!appView.storageNode ? "上传前需要先完成 NAS 配对。" : "当前身份没有上传权限。"}

@@ -7,7 +7,6 @@ import type { AlbumWorkspace, TimelineEntry } from "../../../../lib/types";
 import { errorMessageFromUnknown } from "../../model/feedback";
 
 interface UseTimelineCommentsOptions {
-  authToken: string;
   activeAlbum: AlbumWorkspace | null;
   setTimelineEntries: Dispatch<SetStateAction<TimelineEntry[]>>;
   clearFeedback: () => void;
@@ -15,7 +14,7 @@ interface UseTimelineCommentsOptions {
   showError: (title: string, message: string) => void;
 }
 
-export function useTimelineComments({ authToken, activeAlbum, setTimelineEntries, clearFeedback, showWarning, showError }: UseTimelineCommentsOptions) {
+export function useTimelineComments({ activeAlbum, setTimelineEntries, clearFeedback, showWarning, showError }: UseTimelineCommentsOptions) {
   const [commentComposerEntryId, setCommentComposerEntryId] = useState("");
   const [commentSubmittingEntryId, setCommentSubmittingEntryId] = useState("");
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
@@ -35,7 +34,7 @@ export function useTimelineComments({ authToken, activeAlbum, setTimelineEntries
   }
 
   async function handleCreateComment(entryId: string) {
-    if (!authToken || !activeAlbum) {
+    if (!activeAlbum) {
       return;
     }
     const content = (commentDrafts[entryId] ?? "").trim();
@@ -46,7 +45,7 @@ export function useTimelineComments({ authToken, activeAlbum, setTimelineEntries
     clearFeedback();
     setCommentSubmittingEntryId(entryId);
     try {
-      const comment = await createTimelineComment(authToken, entryId, {
+      const comment = await createTimelineComment(entryId, {
         albumId: activeAlbum.album.id,
         content
       });

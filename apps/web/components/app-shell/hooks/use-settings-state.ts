@@ -9,7 +9,6 @@ import type { NavDirection, SettingsScreen, TabKey } from "../model/types";
 
 interface UseSettingsStateOptions {
   activeTab: TabKey;
-  authToken: string;
   appState: AppStatePayload | null;
   activeAlbum: AlbumWorkspace | null;
   currentUser: User | null;
@@ -20,7 +19,7 @@ interface UseSettingsStateOptions {
   showError: (title: string, message: string) => void;
 }
 
-export function useSettingsState({ activeTab, authToken, appState, activeAlbum, currentUser, refreshApp, clearFeedback, showSuccess, showWarning, showError }: UseSettingsStateOptions) {
+export function useSettingsState({ activeTab, appState, activeAlbum, currentUser, refreshApp, clearFeedback, showSuccess, showWarning, showError }: UseSettingsStateOptions) {
   const [settingsScreen, setSettingsScreen] = useState<SettingsScreen>("menu");
   const [settingsNavDirection, setSettingsNavDirection] = useState<NavDirection>("forward");
   const [settingsMemberId, setSettingsMemberId] = useState("");
@@ -103,17 +102,17 @@ export function useSettingsState({ activeTab, authToken, appState, activeAlbum, 
 
   async function handleUpdateBabyProfile(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!authToken || !activeAlbum?.baby) {
+    if (!activeAlbum?.baby) {
       return;
     }
     clearFeedback();
     try {
-      await updateBabyProfile(authToken, activeAlbum.album.id, activeAlbum.baby.id, {
+      await updateBabyProfile(activeAlbum.album.id, activeAlbum.baby.id, {
         name: babyProfileName.trim(),
         birthDate: babyProfileBirthDate ? new Date(`${babyProfileBirthDate}T00:00:00Z`).toISOString() : undefined
       });
       if (babyAvatarFile) {
-        await uploadBabyAvatar(authToken, activeAlbum.album.id, activeAlbum.baby.id, babyAvatarFile);
+        await uploadBabyAvatar(activeAlbum.album.id, activeAlbum.baby.id, babyAvatarFile);
         setBabyAvatarFile(null);
       }
       showSuccess("保存成功", "宝宝信息已更新。");
@@ -124,13 +123,13 @@ export function useSettingsState({ activeTab, authToken, appState, activeAlbum, 
   }
 
   async function handleRoleUpdate(memberUserId: string) {
-    if (!authToken || !activeAlbum) {
+    if (!activeAlbum) {
       return;
     }
     clearFeedback();
     try {
       const nextRole = roleDrafts[memberUserId];
-      await updateMemberRole(authToken, activeAlbum.album.id, memberUserId, nextRole);
+      await updateMemberRole(activeAlbum.album.id, memberUserId, nextRole);
       showSuccess("权限已更新", `已更新成员权限：${roleLabel(nextRole)}。`);
       await refreshApp(activeAlbum.album.id);
     } catch (err) {
@@ -140,7 +139,7 @@ export function useSettingsState({ activeTab, authToken, appState, activeAlbum, 
 
   async function handleUpdateMyRelation(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!authToken || !activeAlbum || !currentUser) {
+    if (!activeAlbum || !currentUser) {
       return;
     }
     const relation = myRelationDraft.trim();
@@ -150,7 +149,7 @@ export function useSettingsState({ activeTab, authToken, appState, activeAlbum, 
     }
     clearFeedback();
     try {
-      await updateMemberRelation(authToken, activeAlbum.album.id, currentUser.id, relation);
+      await updateMemberRelation(activeAlbum.album.id, currentUser.id, relation);
       showSuccess("保存成功", "关系称呼已更新。");
       await refreshApp(activeAlbum.album.id);
     } catch (err) {
@@ -159,12 +158,12 @@ export function useSettingsState({ activeTab, authToken, appState, activeAlbum, 
   }
 
   async function handleLeaveAlbum() {
-    if (!authToken || !activeAlbum) {
+    if (!activeAlbum) {
       return;
     }
     clearFeedback();
     try {
-      await leaveAlbum(authToken, activeAlbum.album.id, ownerTransferTarget || undefined);
+      await leaveAlbum(activeAlbum.album.id, ownerTransferTarget || undefined);
       setOwnerTransferTarget("");
       showSuccess("已退出相册", "你已退出当前宝宝相册。");
       await refreshApp();
@@ -175,12 +174,12 @@ export function useSettingsState({ activeTab, authToken, appState, activeAlbum, 
 
   async function handleCreateInvite(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!authToken || !activeAlbum) {
+    if (!activeAlbum) {
       return;
     }
     clearFeedback();
     try {
-      const created = await createInvite(authToken, activeAlbum.album.id);
+      const created = await createInvite(activeAlbum.album.id);
       showSuccess("邀请码已生成", `已生成邀请码：${created.code}`);
       await refreshApp(activeAlbum.album.id);
     } catch (err) {
@@ -189,12 +188,12 @@ export function useSettingsState({ activeTab, authToken, appState, activeAlbum, 
   }
 
   async function handleCreateStoragePairing() {
-    if (!authToken || !activeAlbum) {
+    if (!activeAlbum) {
       return;
     }
     clearFeedback();
     try {
-      const pairing = await createStorageNodePairing(authToken, activeAlbum.album.id);
+      const pairing = await createStorageNodePairing(activeAlbum.album.id);
       setStoragePairing(pairing);
       setStoragePairingBaseNodeId(activeAlbum.storageNode?.id ?? "");
       showSuccess(

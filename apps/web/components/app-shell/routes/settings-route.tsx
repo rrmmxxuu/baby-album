@@ -15,7 +15,6 @@ export function SettingsRoute() {
       albumInvites={appView.albumInvites}
       albumMembers={appView.albumMembers}
       albumOptions={albumOptions}
-      authToken={session.authToken}
       canManageBabyProfile={appView.canManageBabyProfile}
       canManageInvites={appView.canManageInvites}
       canManageStorage={appView.canManageStorage}

@@ -12,7 +12,6 @@ export function PhotosRoute() {
       activeBaby={activeBaby}
       activeTab={activeTab === "photos"}
       albumOptions={albumOptions}
-      authToken={session.authToken}
       currentUserId={currentUser?.id}
       onAlbumChange={handleAlbumChange}
       onEditEntry={handleOpenEditEntry}

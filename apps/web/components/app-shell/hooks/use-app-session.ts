@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { acceptInvite, ApiError, createAlbum, loadAppState, loginUser, logoutUser, registerUser, uploadBabyAvatar } from "../../../lib/api";
 import type { AppStatePayload } from "../../../lib/types";
-import { SESSION_AUTH_MARKER } from "../../../lib/session";
 import { ALBUM_STORAGE_KEY, BOOT_SPLASH_EXIT_MS, BOOT_SPLASH_MIN_MS } from "../model/constants";
 import { buildFeedback, errorMessageFromUnknown } from "../model/feedback";
 import { buildAlbumPath, buildAlbumsPath, buildAuthPath } from "../model/routes";
@@ -12,7 +11,7 @@ import type { AuthMode } from "../model/types";
 
 interface RefreshOptions {
   silent?: boolean;
-  token?: string;
+  authenticated?: boolean;
 }
 
 export function useAppSession(queryInviteCode: string, initialAuthenticated = false) {
@@ -21,7 +20,7 @@ export function useAppSession(queryInviteCode: string, initialAuthenticated = fa
   const [hydrated, setHydrated] = useState(false);
   const [bootPhase, setBootPhase] = useState<"loading" | "exiting" | "done">("loading");
   const [authMode, setAuthMode] = useState<AuthMode>("login");
-  const [authToken, setAuthToken] = useState(initialAuthenticated ? SESSION_AUTH_MARKER : "");
+  const [isAuthenticated, setIsAuthenticated] = useState(initialAuthenticated);
   const [selectedAlbumId, setSelectedAlbumId] = useState("");
   const [appState, setAppState] = useState<AppStatePayload | null>(null);
   const [inviteCodeInput, setInviteCodeInput] = useState("");
@@ -67,7 +66,7 @@ export function useAppSession(queryInviteCode: string, initialAuthenticated = fa
 
   const clearSession = useCallback((showNotice = true) => {
     window.localStorage.removeItem(ALBUM_STORAGE_KEY);
-    setAuthToken("");
+    setIsAuthenticated(false);
     setSelectedAlbumId("");
     setAppState(null);
     if (showNotice) {
@@ -76,15 +75,15 @@ export function useAppSession(queryInviteCode: string, initialAuthenticated = fa
   }, [showSuccess]);
 
   const refreshApp = useCallback(async (targetAlbumId?: string, options?: RefreshOptions) => {
-    const sessionToken = options?.token ?? authToken;
-    if (!sessionToken) {
+    const authenticated = options?.authenticated ?? isAuthenticated;
+    if (!authenticated) {
       return null;
     }
     if (!options?.silent) {
       setLoading(true);
     }
     try {
-      const next = await loadAppState(sessionToken, targetAlbumId);
+      const next = await loadAppState(targetAlbumId);
       setAppState(next);
       const albumId = next.activeAlbumId ?? "";
       setSelectedAlbumId(albumId);
@@ -110,14 +109,14 @@ export function useAppSession(queryInviteCode: string, initialAuthenticated = fa
         setLoading(false);
       }
     }
-  }, [authToken, clearSession, queryInviteCode, router, showError]);
+  }, [clearSession, isAuthenticated, queryInviteCode, router, showError]);
 
   useEffect(() => {
     bootStartedAtRef.current = performance.now();
     setHydrated(true);
     setOrigin(window.location.origin);
     if (initialAuthenticated) {
-      setAuthToken(SESSION_AUTH_MARKER);
+      setIsAuthenticated(true);
       setSelectedAlbumId(window.localStorage.getItem(ALBUM_STORAGE_KEY) ?? "");
     } else {
       window.localStorage.removeItem(ALBUM_STORAGE_KEY);
@@ -165,7 +164,7 @@ export function useAppSession(queryInviteCode: string, initialAuthenticated = fa
     }
 
     async function bootstrap() {
-      if (!authToken) {
+      if (!isAuthenticated) {
         finishBoot();
         return;
       }
@@ -180,26 +179,26 @@ export function useAppSession(queryInviteCode: string, initialAuthenticated = fa
     return () => {
       cancelled = true;
     };
-  }, [authToken, bootPhase, hydrated, refreshApp, selectedAlbumId]);
+  }, [bootPhase, hydrated, isAuthenticated, refreshApp, selectedAlbumId]);
 
   useEffect(() => {
-    if (!hydrated || !authToken || appState || bootPhase !== "done") {
-      if (!authToken || appState) {
+    if (!hydrated || !isAuthenticated || appState || bootPhase !== "done") {
+      if (!isAuthenticated || appState) {
         recoveryKeyRef.current = "";
       }
       return;
     }
 
-    const key = `${authToken}:${selectedAlbumId}`;
+    const key = `authenticated:${selectedAlbumId}`;
     if (recoveryKeyRef.current === key) {
       return;
     }
     recoveryKeyRef.current = key;
     void refreshApp(selectedAlbumId || undefined, { silent: true });
-  }, [appState, authToken, bootPhase, hydrated, refreshApp, selectedAlbumId]);
+  }, [appState, bootPhase, hydrated, isAuthenticated, refreshApp, selectedAlbumId]);
 
   function saveSession() {
-    setAuthToken(SESSION_AUTH_MARKER);
+    setIsAuthenticated(true);
   }
 
   async function handleRegister(event: React.FormEvent<HTMLFormElement>) {
@@ -212,7 +211,7 @@ export function useAppSession(queryInviteCode: string, initialAuthenticated = fa
       setRegisterEmail("");
       setRegisterPassword("");
       showSuccess("注册成功", `欢迎，${auth.user.displayName}。请继续加入已有相册，或创建第一个宝宝相册。`);
-      const next = await refreshApp(undefined, { token: SESSION_AUTH_MARKER });
+      const next = await refreshApp(undefined, { authenticated: true });
       router.replace(next?.activeAlbumId ? buildAlbumPath(next.activeAlbumId, "photos") : buildAlbumsPath(queryInviteCode));
     } catch (err) {
       showError("注册失败", errorMessageFromUnknown(err, "注册失败。"));
@@ -228,7 +227,7 @@ export function useAppSession(queryInviteCode: string, initialAuthenticated = fa
       setLoginEmail("");
       setLoginPassword("");
       showSuccess("登录成功", `欢迎回来，${auth.user.displayName}。`);
-      const next = await refreshApp(undefined, { token: SESSION_AUTH_MARKER });
+      const next = await refreshApp(undefined, { authenticated: true });
       router.replace(next?.activeAlbumId ? buildAlbumPath(next.activeAlbumId, "photos") : buildAlbumsPath(queryInviteCode));
     } catch (err) {
       showError("登录失败", errorMessageFromUnknown(err, "登录失败。", {
@@ -240,8 +239,8 @@ export function useAppSession(queryInviteCode: string, initialAuthenticated = fa
   async function handleLogout() {
     clearSession();
     try {
-      if (authToken) {
-        await logoutUser(authToken);
+      if (isAuthenticated) {
+        await logoutUser();
       }
     } catch {
       // Keep local logout deterministic even if the API call fails.
@@ -250,7 +249,7 @@ export function useAppSession(queryInviteCode: string, initialAuthenticated = fa
 
   async function handleCreateAlbum(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!authToken) {
+    if (!isAuthenticated) {
       return;
     }
     clearFeedback();
@@ -266,7 +265,7 @@ export function useAppSession(queryInviteCode: string, initialAuthenticated = fa
         return;
       }
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Shanghai";
-      const album = await createAlbum(authToken, {
+      const album = await createAlbum({
         name: `${name}的宝宝相册`,
         timezone,
         babyName: name,
@@ -274,10 +273,10 @@ export function useAppSession(queryInviteCode: string, initialAuthenticated = fa
         relation
       });
       if (createBabyAvatarFile) {
-        const next = await loadAppState(authToken, album.id);
+        const next = await loadAppState(album.id);
         const createdBaby = next.activeAlbum?.baby;
         if (createdBaby) {
-          await uploadBabyAvatar(authToken, album.id, createdBaby.id, createBabyAvatarFile);
+          await uploadBabyAvatar(album.id, createdBaby.id, createBabyAvatarFile);
         }
       }
       setBabyName("");
@@ -295,7 +294,7 @@ export function useAppSession(queryInviteCode: string, initialAuthenticated = fa
   }
 
   async function handleAcceptInvite(code?: string) {
-    if (!authToken) {
+    if (!isAuthenticated) {
       return;
     }
     const inviteCode = (code ?? inviteCodeInput).trim();
@@ -310,7 +309,7 @@ export function useAppSession(queryInviteCode: string, initialAuthenticated = fa
         showWarning("请补充信息", "请先填写你与宝宝的关系。");
         return;
       }
-      const accepted = await acceptInvite(authToken, inviteCode, relation);
+      const accepted = await acceptInvite(inviteCode, relation);
       setSelectedAlbumId(accepted.albumId);
       window.localStorage.setItem(ALBUM_STORAGE_KEY, accepted.albumId);
       setInviteRelation("");
@@ -328,7 +327,7 @@ export function useAppSession(queryInviteCode: string, initialAuthenticated = fa
     bootPhase,
     authMode,
     setAuthMode,
-    authToken,
+    isAuthenticated,
     selectedAlbumId,
     appState,
     inviteCodeInput,

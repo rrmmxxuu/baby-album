@@ -9,12 +9,11 @@ const SHEET_EXIT_MS = 260;
 
 interface UseUploadDraftStateOptions {
   albumId: string;
-  authToken: string;
   open: boolean;
   editingEntry?: TimelineEntry | null;
 }
 
-export function useUploadDraftState({ albumId, authToken, open, editingEntry }: UseUploadDraftStateOptions) {
+export function useUploadDraftState({ albumId, open, editingEntry }: UseUploadDraftStateOptions) {
   const draftsRef = useRef<UploadDraft[]>([]);
   const [drafts, setDrafts] = useState<UploadDraft[]>([]);
   const [selectedDraftId, setSelectedDraftId] = useState("");
@@ -42,7 +41,7 @@ export function useUploadDraftState({ albumId, authToken, open, editingEntry }: 
       return;
     }
     if (editingEntry) {
-      const initialDraft = buildDraftFromEntry(editingEntry, albumId, authToken);
+      const initialDraft = buildDraftFromEntry(editingEntry, albumId);
       setDrafts([initialDraft]);
       setSelectedDraftId(initialDraft.id);
       setScene("detail");
@@ -55,7 +54,7 @@ export function useUploadDraftState({ albumId, authToken, open, editingEntry }: 
     setScene("list");
     setActiveModal(null);
     setStatus(null);
-  }, [albumId, authToken, editingEntry, open]);
+  }, [albumId, editingEntry, open]);
 
   useEffect(() => {
     if (open) {

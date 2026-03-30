@@ -8,7 +8,6 @@ import type { DraftMedia, UploadDraft, UploadProgressState } from "../model/type
 
 interface UseUploadSubmitOptions {
   albumId: string;
-  authToken: string;
   open: boolean;
   disabled?: boolean;
   disabledReason?: string;
@@ -22,7 +21,7 @@ interface UseUploadSubmitOptions {
   setStatus: (value: string | null) => void;
 }
 
-export function useUploadSubmit({ albumId, authToken, open, disabled, disabledReason, drafts, selectedDraft, editingEntry, originalMediaIds, onUploaded, onDeleted, onClose, setStatus }: UseUploadSubmitOptions) {
+export function useUploadSubmit({ albumId, open, disabled, disabledReason, drafts, selectedDraft, editingEntry, originalMediaIds, onUploaded, onDeleted, onClose, setStatus }: UseUploadSubmitOptions) {
   const apiBaseUrl = getApiBaseUrl();
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<UploadProgressState | null>(null);
@@ -31,7 +30,7 @@ export function useUploadSubmit({ albumId, authToken, open, disabled, disabledRe
   useEffect(() => {
     setUploading(false);
     setUploadProgress(null);
-  }, [albumId, authToken, editingEntry, open]);
+  }, [albumId, editingEntry, open]);
 
   async function uploadFile(entryId: string, uploadBatchId: string, item: DraftMedia, onProgress?: (progress: { loaded: number; total: number; bytesPerSecond: number }) => void) {
     if (!item.file) {
@@ -40,7 +39,6 @@ export function useUploadSubmit({ albumId, authToken, open, disabled, disabledRe
     const createResponse = await fetch(`${apiBaseUrl}/api/v1/upload-sessions`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${authToken}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
@@ -63,7 +61,6 @@ export function useUploadSubmit({ albumId, authToken, open, disabled, disabledRe
       const xhr = new XMLHttpRequest();
       const startedAt = performance.now();
       xhr.open("POST", `${apiBaseUrl}/api/v1/upload-sessions/${createPayload.id}/content`);
-      xhr.setRequestHeader("Authorization", `Bearer ${authToken}`);
       xhr.upload.onprogress = (event) => {
         const total = event.lengthComputable && event.total > 0 ? event.total : item.file?.size ?? 0;
         const elapsed = Math.max((performance.now() - startedAt) / 1000, 0.001);
@@ -142,7 +139,7 @@ export function useUploadSubmit({ albumId, authToken, open, disabled, disabledRe
           currentFileName: "",
           bytesPerSecond: 0
         } : current);
-        const entry = await updateTimelineEntry(authToken, editingEntry.id, {
+        const entry = await updateTimelineEntry(editingEntry.id, {
           albumId,
           caption: selectedDraft.caption,
           visibility: selectedDraft.visibility,
@@ -152,7 +149,7 @@ export function useUploadSubmit({ albumId, authToken, open, disabled, disabledRe
         const keptMediaIds = new Set(selectedDraft.items.map((item) => item.existingMediaId).filter(Boolean) as string[]);
         for (const mediaId of Array.from(originalMediaIds)) {
           if (!keptMediaIds.has(mediaId)) {
-            await deleteTimelineEntryMedia(authToken, albumId, entry.id, mediaId);
+            await deleteTimelineEntryMedia(albumId, entry.id, mediaId);
           }
         }
         const newItems = selectedDraft.items.filter((item) => !item.existingMediaId);
@@ -198,7 +195,7 @@ export function useUploadSubmit({ albumId, authToken, open, disabled, disabledRe
             currentFileName: "",
             bytesPerSecond: 0
           } : current);
-          const entry = await createTimelineEntry(authToken, {
+          const entry = await createTimelineEntry({
             albumId,
             caption: draft.caption,
             visibility: draft.visibility,
@@ -271,7 +268,7 @@ export function useUploadSubmit({ albumId, authToken, open, disabled, disabledRe
     setUploading(true);
     setStatus("正在删除这条动态");
     try {
-      await deleteTimelineEntry(authToken, albumId, editingEntry.id);
+      await deleteTimelineEntry(albumId, editingEntry.id);
       onDeleted?.();
       onClose();
     } catch (error) {

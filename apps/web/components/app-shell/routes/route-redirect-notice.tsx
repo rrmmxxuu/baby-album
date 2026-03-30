@@ -2,12 +2,11 @@
 
 import { useLayoutEffect } from "react";
 
-interface RouteRedirectNoticeProps {
-  label: string;
+interface RouteRedirectProps {
   to: string | null;
 }
 
-export function RouteRedirectNotice({ label, to }: RouteRedirectNoticeProps) {
+export function RouteRedirect({ to }: RouteRedirectProps) {
   useLayoutEffect(() => {
     if (!to || typeof window === "undefined") {
       return;

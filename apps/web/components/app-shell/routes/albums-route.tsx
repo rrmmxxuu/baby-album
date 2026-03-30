@@ -5,7 +5,7 @@ import { NoAlbumScreen } from "../ui/no-album-screen";
 import { AppPageFrame } from "../ui/app-page-frame";
 import { resolveAlbumsRedirect } from "../model/routes";
 import { useAppSessionContext } from "../app-session-provider";
-import { RouteRedirectNotice } from "./route-redirect-notice";
+import { RouteRedirect } from "./route-redirect-notice";
 
 export function AlbumsRoute() {
   const searchParams = useSearchParams();
@@ -15,17 +15,14 @@ export function AlbumsRoute() {
   const currentUser = session.appState?.currentUser ?? null;
   const redirectPath = resolveAlbumsRedirect({
     hydrated: session.hydrated,
-    authToken: session.authToken,
-    inviteCode,
-    activeAlbumId: activeAlbum?.album.id,
-    rememberedAlbumId: session.selectedAlbumId
+    activeAlbumId: activeAlbum?.album.id
   });
-  const blocking = Boolean(redirectPath || (session.authToken && session.loading && !activeAlbum));
+  const blocking = Boolean(redirectPath || (session.isAuthenticated && session.loading && !activeAlbum));
 
   return (
     <AppPageFrame blocking={blocking} currentUser={currentUser} session={session} showTopBar={!redirectPath && !session.loading}>
-      {redirectPath ? <RouteRedirectNotice label="正在同步最新状态..." to={redirectPath} /> : null}
-      {!blocking && session.authToken && !activeAlbum && !session.loading ? <NoAlbumScreen session={session} /> : null}
+      {redirectPath ? <RouteRedirect to={redirectPath} /> : null}
+      {!blocking && session.isAuthenticated && !activeAlbum && !session.loading ? <NoAlbumScreen session={session} /> : null}
     </AppPageFrame>
   );
 }

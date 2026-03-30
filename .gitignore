@@ -22,6 +22,7 @@ coverage.out
 tmp/
 services/api/tmp/
 services/agent/tmp/
+deploy/agent-2/
 
 # OS / editor
 .DS_Store

@@ -24,6 +24,8 @@ export function RouteRedirectNotice({ label, to }: RouteRedirectNoticeProps) {
       return;
     }
 
+    const isStandalone = window.matchMedia?.("(display-mode: standalone)")?.matches || (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
+
     lastTargetRef.current = to;
     router.replace(to as Route);
     const retryTimer = window.setTimeout(() => {
@@ -33,8 +35,28 @@ export function RouteRedirectNotice({ label, to }: RouteRedirectNoticeProps) {
       }
     }, 120);
 
+    const fallbackTimer = isStandalone ? null : window.setTimeout(() => {
+      const nextPath = `${window.location.pathname}${window.location.search}`;
+      if (nextPath !== to) {
+        window.location.replace(to);
+      }
+    }, 260);
+
+    const hardFallbackTimer = isStandalone ? null : window.setTimeout(() => {
+      const nextPath = `${window.location.pathname}${window.location.search}`;
+      if (nextPath !== to) {
+        window.location.assign(to);
+      }
+    }, 520);
+
     return () => {
       window.clearTimeout(retryTimer);
+      if (fallbackTimer !== null) {
+        window.clearTimeout(fallbackTimer);
+      }
+      if (hardFallbackTimer !== null) {
+        window.clearTimeout(hardFallbackTimer);
+      }
     };
   }, [router, to]);
 

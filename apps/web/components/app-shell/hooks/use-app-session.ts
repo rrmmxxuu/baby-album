@@ -42,6 +42,7 @@ export function useAppSession(queryInviteCode: string) {
   const bootMinTimerRef = useRef<number | null>(null);
   const bootExitTimerRef = useRef<number | null>(null);
   const bootstrappedRef = useRef(false);
+  const recoveryKeyRef = useRef("");
   const feedbackIdRef = useRef(0);
 
   const clearFeedback = useCallback(() => {
@@ -174,6 +175,22 @@ export function useAppSession(queryInviteCode: string) {
       cancelled = true;
     };
   }, [authToken, bootPhase, hydrated, refreshApp, selectedAlbumId]);
+
+  useEffect(() => {
+    if (!hydrated || !authToken || appState || bootPhase !== "done") {
+      if (!authToken || appState) {
+        recoveryKeyRef.current = "";
+      }
+      return;
+    }
+
+    const key = `${authToken}:${selectedAlbumId}`;
+    if (recoveryKeyRef.current === key) {
+      return;
+    }
+    recoveryKeyRef.current = key;
+    void refreshApp(selectedAlbumId || undefined, { silent: true });
+  }, [appState, authToken, bootPhase, hydrated, refreshApp, selectedAlbumId]);
 
   function saveSession(token: string) {
     setAuthToken(token);

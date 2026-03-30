@@ -12,6 +12,9 @@ on:
 permissions:
   contents: read
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   web:
     name: Web Checks
@@ -340,6 +343,7 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: services/api/go.mod
+          cache-dependency-path: services/api/go.sum
 
       - name: Install web dependencies
         run: npm ci

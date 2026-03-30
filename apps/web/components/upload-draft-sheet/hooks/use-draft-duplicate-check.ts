@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { probeDuplicateMedia, resolveDuplicateMedia } from "../../../lib/api";
 import { chunkItems } from "../model/drafts";
 import { buildDuplicateTargetSignature, collectDraftDuplicateTargets } from "../model/duplicates";
@@ -70,8 +70,9 @@ export function useDraftDuplicateCheck({ albumId, open, drafts }: UseDraftDuplic
   const hashCacheRef = useRef(new Map<string, string>());
   const resultCacheRef = useRef(new Map<string, DraftDuplicateState>());
   const runIdRef = useRef(0);
+  const deferredDrafts = useDeferredValue(drafts);
 
-  const targets = useMemo(() => collectDraftDuplicateTargets(drafts), [drafts]);
+  const targets = useMemo(() => collectDraftDuplicateTargets(deferredDrafts), [deferredDrafts]);
   const targetSignature = useMemo(() => buildDuplicateTargetSignature(targets), [targets]);
   const targetByItemId = useMemo(() => new Map(targets.map((target) => [target.itemId, target])), [targets]);
 
@@ -110,8 +111,10 @@ export function useDraftDuplicateCheck({ albumId, open, drafts }: UseDraftDuplic
       if (disposed || runId !== runIdRef.current) {
         return;
       }
-      setItemStates(nextStates);
-      setChecking(uncachedTargets.length > 0);
+      startTransition(() => {
+        setItemStates(nextStates);
+        setChecking(uncachedTargets.length > 0);
+      });
       if (uncachedTargets.length === 0) {
         return;
       }
@@ -151,7 +154,9 @@ export function useDraftDuplicateCheck({ albumId, open, drafts }: UseDraftDuplic
       if (disposed || runId !== runIdRef.current) {
         return;
       }
-      setItemStates(afterProbeStates);
+      startTransition(() => {
+        setItemStates(afterProbeStates);
+      });
       if (pendingHashTargets.length === 0) {
         return;
       }
@@ -181,17 +186,19 @@ export function useDraftDuplicateCheck({ albumId, open, drafts }: UseDraftDuplic
         if (disposed || runId !== runIdRef.current) {
           return;
         }
-        setItemStates((current) => {
-          const next = { ...current };
-          for (const item of response.items) {
-            const resolved = createState(item.duplicate ? "duplicate" : "unique", item.duplicateCount);
-            next[item.clientId] = resolved;
-            const target = targetByItemId.get(item.clientId);
-            if (target) {
-              resultCacheRef.current.set(fileCacheKey(albumId, target.fileKey), resolved);
+        startTransition(() => {
+          setItemStates((current) => {
+            const next = { ...current };
+            for (const item of response.items) {
+              const resolved = createState(item.duplicate ? "duplicate" : "unique", item.duplicateCount);
+              next[item.clientId] = resolved;
+              const target = targetByItemId.get(item.clientId);
+              if (target) {
+                resultCacheRef.current.set(fileCacheKey(albumId, target.fileKey), resolved);
+              }
             }
-          }
-          return next;
+            return next;
+          });
         });
       }
     }
@@ -212,7 +219,9 @@ export function useDraftDuplicateCheck({ albumId, open, drafts }: UseDraftDuplic
       });
     }).finally(() => {
       if (!disposed && runId === runIdRef.current) {
-        setChecking(false);
+        startTransition(() => {
+          setChecking(false);
+        });
       }
       worker?.terminate();
     });

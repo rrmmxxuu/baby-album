@@ -3,6 +3,8 @@
 import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { UploadDraftSheet } from "../../upload-draft-sheet";
+import { useBackgroundUpload } from "../../upload-draft-sheet/hooks/use-background-upload";
+import { DraftUploadProgressDialog } from "../../upload-draft-sheet/ui/draft-upload-progress-dialog";
 import { AlbumRouteProvider } from "../album-route-context";
 import { useAppSessionContext } from "../app-session-provider";
 import { useSettingsState } from "../hooks/use-settings-state";
@@ -15,6 +17,7 @@ import { AppPageFrame } from "../ui/app-page-frame";
 import { BottomNav } from "../ui/bottom-nav";
 import { FloatingAddButton } from "../ui/floating-add-button";
 import { LightboxViewer } from "../ui/lightbox-viewer";
+import { UploadProgressFab } from "../ui/upload-progress-fab";
 import { PhotosRoute } from "./photos-route";
 import { RouteRedirect } from "./route-redirect-notice";
 import { SettingsRoute } from "./settings-route";
@@ -138,6 +141,8 @@ export function AlbumRouteShell({ albumId, children: _children }: AlbumRouteShel
     settingsNavDirection: settings.settingsNavDirection,
     storagePairing: settings.storagePairing
   }), [activeAlbum, currentUser, settings.settingsNavDirection, settings.storagePairing]);
+  const backgroundUpload = useBackgroundUpload();
+  const previousUploadPhaseRef = useRef(backgroundUpload.state.phase);
 
   const relationLabels = useMemo(() => buildRelationLabels(appView.albumMembers), [appView.albumMembers]);
   const timelineDays = useMemo(() => buildTimelineFeed(timeline.timelineEntries, appView.activeBaby?.birthDate, relationLabels), [appView.activeBaby?.birthDate, relationLabels, timeline.timelineEntries]);
@@ -228,6 +233,30 @@ export function AlbumRouteShell({ albumId, children: _children }: AlbumRouteShel
     }
   }, [activeTab, requestedComposer, requestedEditEntryId, timeline, timeline.timelineEntries]);
 
+  useEffect(() => {
+    const previousPhase = previousUploadPhaseRef.current;
+    const nextPhase = backgroundUpload.state.phase;
+    if (previousPhase === nextPhase) {
+      return;
+    }
+    previousUploadPhaseRef.current = nextPhase;
+
+    if (nextPhase === "success") {
+      if (timeline.draftSheetOpen) {
+        handleCloseDraftSheet();
+      }
+      if (activeTab !== "photos") {
+        session.showSuccess("上传完成", "媒体已经上传完成。");
+      }
+      return;
+    }
+
+    if (nextPhase === "error" && activeTab !== "photos") {
+      session.showError("上传失败", backgroundUpload.state.errorMessage || "上传失败。");
+      backgroundUpload.clear();
+    }
+  }, [activeTab, backgroundUpload, session, timeline.draftSheetOpen]);
+
   function navigateAlbumScene(nextPath: string, mode: "push" | "replace" = "push") {
     const nextUrl = new URL(nextPath, window.location.origin);
     if (mode === "replace") {
@@ -262,6 +291,10 @@ export function AlbumRouteShell({ albumId, children: _children }: AlbumRouteShel
 
   function handleOpenUploadFlow() {
     if (!activeAlbum) {
+      return;
+    }
+    if (backgroundUpload.hasTask) {
+      session.showWarning("正在上传", "当前已有上传进行中，完成后再试。");
       return;
     }
     if (!appView.storageNode) {
@@ -344,6 +377,19 @@ export function AlbumRouteShell({ albumId, children: _children }: AlbumRouteShel
     navigateAlbumScene(buildPhotosPath(activeAlbum.album.id), "replace");
   }
 
+  function handleMinimizeUpload() {
+    backgroundUpload.minimize();
+    handleCloseDraftSheet();
+  }
+
+  function handleOpenUploadDialog() {
+    backgroundUpload.openDialog();
+  }
+
+  function handleCloseUploadError() {
+    backgroundUpload.clear();
+  }
+
   function handleLogout() {
     const target = buildAuthPath(inviteCode);
     void session.handleLogout();
@@ -354,6 +400,10 @@ export function AlbumRouteShell({ albumId, children: _children }: AlbumRouteShel
 
   const showAlbumContent = Boolean(readyAlbum);
   const blocking = Boolean(redirectPath || !showAlbumContent);
+  const showUploadFab = activeTab === "photos" && (
+    (backgroundUpload.state.phase === "uploading" && backgroundUpload.state.surface === "minimized")
+    || backgroundUpload.state.phase === "success"
+  );
 
   return (
     <AppPageFrame activeAlbum={activeAlbum} blocking={blocking} currentUser={currentUser} session={session}>
@@ -400,6 +450,7 @@ export function AlbumRouteShell({ albumId, children: _children }: AlbumRouteShel
       {readyAlbum && !redirectPath ? (
         <UploadDraftSheet
           albumId={readyAlbum.album.id}
+          backgroundUpload={backgroundUpload}
           babyName={appView.activeBaby?.name}
           disabled={!appView.canUploadMedia && !timeline.editingEntry}
           disabledReason={!appView.storageNode ? "上传前需要先完成 NAS 配对。" : "当前身份没有上传权限。"}
@@ -411,7 +462,12 @@ export function AlbumRouteShell({ albumId, children: _children }: AlbumRouteShel
         />
       ) : null}
 
-      {readyAlbum && !redirectPath && activeTab === "photos" ? <FloatingAddButton onClick={handleOpenUploadFlow} /> : null}
+      {readyAlbum && !redirectPath ? (
+        <DraftUploadProgressDialog onCloseError={handleCloseUploadError} onMinimize={handleMinimizeUpload} state={backgroundUpload.state} />
+      ) : null}
+
+      {readyAlbum && !redirectPath && showUploadFab ? <UploadProgressFab onClick={handleOpenUploadDialog} state={backgroundUpload.state} /> : null}
+      {readyAlbum && !redirectPath && activeTab === "photos" && !showUploadFab ? <FloatingAddButton onClick={handleOpenUploadFlow} /> : null}
       {readyAlbum && !redirectPath ? (
         <BottomNav
           activeTab={activeTab}

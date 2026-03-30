@@ -31,6 +31,44 @@ export type UploadProgressState = {
   bytesPerSecond: number;
 };
 
+export type BackgroundUploadPhase = "idle" | "uploading" | "success" | "error";
+export type BackgroundUploadSurface = "dialog" | "minimized";
+
+export type BackgroundUploadJobMedia = {
+  id: string;
+  file: File | null;
+  fileName: string;
+  capturedAt: string;
+  mediaType: string;
+  existingMediaId?: string;
+};
+
+export type BackgroundUploadJobDraft = {
+  id: string;
+  caption: string;
+  visibility: TimelineVisibility;
+  timeMode: TimelineTimeMode;
+  manualDate: string;
+  items: BackgroundUploadJobMedia[];
+};
+
+export type BackgroundUploadJob = {
+  albumId: string;
+  mode: "create" | "edit";
+  drafts: BackgroundUploadJobDraft[];
+  editingEntryId?: string;
+  originalMediaIds: string[];
+  onUploaded?: () => void;
+};
+
+export type BackgroundUploadState = {
+  phase: BackgroundUploadPhase;
+  surface: BackgroundUploadSurface;
+  progress: UploadProgressState | null;
+  errorMessage: string;
+  albumId: string;
+};
+
 export type DraftScene = "list" | "detail";
 export type DraftModal = "batchSettings" | null;
 

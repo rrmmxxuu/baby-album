@@ -11,7 +11,7 @@ import { DraftEmptyState } from "./upload-draft-sheet/ui/draft-empty-state";
 import { DraftFloatingBar } from "./upload-draft-sheet/ui/draft-floating-bar";
 import { DraftListScene } from "./upload-draft-sheet/ui/draft-list-scene";
 import { DraftSheetHeader } from "./upload-draft-sheet/ui/draft-sheet-header";
-import { DraftUploadProgressDialog } from "./upload-draft-sheet/ui/draft-upload-progress-dialog";
+import type { BackgroundUploadController } from "./upload-draft-sheet/hooks/use-background-upload";
 import { HiddenFileInput } from "./ui/hidden-file-input";
 
 interface UploadDraftSheetProps {
@@ -21,12 +21,13 @@ interface UploadDraftSheetProps {
   disabled?: boolean;
   disabledReason?: string;
   editingEntry?: TimelineEntry | null;
+  backgroundUpload: BackgroundUploadController;
   onClose: () => void;
   onUploaded?: () => void;
   onDeleted?: () => void;
 }
 
-export function UploadDraftSheet({ albumId, babyName, open, disabled, disabledReason, editingEntry, onClose, onUploaded, onDeleted }: UploadDraftSheetProps) {
+export function UploadDraftSheet({ albumId, babyName, open, disabled, disabledReason, editingEntry, backgroundUpload, onClose, onUploaded, onDeleted }: UploadDraftSheetProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const appendInputRef = useRef<HTMLInputElement | null>(null);
   const editAppendInputRef = useRef<HTMLInputElement | null>(null);
@@ -38,13 +39,13 @@ export function UploadDraftSheet({ albumId, babyName, open, disabled, disabledRe
   });
   const submitState = useUploadSubmit({
     albumId,
-    open,
     disabled,
     disabledReason,
     drafts: draftState.drafts,
     selectedDraft: draftState.selectedDraft,
     editingEntry,
     originalMediaIds: draftState.originalMediaIds,
+    backgroundUpload,
     onUploaded,
     onDeleted,
     onClose,
@@ -94,7 +95,6 @@ export function UploadDraftSheet({ albumId, babyName, open, disabled, disabledRe
         )}
       </section>
       <DraftBatchSettingsModal draftState={draftState} />
-      <DraftUploadProgressDialog submitState={submitState} />
       {!draftState.isEditMode && draftState.currentScene === "list" ? (
         <DraftFloatingBar disabled={disabled} onOpenBatchSettings={() => draftState.setActiveModal("batchSettings")} onSave={submitState.handleUploadAll} uploading={submitState.uploading} />
       ) : null}

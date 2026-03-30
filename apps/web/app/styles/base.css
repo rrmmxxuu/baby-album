@@ -372,6 +372,103 @@ code {
   gap: 6px;
 }
 
+.dateFieldLabel {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.dateFieldSurface {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 52px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.76);
+  overflow: hidden;
+}
+
+.dateFieldSurfacePlaceholder .dateFieldValue {
+  color: #8e8e93;
+}
+
+.dateFieldSurfaceDisabled {
+  opacity: 0.56;
+}
+
+.dateFieldValue {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dateFieldChevron {
+  color: var(--muted);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+  transform: rotate(90deg);
+}
+
+.dateFieldNativeInput {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.relationInputField {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.relationInputLabel,
+.relationInputCustomLabel {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.relationInputSelectWrap {
+  position: relative;
+  min-width: 0;
+}
+
+.relationInputSelect {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding-right: 44px;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.relationInputChevron {
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  transform: translateY(-50%) rotate(90deg);
+  color: var(--muted);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
+}
+
 input,
 select,
 button {

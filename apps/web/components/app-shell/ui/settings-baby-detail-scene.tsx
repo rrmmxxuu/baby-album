@@ -3,6 +3,7 @@ import type { AppSessionState } from "../hooks/use-app-session";
 import type { SettingsState } from "../hooks/use-settings-state";
 import { babyAvatarText, memberRelationLabel, roleLabel } from "../model/format";
 import { BabyAvatar } from "./baby-avatar";
+import { DateField } from "./date-field";
 import { InviteCard } from "./invite-card";
 import { RelationInput } from "./relation-input";
 import { SettingsHeader } from "./settings-header";
@@ -46,7 +47,7 @@ export function SettingsBabyDetailScene({ className, activeAlbum, activeBaby, cu
             </label>
           </div>
           <label>宝宝姓名<input disabled={!canManageBabyProfile} value={settings.babyProfileName} onChange={(event) => settings.setBabyProfileName(event.target.value)} /></label>
-          <label>出生日期<input disabled={!canManageBabyProfile} type="date" value={settings.babyProfileBirthDate} onChange={(event) => settings.setBabyProfileBirthDate(event.target.value)} /></label>
+          <DateField disabled={!canManageBabyProfile} label="出生日期" onChange={settings.setBabyProfileBirthDate} value={settings.babyProfileBirthDate} />
           {canManageBabyProfile ? <button type="submit">保存宝宝信息</button> : <p className="helperText">只有管理员或 owner 可以修改宝宝信息。</p>}
         </form>
       ) : null}

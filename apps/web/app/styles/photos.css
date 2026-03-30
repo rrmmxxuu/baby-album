@@ -72,11 +72,12 @@ img.settingsCardAvatar {
 .momentsHeroAside {
   align-self: center;
   display: grid;
-  justify-items: end;
+  justify-items: start;
   gap: 8px;
   padding: 0;
   min-width: 132px;
   color: #3a3a3c;
+  text-align: left;
 }
 
 .heroAlbumSelect {
@@ -88,6 +89,7 @@ img.settingsCardAvatar {
   border: 1px solid rgba(60, 60, 67, 0.12);
   color: #3a3a3c;
   font-size: 0.92rem;
+  text-align: left;
 }
 
 .photosFeedShell {

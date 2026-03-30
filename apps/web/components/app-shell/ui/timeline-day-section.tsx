@@ -45,11 +45,10 @@ export function TimelineDaySection({ activeAlbum, day, timeline, currentUserId, 
   return (
     <article className={`momentDay${shouldRenderBatches ? " momentDayReady" : " momentDayDeferred"}`} ref={containerRef}>
       <header className="momentDayHeader">
-        <div>
+        <div className="momentDayHeaderCopy">
           <h3>{formatTimelineDate(day.day)}</h3>
-          <p>{day.itemsCount} 项</p>
+          {day.babyAgeLabel ? <span className="momentBabyDay">宝宝第 {day.babyAgeLabel}</span> : null}
         </div>
-        {day.babyAgeLabel ? <span className="momentBabyDay">宝宝第 {day.babyAgeLabel}</span> : null}
       </header>
       {shouldRenderBatches ? (
         <div className="momentBatchList">

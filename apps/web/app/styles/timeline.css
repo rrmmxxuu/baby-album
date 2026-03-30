@@ -1,32 +1,34 @@
-.momentsFeed,
+.momentsFeed {
+  display: grid;
+  gap: 30px;
+}
+
 .momentBatchList {
   display: grid;
-  gap: 16px;
+  gap: 22px;
 }
 
 .momentDay {
   display: grid;
-  gap: 14px;
+  gap: 20px;
 }
 
 .momentDayHeader {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 12px;
+  display: block;
   padding: 0 6px;
 }
 
+.momentDayHeaderCopy {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
 .momentDayHeader h3 {
-  margin: 0 0 4px;
+  margin: 0;
   font-size: 1.35rem;
   line-height: 1.08;
   letter-spacing: -0.03em;
-}
-
-.momentDayHeader p {
-  margin: 0;
-  color: var(--muted);
 }
 
 .momentBabyDay {

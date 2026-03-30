@@ -52,6 +52,8 @@ func (s *Server) handleClientErrors(w http.ResponseWriter, r *http.Request) {
 		"client_request_id":  truncateLogValue(input.RequestID, 128),
 		"user_id":            userID,
 		"album_id":           truncateLogValue(input.AlbumID, 128),
+		"client_ip":          clientIP(r),
+		"remote_addr":        r.RemoteAddr,
 		"path":               truncateLogValue(input.Path, 512),
 		"user_agent":         truncateLogValue(input.UserAgent, 512),
 		"display_mode":       truncateLogValue(input.DisplayMode, 64),

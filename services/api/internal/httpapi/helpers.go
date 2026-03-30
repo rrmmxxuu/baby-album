@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -54,6 +55,37 @@ func albumID(r *http.Request) string {
 
 func trimAPIPrefix(path, prefix string) string {
 	return strings.Trim(strings.TrimPrefix(path, prefix), "/")
+}
+
+func clientIP(r *http.Request) string {
+	if value := firstForwardedFor(r.Header.Get("X-Forwarded-For")); value != "" {
+		return value
+	}
+	if value := strings.TrimSpace(r.Header.Get("X-Real-IP")); value != "" {
+		return value
+	}
+	return remoteHost(r.RemoteAddr)
+}
+
+func firstForwardedFor(value string) string {
+	for _, item := range strings.Split(value, ",") {
+		if candidate := strings.TrimSpace(item); candidate != "" {
+			return candidate
+		}
+	}
+	return ""
+}
+
+func remoteHost(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return ""
+	}
+	host, _, err := net.SplitHostPort(trimmed)
+	if err == nil && host != "" {
+		return host
+	}
+	return trimmed
 }
 
 func splitPath(path string) []string {

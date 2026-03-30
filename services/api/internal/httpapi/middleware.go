@@ -10,6 +10,7 @@ import (
 func (s *Server) withMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r, meta := withRequestMetadata(r)
+		clientAddr := clientIP(r)
 		recorder := newStatusRecorder(w)
 		recorder.Header().Set("X-Request-ID", meta.requestID)
 
@@ -25,6 +26,7 @@ func (s *Server) withMiddleware(next http.Handler) http.Handler {
 					"duration_ms": durationMs,
 					"user_id":     meta.userID,
 					"album_id":    meta.albumID,
+					"client_ip":   clientAddr,
 					"remote_addr": r.RemoteAddr,
 					"panic":       recovered,
 					"stack":       string(debug.Stack()),
@@ -42,6 +44,7 @@ func (s *Server) withMiddleware(next http.Handler) http.Handler {
 				"duration_ms": durationMs,
 				"user_id":     meta.userID,
 				"album_id":    meta.albumID,
+				"client_ip":   clientAddr,
 				"remote_addr": r.RemoteAddr,
 			})
 		}()

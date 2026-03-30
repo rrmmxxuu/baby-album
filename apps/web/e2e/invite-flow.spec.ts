@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { latestInviteCode, login, logout, openSettings, register, uniqueEmail } from "./helpers";
+import { latestInviteCode, login, logout, openSettings, register, setRelation, uniqueEmail } from "./helpers";
 
 test("generates an invite code and joins an existing album", async ({ page }) => {
   await login(page, {
@@ -27,7 +27,7 @@ test("generates an invite code and joins an existing album", async ({ page }) =>
   const joinCard = page.locator("article").filter({ has: page.getByRole("heading", { name: "输入邀请码" }) });
   await expect(joinCard).toBeVisible();
   await joinCard.getByLabel("邀请码").fill(inviteCode);
-  await joinCard.getByLabel("你与宝宝的关系").fill("舅舅");
+  await setRelation(joinCard, "舅舅");
   await joinCard.getByRole("button", { name: "加入已有相册" }).click();
 
   await expect(page).toHaveURL(/\/album\/family-demo\/photos/);

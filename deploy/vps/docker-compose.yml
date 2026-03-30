@@ -15,8 +15,7 @@ services:
 
   baby-album-api:
     container_name: baby-album-api
-    build:
-      context: ../../services/api
+    image: ${API_IMAGE:-ghcr.io/rrmmxxuu/baby-album-api}:${IMAGE_TAG:-main}
     restart: unless-stopped
     depends_on:
       - postgres
@@ -33,10 +32,7 @@ services:
 
   baby-album-web:
     container_name: baby-album-web
-    build:
-      context: ../../apps/web
-      args:
-        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-https://album-api.example.com}
+    image: ${WEB_IMAGE:-ghcr.io/rrmmxxuu/baby-album-web}:${IMAGE_TAG:-main}
     restart: unless-stopped
     depends_on:
       - baby-album-api

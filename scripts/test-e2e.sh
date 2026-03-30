@@ -7,6 +7,7 @@ RUN_DIR="$ROOT_DIR/tmp/run"
 PUBLIC_HOST="${1:-127.0.0.1}"
 WEB_PORT="${DEV_WEB_PORT:-3100}"
 API_PORT="${DEV_API_PORT:-18080}"
+GO_BIN="${GO_BIN:-go}"
 API_PID_FILE="$RUN_DIR/e2e-api.pid"
 WEB_PID_FILE="$RUN_DIR/e2e-web.pid"
 AGENT_PID_FILE="$RUN_DIR/e2e-agent.pid"
@@ -71,7 +72,7 @@ echo "==> starting postgres"
 docker compose up -d postgres >/dev/null
 
 echo "==> waiting for postgres"
-until psql "postgres://baby_album:baby_album@localhost:5432/baby_album?sslmode=disable" -c "select 1" >/dev/null 2>&1; do
+until docker compose exec -T postgres pg_isready -U baby_album -d baby_album >/dev/null 2>&1; do
   sleep 1
 done
 
@@ -85,7 +86,7 @@ start_process \
   CACHE_ROOT="$ROOT_DIR/tmp/cache" \
   API_ADDR=":$API_PORT" \
   ALLOWED_ORIGINS="http://$PUBLIC_HOST:$WEB_PORT,http://localhost:$WEB_PORT,http://127.0.0.1:$WEB_PORT" \
-  /usr/local/go/bin/go run ./cmd/server
+  "$GO_BIN" run ./cmd/server
 
 echo "==> building web"
 (
@@ -113,7 +114,7 @@ start_process \
   AGENT_NODE_NAME="$AGENT_NODE_NAME" \
   AGENT_NODE_ID="$AGENT_NODE_ID" \
   AGENT_NODE_TOKEN="$AGENT_NODE_TOKEN" \
-  /usr/local/go/bin/go run ./cmd/agent
+  "$GO_BIN" run ./cmd/agent
 
 cat <<EOF
 

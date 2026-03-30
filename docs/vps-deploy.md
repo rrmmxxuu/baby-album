@@ -34,6 +34,9 @@ Create `.env` from `deploy/vps/.env.example`, then set at least:
 
 ```env
 NEXT_PUBLIC_API_BASE_URL=https://album-api.ramonxu.com
+WEB_IMAGE=ghcr.io/rrmmxxuu/baby-album-web
+API_IMAGE=ghcr.io/rrmmxxuu/baby-album-api
+IMAGE_TAG=main
 WEB_PORT=3000
 API_PORT=18080
 POSTGRES_PORT=15432
@@ -51,7 +54,28 @@ The VPS deployment bundle lives in `deploy/vps`, not the repository root.
 
 If you want both a production domain and a temporary preview domain, separate them with commas in `ALLOWED_ORIGINS`.
 
-## 3. Shared Docker network with NPM
+Leave `IMAGE_TAG=main` if the VPS should always track the latest published image from `main`. For a fixed rollout or rollback target, pin it to a published `sha-*` tag instead.
+
+## 3. GitHub Actions configuration
+
+Set these GitHub repository variables:
+
+- `PROD_NEXT_PUBLIC_API_BASE_URL`: the public API origin baked into the published web image
+- `PROD_SSH_HOST`: VPS hostname or IP
+- `PROD_SSH_PORT`: optional SSH port, default `22`
+- `PROD_SSH_USER`: SSH user for the deployment workflow
+- `PROD_DEPLOY_PATH`: remote directory that holds your VPS `.env` file
+- `PROD_COMPOSE_FILES`: `-f docker-compose.yml` by default, or `-f docker-compose.yml -f docker-compose.npm.yml` if you use the NPM override
+- `GHCR_READ_USER`: GitHub username that owns the package-read token
+
+Set these GitHub repository secrets:
+
+- `PROD_SSH_KEY`: private SSH key used by `Deploy Production`
+- `GHCR_READ_TOKEN`: GitHub token with `read:packages` access for the VPS
+
+The `Deploy Production` workflow syncs `deploy/vps/docker-compose.yml` and `deploy/vps/docker-compose.npm.yml` into `PROD_DEPLOY_PATH` on every release. Keep the VPS `.env` file in that same directory.
+
+## 4. Shared Docker network with NPM
 
 Because your Nginx Proxy Manager is also in Docker, create or confirm the external network once:
 
@@ -64,12 +88,15 @@ Then start Baby Album with the NPM override:
 ```bash
 cd deploy/vps
 cp .env.example .env
-docker compose -f docker-compose.yml -f docker-compose.npm.yml up --build -d
+docker compose -f docker-compose.yml -f docker-compose.npm.yml pull
+docker compose -f docker-compose.yml -f docker-compose.npm.yml up -d
 ```
 
 This puts the `baby-album-web` and `baby-album-api` services onto the same Docker network as NPM, so NPM can proxy to them by service name instead of by host port.
 
-## 4. Nginx Proxy Manager
+If your GHCR packages are private, run `docker login ghcr.io` on the VPS once before the first pull.
+
+## 5. Nginx Proxy Manager
 
 Create two proxy hosts.
 
@@ -95,7 +122,7 @@ Create two proxy hosts.
 
 If you prefer to keep NPM proxying to host ports instead, you can skip `docker-compose.npm.yml` and continue forwarding to `127.0.0.1:3000` and `127.0.0.1:18080`.
 
-## 5. Verify
+## 6. Verify
 
 Check these URLs after NPM is ready:
 
@@ -120,7 +147,7 @@ docker compose logs --tail=20 baby-album-api
 
 Each request should include a `request_id`, path, status, and duration in milliseconds.
 
-## 6. Backup before every release
+## 7. Backup before every release
 
 Create a timestamped backup directory on the VPS:
 
@@ -156,15 +183,14 @@ On the home NAS or Linux box, also back up:
 - the `.agent-state.json` file inside that library root
 - the agent config file if you use `deploy/agent/config/agent.json`
 
-## 7. Release flow
+## 8. Release flow
 
-On the VPS:
+Recommended production release path:
 
-```bash
-git pull
-cd deploy/vps
-docker compose -f docker-compose.yml -f docker-compose.npm.yml up --build -d
-```
+1. Merge the verified commit into `main`.
+2. Wait for the `Publish Images` job in `CI` to push the new `main` and `sha-*` tags to GHCR.
+3. Run the `Deploy Production` workflow and pass the immutable `sha-*` tag you want to release.
+4. Confirm the workflow finishes cleanly, then run the health checks below.
 
 Validate health:
 
@@ -190,14 +216,24 @@ If you maintain a staging or local stack, run the automated browser suite before
 ./scripts/test-e2e.sh
 ```
 
-## 8. Rollback
+If you need a fully manual fallback on the VPS, update `IMAGE_TAG` in `.env` and run the same Compose file set you configured in `PROD_COMPOSE_FILES`:
+
+```bash
+docker compose -f docker-compose.yml pull
+docker compose -f docker-compose.yml up -d
+```
+
+Add `-f docker-compose.npm.yml` to both commands when you use the NPM override.
+
+## 9. Rollback
 
 If the release fails:
 
 1. Check `docker compose logs baby-album-api baby-album-web` for the failing service.
-2. Return to the previous git revision.
-3. Run `docker compose -f docker-compose.yml -f docker-compose.npm.yml up --build -d`.
-4. Re-run the health checks and the public smoke test.
+2. Re-run `Deploy Production` with the previous `sha-*` image tag, or set `IMAGE_TAG` back to that tag manually on the VPS.
+3. Run the same Compose file set you configured in `PROD_COMPOSE_FILES`, for example `docker compose -f docker-compose.yml pull`.
+4. Start the previous image tag again with the matching `docker compose ... up -d` command.
+5. Re-run the health checks and the public smoke test.
 
 If you must restore data as well:
 
@@ -207,7 +243,7 @@ If you must restore data as well:
 4. Restore the NAS library backup and `.agent-state.json`.
 5. Start the stack again.
 
-## 9. NAS agent on the home side
+## 10. NAS agent on the home side
 
 The NAS agent is a separate deployment under `deploy/agent`. When you move it off the VPS, set:
 
@@ -217,7 +253,15 @@ The NAS agent is a separate deployment under `deploy/agent`. When you move it of
 
 The home agent only needs outbound HTTPS access to the API domain.
 
-## 10. Current production caveats
+After `main` pushes, GitHub Actions also publishes `ghcr.io/rrmmxxuu/baby-album-agent`. Upgrade the NAS side manually with:
+
+```bash
+cd deploy/agent
+docker compose pull
+docker compose up -d
+```
+
+## 11. Current production caveats
 
 - API startup still performs database migrations automatically.
 - Auth is still bearer-token based, and preview/original media access still uses token-bearing URLs in some flows.

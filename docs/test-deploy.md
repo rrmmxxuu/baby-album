@@ -27,12 +27,17 @@ This guide is for the first public test deployment of Baby Album on a single clo
 4. Set `CACHE_ROOT` to persistent local storage on the VM
 5. If the NAS agent runs remotely, set its API base URL separately under `deploy/agent`
 
+`deploy/vps/.env.example` now includes `WEB_IMAGE`, `API_IMAGE`, and `IMAGE_TAG`. Leave `IMAGE_TAG=main` to track the latest `main` build, or pin it to a published `sha-*` tag when you want a fixed rollout or rollback target.
+
 ## First launch
 
 ```bash
 cd deploy/vps
-docker compose up --build -d
+docker compose pull
+docker compose up -d
 ```
+
+If your GHCR packages are private, log in to `ghcr.io` once on the VM before the first pull.
 
 Then verify:
 
@@ -75,12 +80,12 @@ If the NAS agent runs on another machine, also copy its `AGENT_LIBRARY_ROOT`, in
 
 ## Release procedure
 
-Pull the new code and rebuild:
+Publish a new image set from GitHub Actions, then on the VM update `IMAGE_TAG` in `deploy/vps/.env` and pull the selected version:
 
 ```bash
-git pull
 cd deploy/vps
-docker compose up --build -d
+docker compose pull
+docker compose up -d
 ```
 
 Verify process health:
@@ -109,12 +114,12 @@ If you have a local test stack, run the automated smoke suite before the public 
 
 ## Rollback
 
-If the new build fails, go back to the previous image or commit and restart:
+If the new release fails, change `IMAGE_TAG` back to the previous `sha-*` tag and restart:
 
 ```bash
-git checkout <previous-commit>
 cd deploy/vps
-docker compose up --build -d
+docker compose pull
+docker compose up -d
 ```
 
 If you also need to restore data:

@@ -27,12 +27,17 @@
 4. 设置 `CACHE_ROOT` 指向云主机上的持久化目录
 5. 如果 NAS agent 单独部署在别的机器上，它的 API 地址请单独在 `deploy/agent` 那边配置
 
+`deploy/vps/.env.example` 现在已经包含 `WEB_IMAGE`、`API_IMAGE` 和 `IMAGE_TAG`。保持 `IMAGE_TAG=main` 会跟随 `main` 的最新构建；如果你想固定发布版本或回滚，就把它改成某个已发布的 `sha-*` 标签。
+
 ## 首次启动
 
 ```bash
 cd deploy/vps
-docker compose up --build -d
+docker compose pull
+docker compose up -d
 ```
+
+如果 GHCR 镜像是私有的，第一次拉取前先在云主机上登录一次 `ghcr.io`。
 
 然后验证：
 
@@ -75,12 +80,12 @@ cp .env "$BACKUP_DIR/.env"
 
 ## 发布流程
 
-拉最新代码并重建：
+先通过 GitHub Actions 发布新镜像，再在云主机上把 `deploy/vps/.env` 里的 `IMAGE_TAG` 改成目标版本，然后执行：
 
 ```bash
-git pull
 cd deploy/vps
-docker compose up --build -d
+docker compose pull
+docker compose up -d
 ```
 
 验证服务：
@@ -109,12 +114,12 @@ docker compose ps
 
 ## 回滚
 
-如果新版本失败，切回上一版并重启：
+如果新版本失败，把 `IMAGE_TAG` 改回上一个 `sha-*` 标签，然后重启：
 
 ```bash
-git checkout <previous-commit>
 cd deploy/vps
-docker compose up --build -d
+docker compose pull
+docker compose up -d
 ```
 
 如果还需要恢复数据：

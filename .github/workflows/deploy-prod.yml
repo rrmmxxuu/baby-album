@@ -1,0 +1,67 @@
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Immutable image tag to deploy, for example sha-abc1234
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy web and API to VPS
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      COMPOSE_FILES: ${{ vars.PROD_COMPOSE_FILES || '-f docker-compose.yml' }}
+      DEPLOY_PATH: ${{ vars.PROD_DEPLOY_PATH }}
+      GHCR_READ_USER: ${{ vars.GHCR_READ_USER }}
+      IMAGE_TAG: ${{ inputs.image_tag }}
+      SSH_HOST: ${{ vars.PROD_SSH_HOST }}
+      SSH_PORT: ${{ vars.PROD_SSH_PORT || '22' }}
+      SSH_USER: ${{ vars.PROD_SSH_USER }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate deployment variables
+        run: |
+          test -n "$SSH_HOST"
+          test -n "$SSH_USER"
+          test -n "$DEPLOY_PATH"
+          test -n "$GHCR_READ_USER"
+
+      - name: Configure SSH key
+        run: |
+          install -m 700 -d ~/.ssh
+          install -m 600 /dev/null ~/.ssh/id_ed25519
+          printf '%s\n' "${{ secrets.PROD_SSH_KEY }}" > ~/.ssh/id_ed25519
+          ssh-keyscan -p "$SSH_PORT" -H "$SSH_HOST" >> ~/.ssh/known_hosts
+
+      - name: Ensure remote deployment directory exists
+        run: ssh -i ~/.ssh/id_ed25519 -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p '$DEPLOY_PATH'"
+
+      - name: Sync deployment compose files
+        run: |
+          scp -i ~/.ssh/id_ed25519 -P "$SSH_PORT" deploy/vps/docker-compose.yml "$SSH_USER@$SSH_HOST:$DEPLOY_PATH/docker-compose.yml"
+          scp -i ~/.ssh/id_ed25519 -P "$SSH_PORT" deploy/vps/docker-compose.npm.yml "$SSH_USER@$SSH_HOST:$DEPLOY_PATH/docker-compose.npm.yml"
+
+      - name: Deploy selected image tag
+        run: |
+          ssh -i ~/.ssh/id_ed25519 -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" /bin/bash -lc "
+            set -euo pipefail
+            cd '$DEPLOY_PATH'
+            echo '${{ secrets.GHCR_READ_TOKEN }}' | docker login ghcr.io -u '$GHCR_READ_USER' --password-stdin
+            export IMAGE_TAG='$IMAGE_TAG'
+            docker compose $COMPOSE_FILES pull baby-album-api baby-album-web
+            docker compose $COMPOSE_FILES up -d baby-album-api baby-album-web
+            docker compose $COMPOSE_FILES ps
+          "

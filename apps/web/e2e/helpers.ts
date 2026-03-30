@@ -46,7 +46,7 @@ export async function createAlbum(page: Page, input: { babyName: string; relatio
   if (input.birthDate) {
     await albumCard.getByLabel("出生日期").fill(input.birthDate);
   }
-  await albumCard.getByLabel("你与宝宝的关系").fill(input.relation);
+  await setRelation(albumCard, input.relation);
   await albumCard.getByRole("button", { name: "创建宝宝相册" }).click();
   await expect(page).toHaveURL(/\/album\/.+\/photos/);
 }
@@ -86,4 +86,15 @@ export function samplePng(name: string, colorSeed: number) {
       "base64"
     )
   };
+}
+
+export async function setRelation(scope: Locator, value: string) {
+  const select = scope.getByLabel("你与宝宝的关系");
+  const matchingOption = select.locator(`option[value="${value}"]`);
+  if (await matchingOption.count()) {
+    await select.selectOption(value);
+    return;
+  }
+  await select.selectOption("__custom__");
+  await scope.getByLabel("自定义称呼").fill(value);
 }

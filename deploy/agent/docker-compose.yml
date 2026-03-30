@@ -1,7 +1,6 @@
 services:
   agent:
-    build:
-      context: ../../services/agent
+    image: ${AGENT_IMAGE:-ghcr.io/rrmmxxuu/baby-album-agent}:${AGENT_IMAGE_TAG:-main}
     container_name: baby-album-agent
     restart: unless-stopped
     stdin_open: true

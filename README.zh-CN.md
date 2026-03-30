@@ -85,6 +85,16 @@ export AGENT_PAIRING_CODE='12345678'
 
 这个脚本会启动 PostgreSQL、API、前端，以及一套可跑测试的 agent 兼容环境，然后执行 `apps/web/e2e` 下的浏览器测试。
 
+## CI/CD
+
+GitHub Actions 现在会覆盖：
+
+- 合并到 `main` 前的 PR：Web 类型检查、Web 单元测试、API 测试、agent 测试，以及三份镜像的构建校验
+- 推送到 `main`：先跑同样的检查，再把 `web`、`api`、`agent` 镜像发布到 GHCR，并同时打上 `main` 和 `sha-<shortsha>` 标签
+- 手动生产发布：在 `Deploy Production` workflow 里指定一个不可变的 `sha-*` 标签，把 VPS 上的 `web + api` 升级到对应版本
+
+在依赖镜像发布前，先配置仓库变量 `PROD_NEXT_PUBLIC_API_BASE_URL`。Web 会在构建期读取 `NEXT_PUBLIC_API_BASE_URL`，所以如果你更换了公开 API 域名，需要重新发布一版 web 镜像。
+
 ## 单机云主机测试部署
 
 仓库现在提供了独立的 VPS 部署目录 `deploy/vps`：
@@ -92,11 +102,13 @@ export AGENT_PAIRING_CODE='12345678'
 1. 复制 `deploy/vps/.env.example` 为 `deploy/vps/.env`
 2. 把 `NEXT_PUBLIC_API_BASE_URL` 改成你的公开 API 域名
 3. 把 `ALLOWED_ORIGINS` 改成你的公开前端域名
-4. 如果 VPS 上常见端口已被占用，就在 `deploy/vps/.env` 里修改 `WEB_PORT`、`API_PORT`、`POSTGRES_PORT`
-5. `cd deploy/vps`
-6. 如果 Nginx Proxy Manager 也是用 Docker 跑的，用 `docker compose -f docker-compose.yml -f docker-compose.npm.yml up --build -d`
-7. 否则直接运行 `docker compose up --build -d`
-8. 再把前端和 API 的公开端口接到你的反向代理上；如果使用 NPM，也可以直接通过共享 Docker 网络按服务名反代
+4. 保持 `IMAGE_TAG=main` 就会跟随 `main` 最新镜像；如果你想固定发布版本或回滚，就改成某个已经发布的 `sha-*` 标签
+5. 如果 VPS 上常见端口已被占用，就在 `deploy/vps/.env` 里修改 `WEB_PORT`、`API_PORT`、`POSTGRES_PORT`
+6. 如果 GHCR 镜像是私有的，先在 VPS 上用有 `read:packages` 权限的 token 登录一次
+7. `cd deploy/vps`
+8. 如果 Nginx Proxy Manager 也是用 Docker 跑的，用 `docker compose -f docker-compose.yml -f docker-compose.npm.yml pull && docker compose -f docker-compose.yml -f docker-compose.npm.yml up -d`
+9. 否则直接运行 `docker compose pull && docker compose up -d`
+10. 再把前端和 API 的公开端口接到你的反向代理上；如果使用 NPM，也可以直接通过共享 Docker 网络按服务名反代
 
 更完整的 VPS 部署说明见 [docs/vps-deploy.zh-CN.md](docs/vps-deploy.zh-CN.md)。
 
@@ -145,7 +157,7 @@ export AGENT_PAIRING_CODE='12345678'
 
 ```bash
 cd deploy/agent
-docker compose up --build -d
+docker compose pull && docker compose up -d
 ```
 
 这套部署会使用：

@@ -132,7 +132,7 @@ Agent deployment files are ready:
 Next:
 
   cd $TARGET_DIR
-  docker compose up --build -d
+  docker compose pull && docker compose up -d
 
 Library path:
 

@@ -6,6 +6,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUN_DIR="$ROOT_DIR/tmp/run"
 CACHE_DIR="$ROOT_DIR/tmp/cache"
 LIBRARY_DIR="$ROOT_DIR/tmp/library"
+GO_BIN="${GO_BIN:-go}"
 API_PID_FILE="$RUN_DIR/api.pid"
 WEB_PID_FILE="$RUN_DIR/web.pid"
 AGENT_PID_FILE="$RUN_DIR/agent.pid"
@@ -53,7 +54,7 @@ echo "==> starting postgres"
 docker compose up -d postgres >/dev/null
 
 echo "==> waiting for postgres"
-until psql "$DATABASE_URL" -c "select 1" >/dev/null 2>&1; do
+until docker compose exec -T postgres pg_isready -U baby_album -d baby_album >/dev/null 2>&1; do
   sleep 1
 done
 
@@ -68,7 +69,7 @@ start_process \
   CACHE_ROOT="$CACHE_DIR" \
   API_ADDR=":$API_PORT" \
   ALLOWED_ORIGINS="http://$PUBLIC_HOST:$WEB_PORT,http://localhost:$WEB_PORT,http://127.0.0.1:$WEB_PORT" \
-  /usr/local/go/bin/go run ./cmd/server
+  "$GO_BIN" run ./cmd/server
 
 echo "==> starting web"
 start_process \
@@ -95,7 +96,7 @@ if [[ -n "${AGENT_PAIRING_CODE:-}" || -n "${AGENT_NODE_ID:-}" || -n "${AGENT_NOD
     AGENT_NODE_ID="${AGENT_NODE_ID:-}" \
     AGENT_NODE_TOKEN="${AGENT_NODE_TOKEN:-}" \
     AGENT_REGISTRATION_TOKEN="${AGENT_REGISTRATION_TOKEN:-}" \
-    /usr/local/go/bin/go run ./cmd/agent
+    "$GO_BIN" run ./cmd/agent
 else
   echo "==> skipping agent (set AGENT_PAIRING_CODE or AGENT_NODE_ID/AGENT_NODE_TOKEN to auto-start it)"
 fi

@@ -1,7 +1,9 @@
-FROM golang:1.25-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS build
 WORKDIR /src
+ARG TARGETOS
+ARG TARGETARCH
 COPY . .
-RUN go build -o /out/agent ./cmd/agent
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -o /out/agent ./cmd/agent
 
 FROM alpine:3.21
 WORKDIR /app

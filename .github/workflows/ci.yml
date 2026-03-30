@@ -123,7 +123,7 @@ jobs:
           push: false
 
   publish-images:
-    name: Publish Images
+    name: Publish API and Agent Images
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     needs:
@@ -160,19 +160,6 @@ jobs:
         id: vars
         run: echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push web image
-        uses: docker/build-push-action@v6
-        with:
-          context: ./apps/web
-          file: ./apps/web/Dockerfile
-          platforms: ${{ env.IMAGE_PLATFORMS }}
-          push: true
-          build-args: |
-            NEXT_PUBLIC_API_BASE_URL=${{ env.NEXT_PUBLIC_API_BASE_URL }}
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/baby-album-web:main
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/baby-album-web:sha-${{ steps.vars.outputs.short_sha }}
-
       - name: Build and push API image
         uses: docker/build-push-action@v6
         with:
@@ -194,6 +181,134 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/baby-album-agent:main
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/baby-album-agent:sha-${{ steps.vars.outputs.short_sha }}
+
+  publish-web-amd64:
+    name: Publish Web Image (amd64)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs:
+      - web
+      - api
+      - agent
+      - docker-validate
+    permissions:
+      contents: read
+      packages: write
+    env:
+      NEXT_PUBLIC_API_BASE_URL: ${{ vars.PROD_NEXT_PUBLIC_API_BASE_URL || 'https://album-api.example.com' }}
+      REGISTRY: ghcr.io
+      IMAGE_NAMESPACE: ${{ github.repository_owner }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive image tag
+        id: vars
+        run: echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push web image for amd64
+        uses: docker/build-push-action@v6
+        with:
+          context: ./apps/web
+          file: ./apps/web/Dockerfile
+          platforms: linux/amd64
+          push: true
+          build-args: |
+            NEXT_PUBLIC_API_BASE_URL=${{ env.NEXT_PUBLIC_API_BASE_URL }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/baby-album-web:sha-${{ steps.vars.outputs.short_sha }}-amd64
+
+  publish-web-arm64:
+    name: Publish Web Image (arm64)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, Linux, ARM64]
+    needs:
+      - web
+      - api
+      - agent
+      - docker-validate
+    permissions:
+      contents: read
+      packages: write
+    env:
+      NEXT_PUBLIC_API_BASE_URL: ${{ vars.PROD_NEXT_PUBLIC_API_BASE_URL || 'https://album-api.example.com' }}
+      REGISTRY: ghcr.io
+      IMAGE_NAMESPACE: ${{ github.repository_owner }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive image tag
+        id: vars
+        run: echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push web image for arm64
+        uses: docker/build-push-action@v6
+        with:
+          context: ./apps/web
+          file: ./apps/web/Dockerfile
+          platforms: linux/arm64
+          push: true
+          build-args: |
+            NEXT_PUBLIC_API_BASE_URL=${{ env.NEXT_PUBLIC_API_BASE_URL }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/baby-album-web:sha-${{ steps.vars.outputs.short_sha }}-arm64
+
+  publish-web-manifest:
+    name: Publish Web Image Manifest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs:
+      - publish-web-amd64
+      - publish-web-arm64
+    permissions:
+      contents: read
+      packages: write
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAMESPACE: ${{ github.repository_owner }}
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive image tag
+        id: vars
+        run: echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Create multi-arch web manifest
+        run: |
+          docker buildx imagetools create \
+            --tag "${REGISTRY}/${IMAGE_NAMESPACE}/baby-album-web:main" \
+            --tag "${REGISTRY}/${IMAGE_NAMESPACE}/baby-album-web:sha-${{ steps.vars.outputs.short_sha }}" \
+            "${REGISTRY}/${IMAGE_NAMESPACE}/baby-album-web:sha-${{ steps.vars.outputs.short_sha }}-amd64" \
+            "${REGISTRY}/${IMAGE_NAMESPACE}/baby-album-web:sha-${{ steps.vars.outputs.short_sha }}-arm64"
 
   e2e:
     name: Browser Smoke Tests

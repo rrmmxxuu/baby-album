@@ -387,7 +387,15 @@ export function AlbumRouteShell({ albumId, children: _children }: AlbumRouteShel
         </AlbumRouteProvider>
       ) : null}
 
-      {timeline.lightbox ? <LightboxViewer closing={timeline.lightboxClosing} lightbox={timeline.lightbox} onClose={handleCloseLightbox} onNavigate={handleNavigateLightbox} /> : null}
+      {timeline.lightbox ? (
+        <LightboxViewer
+          key={`${timeline.lightbox.albumId}:${timeline.lightbox.batch.entry.id}`}
+          closing={timeline.lightboxClosing}
+          lightbox={timeline.lightbox}
+          onClose={handleCloseLightbox}
+          onNavigate={handleNavigateLightbox}
+        />
+      ) : null}
 
       {readyAlbum && !redirectPath ? (
         <UploadDraftSheet

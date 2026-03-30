@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { acceptInvite, createAlbum, loadAppState, loginUser, logoutUser, registerUser, uploadBabyAvatar } from "../../../lib/api";
+import { acceptInvite, ApiError, createAlbum, loadAppState, loginUser, logoutUser, registerUser, uploadBabyAvatar } from "../../../lib/api";
 import type { AppStatePayload } from "../../../lib/types";
-import { ALBUM_STORAGE_KEY, BOOT_SPLASH_EXIT_MS, BOOT_SPLASH_MIN_MS, TOKEN_STORAGE_KEY } from "../model/constants";
+import { SESSION_AUTH_MARKER } from "../../../lib/session";
+import { ALBUM_STORAGE_KEY, BOOT_SPLASH_EXIT_MS, BOOT_SPLASH_MIN_MS } from "../model/constants";
 import { buildFeedback, errorMessageFromUnknown } from "../model/feedback";
-import { buildAlbumPath, buildAlbumsPath } from "../model/routes";
+import { buildAlbumPath, buildAlbumsPath, buildAuthPath } from "../model/routes";
 import type { AuthMode } from "../model/types";
 
 interface RefreshOptions {
@@ -14,13 +15,13 @@ interface RefreshOptions {
   token?: string;
 }
 
-export function useAppSession(queryInviteCode: string) {
+export function useAppSession(queryInviteCode: string, initialAuthenticated = false) {
   const router = useRouter();
   const [origin, setOrigin] = useState("");
   const [hydrated, setHydrated] = useState(false);
   const [bootPhase, setBootPhase] = useState<"loading" | "exiting" | "done">("loading");
   const [authMode, setAuthMode] = useState<AuthMode>("login");
-  const [authToken, setAuthToken] = useState("");
+  const [authToken, setAuthToken] = useState(initialAuthenticated ? SESSION_AUTH_MARKER : "");
   const [selectedAlbumId, setSelectedAlbumId] = useState("");
   const [appState, setAppState] = useState<AppStatePayload | null>(null);
   const [inviteCodeInput, setInviteCodeInput] = useState("");
@@ -65,7 +66,6 @@ export function useAppSession(queryInviteCode: string) {
   }, []);
 
   const clearSession = useCallback((showNotice = true) => {
-    window.localStorage.removeItem(TOKEN_STORAGE_KEY);
     window.localStorage.removeItem(ALBUM_STORAGE_KEY);
     setAuthToken("");
     setSelectedAlbumId("");
@@ -95,12 +95,13 @@ export function useAppSession(queryInviteCode: string) {
       }
       return next;
     } catch (err) {
-      const unauthorized = err instanceof Error && err.message.includes("unauthorized");
+      const unauthorized = err instanceof ApiError && err.status === 401;
       const message = errorMessageFromUnknown(err, "加载数据失败。", {
         unauthorizedMessage: "请重新登录后再试。"
       });
       if (unauthorized) {
         clearSession(false);
+        router.replace(buildAuthPath(queryInviteCode));
       }
       showError(message === "请重新登录后再试。" ? "登录状态已失效" : "同步失败", message);
       return null;
@@ -109,22 +110,21 @@ export function useAppSession(queryInviteCode: string) {
         setLoading(false);
       }
     }
-  }, [authToken, clearSession, showError]);
+  }, [authToken, clearSession, queryInviteCode, router, showError]);
 
   useEffect(() => {
     bootStartedAtRef.current = performance.now();
     setHydrated(true);
     setOrigin(window.location.origin);
-    const storedToken = window.localStorage.getItem(TOKEN_STORAGE_KEY) ?? "";
-    setAuthToken(storedToken);
-    if (storedToken) {
+    if (initialAuthenticated) {
+      setAuthToken(SESSION_AUTH_MARKER);
       setSelectedAlbumId(window.localStorage.getItem(ALBUM_STORAGE_KEY) ?? "");
     } else {
       window.localStorage.removeItem(ALBUM_STORAGE_KEY);
       setSelectedAlbumId("");
     }
     setInviteCodeInput(queryInviteCode);
-  }, [queryInviteCode]);
+  }, [initialAuthenticated, queryInviteCode]);
 
   useEffect(() => () => {
     if (bootMinTimerRef.current !== null) {
@@ -198,9 +198,8 @@ export function useAppSession(queryInviteCode: string) {
     void refreshApp(selectedAlbumId || undefined, { silent: true });
   }, [appState, authToken, bootPhase, hydrated, refreshApp, selectedAlbumId]);
 
-  function saveSession(token: string) {
-    setAuthToken(token);
-    window.localStorage.setItem(TOKEN_STORAGE_KEY, token);
+  function saveSession() {
+    setAuthToken(SESSION_AUTH_MARKER);
   }
 
   async function handleRegister(event: React.FormEvent<HTMLFormElement>) {
@@ -208,12 +207,12 @@ export function useAppSession(queryInviteCode: string) {
     clearFeedback();
     try {
       const auth = await registerUser({ displayName: registerName, email: registerEmail, password: registerPassword });
-      saveSession(auth.token);
+      saveSession();
       setRegisterName("");
       setRegisterEmail("");
       setRegisterPassword("");
       showSuccess("注册成功", `欢迎，${auth.user.displayName}。请继续加入已有相册，或创建第一个宝宝相册。`);
-      const next = await refreshApp(undefined, { token: auth.token });
+      const next = await refreshApp(undefined, { token: SESSION_AUTH_MARKER });
       router.replace(next?.activeAlbumId ? buildAlbumPath(next.activeAlbumId, "photos") : buildAlbumsPath(queryInviteCode));
     } catch (err) {
       showError("注册失败", errorMessageFromUnknown(err, "注册失败。"));
@@ -225,11 +224,11 @@ export function useAppSession(queryInviteCode: string) {
     clearFeedback();
     try {
       const auth = await loginUser({ email: loginEmail, password: loginPassword });
-      saveSession(auth.token);
+      saveSession();
       setLoginEmail("");
       setLoginPassword("");
       showSuccess("登录成功", `欢迎回来，${auth.user.displayName}。`);
-      const next = await refreshApp(undefined, { token: auth.token });
+      const next = await refreshApp(undefined, { token: SESSION_AUTH_MARKER });
       router.replace(next?.activeAlbumId ? buildAlbumPath(next.activeAlbumId, "photos") : buildAlbumsPath(queryInviteCode));
     } catch (err) {
       showError("登录失败", errorMessageFromUnknown(err, "登录失败。", {
@@ -239,11 +238,10 @@ export function useAppSession(queryInviteCode: string) {
   }
 
   async function handleLogout() {
-    const sessionToken = authToken;
     clearSession();
     try {
-      if (sessionToken) {
-        await logoutUser(sessionToken);
+      if (authToken) {
+        await logoutUser(authToken);
       }
     } catch {
       // Keep local logout deterministic even if the API call fails.

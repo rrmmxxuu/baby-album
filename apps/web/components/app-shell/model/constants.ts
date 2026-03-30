@@ -1,4 +1,3 @@
-export const TOKEN_STORAGE_KEY = "baby-album.authToken";
 export const ALBUM_STORAGE_KEY = "baby-album.albumId";
 export const RELATION_OPTIONS = ["爸爸", "妈妈", "爷爷", "奶奶", "外公", "外婆", "阿姨", "叔叔", "哥哥", "姐姐"];
 export const OVERLAY_EXIT_MS = 240;

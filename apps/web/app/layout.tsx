@@ -1,9 +1,11 @@
 import type { Metadata, Viewport } from "next";
+import { cookies } from "next/headers";
 import { Suspense } from "react";
 import "./globals.css";
 import { ClientErrorReporter } from "../components/client-error-reporter";
 import { PwaBoot } from "../components/pwa-boot";
 import { AppSessionProvider } from "../components/app-shell/app-session-provider";
+import { hasValidSession } from "../lib/session";
 
 export const metadata: Metadata = {
   title: "宝宝相册 | Baby Album",
@@ -35,14 +37,17 @@ export const viewport: Viewport = {
   themeColor: "#f2f2f7"
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const cookieStore = await cookies();
+  const initialAuthenticated = hasValidSession(cookieStore);
+
   return (
     <html lang="zh-CN">
       <body>
         <PwaBoot />
         <ClientErrorReporter />
         <Suspense fallback={<main className="appShell"><section className="panel"><p className="helperText">正在加载宝宝相册...</p></section></main>}>
-          <AppSessionProvider>{children}</AppSessionProvider>
+          <AppSessionProvider initialAuthenticated={initialAuthenticated}>{children}</AppSessionProvider>
         </Suspense>
       </body>
     </html>

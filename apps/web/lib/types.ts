@@ -122,6 +122,11 @@ export interface AuthPayload {
   expiresAt: string;
 }
 
+export interface SessionAuthPayload {
+  user: User;
+  expiresAt: string;
+}
+
 export interface AlbumSummary {
   album: Album;
   baby?: BabyProfile | null;

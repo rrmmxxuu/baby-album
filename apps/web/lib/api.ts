@@ -1,7 +1,7 @@
-import { TOKEN_STORAGE_KEY } from "../components/app-shell/model/constants";
-import type { AlbumInvite, AppStatePayload, AuthPayload, Role, StorageNodePairing, TimelineComment, TimelineEntry, TimelinePagePayload, TimelineTimeMode, TimelineVisibility } from "./types";
+import type { AlbumInvite, AppStatePayload, Role, SessionAuthPayload, StorageNodePairing, TimelineComment, TimelineEntry, TimelinePagePayload, TimelineTimeMode, TimelineVisibility } from "./types";
 
-const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
+const apiBaseUrl = "/api/proxy";
+const sessionApiBaseUrl = "/api/session";
 
 export class ApiError extends Error {
   status: number;
@@ -53,27 +53,26 @@ export async function reportClientError(input: {
   albumId?: string;
   extra?: Record<string, unknown>;
 }) {
-  const token = typeof window === "undefined" ? "" : (window.localStorage.getItem(TOKEN_STORAGE_KEY) ?? "");
   await fetch(`${apiBaseUrl}/api/v1/client-errors`, {
     method: "POST",
-    headers: buildHeaders(token, { "Content-Type": "application/json" }),
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
     keepalive: true
   });
 }
 
-export function getPreviewUrl(mediaId: string, albumId: string, token: string, version?: string) {
+export function getPreviewUrl(mediaId: string, albumId: string, _token: string, version?: string) {
   const suffix = version ? `&v=${encodeURIComponent(version)}` : "";
-  return `${apiBaseUrl}/api/v1/media/${encodeURIComponent(mediaId)}/preview?albumId=${encodeURIComponent(albumId)}&token=${encodeURIComponent(token)}${suffix}`;
+  return `${apiBaseUrl}/api/v1/media/${encodeURIComponent(mediaId)}/preview?albumId=${encodeURIComponent(albumId)}${suffix}`;
 }
 
-export function getOriginalUrl(mediaId: string, albumId: string, token: string) {
-  return `${apiBaseUrl}/api/v1/media/${encodeURIComponent(mediaId)}/original?albumId=${encodeURIComponent(albumId)}&token=${encodeURIComponent(token)}`;
+export function getOriginalUrl(mediaId: string, albumId: string, _token: string) {
+  return `${apiBaseUrl}/api/v1/media/${encodeURIComponent(mediaId)}/original?albumId=${encodeURIComponent(albumId)}`;
 }
 
-export function getBabyAvatarUrl(babyId: string, albumId: string, token: string, version?: string) {
+export function getBabyAvatarUrl(babyId: string, albumId: string, _token: string, version?: string) {
   const suffix = version ? `&v=${encodeURIComponent(version)}` : "";
-  return `${apiBaseUrl}/api/v1/babies/${encodeURIComponent(babyId)}/avatar?albumId=${encodeURIComponent(albumId)}&token=${encodeURIComponent(token)}${suffix}`;
+  return `${apiBaseUrl}/api/v1/babies/${encodeURIComponent(babyId)}/avatar?albumId=${encodeURIComponent(albumId)}${suffix}`;
 }
 
 export async function loadAppState(token: string, albumId?: string): Promise<AppStatePayload> {
@@ -100,29 +99,26 @@ export async function loadTimelinePage(token: string, albumId: string, input?: {
   return parseResponse<TimelinePagePayload>(response);
 }
 
-export async function registerUser(input: { displayName: string; email: string; password: string }): Promise<AuthPayload> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/auth/register`, {
+export async function registerUser(input: { displayName: string; email: string; password: string }): Promise<SessionAuthPayload> {
+  const response = await fetch(`${sessionApiBaseUrl}/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input)
   });
-  return parseResponse<AuthPayload>(response);
+  return parseResponse<SessionAuthPayload>(response);
 }
 
-export async function loginUser(input: { email: string; password: string }): Promise<AuthPayload> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/auth/login`, {
+export async function loginUser(input: { email: string; password: string }): Promise<SessionAuthPayload> {
+  const response = await fetch(`${sessionApiBaseUrl}/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input)
   });
-  return parseResponse<AuthPayload>(response);
+  return parseResponse<SessionAuthPayload>(response);
 }
 
-export async function logoutUser(token: string): Promise<void> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/auth/logout`, {
-    method: "POST",
-    headers: buildHeaders(token)
-  });
+export async function logoutUser(_token?: string): Promise<void> {
+  const response = await fetch(`${sessionApiBaseUrl}/logout`, { method: "POST" });
   if (!response.ok) {
     const payload = (await response.json()) as { error?: string };
     throw new Error(payload.error ?? "Logout failed");

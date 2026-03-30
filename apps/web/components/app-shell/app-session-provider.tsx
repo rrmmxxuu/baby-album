@@ -8,11 +8,12 @@ const AppSessionContext = createContext<AppSessionState | null>(null);
 
 interface AppSessionProviderProps {
   children: React.ReactNode;
+  initialAuthenticated: boolean;
 }
 
-export function AppSessionProvider({ children }: AppSessionProviderProps) {
+export function AppSessionProvider({ children, initialAuthenticated }: AppSessionProviderProps) {
   const searchParams = useSearchParams();
-  const session = useAppSession(searchParams.get("invite") ?? "");
+  const session = useAppSession(searchParams.get("invite") ?? "", initialAuthenticated);
 
   return <AppSessionContext.Provider value={session}>{children}</AppSessionContext.Provider>;
 }

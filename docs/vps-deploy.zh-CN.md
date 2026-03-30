@@ -66,6 +66,7 @@ VPS 的正式部署文件都在 `deploy/vps`，不要再用仓库根目录那套
 - `PROD_SSH_USER`：发布 workflow 使用的 SSH 用户
 - `PROD_DEPLOY_PATH`：VPS 上保存部署 `.env` 的目录
 - `PROD_COMPOSE_FILES`：默认填 `-f docker-compose.yml`；如果使用 NPM override，就填 `-f docker-compose.yml -f docker-compose.npm.yml`
+- `PROD_DOCKER_USE_SUDO`：如果远程用户必须通过 `sudo` 执行 Docker，就填 `true`
 - `GHCR_READ_USER`：拥有 GHCR 读取 token 的 GitHub 用户名
 
 再配置这些 GitHub 仓库 secrets：

@@ -66,6 +66,7 @@ Set these GitHub repository variables:
 - `PROD_SSH_USER`: SSH user for the deployment workflow
 - `PROD_DEPLOY_PATH`: remote directory that holds your VPS `.env` file
 - `PROD_COMPOSE_FILES`: `-f docker-compose.yml` by default, or `-f docker-compose.yml -f docker-compose.npm.yml` if you use the NPM override
+- `PROD_DOCKER_USE_SUDO`: set to `true` when the remote user must run Docker through `sudo`
 - `GHCR_READ_USER`: GitHub username that owns the package-read token
 
 Set these GitHub repository secrets:

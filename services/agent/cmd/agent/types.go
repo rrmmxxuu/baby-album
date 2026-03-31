@@ -10,6 +10,7 @@ type config struct {
 	nodeToken         string
 	pairingCode       string
 	heartbeatInterval time.Duration
+	jobTimeout        time.Duration
 	libraryRoot       string
 }
 

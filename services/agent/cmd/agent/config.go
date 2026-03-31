@@ -17,6 +17,7 @@ func loadConfig() (config, error) {
 		apiBaseURL:        "http://localhost:8080",
 		nodeName:          fallbackHostname(),
 		heartbeatInterval: 15 * time.Second,
+		jobTimeout:        30 * time.Minute,
 		libraryRoot:       envOrDefault("AGENT_LIBRARY_ROOT", "tmp/library"),
 		nodeID:            strings.TrimSpace(os.Getenv("AGENT_NODE_ID")),
 		pairingCode:       strings.TrimSpace(os.Getenv("AGENT_PAIRING_CODE")),
@@ -56,6 +57,11 @@ func loadConfig() (config, error) {
 	if raw := strings.TrimSpace(os.Getenv("AGENT_HEARTBEAT_INTERVAL")); raw != "" {
 		if parsed, err := time.ParseDuration(raw); err == nil {
 			cfg.heartbeatInterval = parsed
+		}
+	}
+	if raw := strings.TrimSpace(os.Getenv("AGENT_JOB_TIMEOUT")); raw != "" {
+		if parsed, err := time.ParseDuration(raw); err == nil {
+			cfg.jobTimeout = parsed
 		}
 	}
 	if raw := strings.TrimSpace(os.Getenv("AGENT_LIBRARY_ROOT")); raw != "" {

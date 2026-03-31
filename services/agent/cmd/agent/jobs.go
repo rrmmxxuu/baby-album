@@ -11,13 +11,13 @@ import (
 	"path/filepath"
 )
 
-func processJobs(ctx context.Context, client *http.Client, cfg config) error {
+func processJobs(ctx context.Context, controlClient, transferClient *http.Client, cfg config) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/api/v1/agents/jobs?nodeId=%s", cfg.apiBaseURL, cfg.nodeID), nil)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("X-Node-Token", cfg.nodeToken)
-	resp, err := client.Do(req)
+	resp, err := controlClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -36,13 +36,15 @@ func processJobs(ctx context.Context, client *http.Client, cfg config) error {
 	}
 	for _, item := range result.Items {
 		log.Printf("processing job=%s media=%s file=%s type=%s", item.ID, item.MediaID, item.FileName, item.MediaType)
-		report, err := ingestFile(ctx, client, cfg, item)
+		jobCtx, cancel := context.WithTimeout(ctx, cfg.jobTimeout)
+		report, err := ingestFile(jobCtx, transferClient, cfg, item)
+		cancel()
 		if err != nil {
 			return err
 		}
 		completeURL := fmt.Sprintf("%s/api/v1/agents/jobs/%s/complete", cfg.apiBaseURL, item.ID)
 		payload := map[string]any{"nodeId": cfg.nodeID, "report": report}
-		if err := postJSON(ctx, client, completeURL, cfg.nodeToken, payload, nil); err != nil {
+		if err := postJSON(ctx, controlClient, completeURL, cfg.nodeToken, payload, nil); err != nil {
 			return err
 		}
 		log.Printf("completed job=%s media=%s preview=%s size=%dx%d", item.ID, item.MediaID, report.PreviewStatus, report.Width, report.Height)
@@ -79,6 +81,14 @@ func ingestFile(ctx context.Context, client *http.Client, cfg config, item job) 
 	if err != nil {
 		return report, err
 	}
+	keepFile := false
+	defer func() {
+		if keepFile {
+			return
+		}
+		_ = out.Close()
+		_ = os.Remove(targetPath)
+	}()
 	if _, err := io.Copy(out, resp.Body); err != nil {
 		_ = out.Close()
 		return report, err
@@ -86,6 +96,7 @@ func ingestFile(ctx context.Context, client *http.Client, cfg config, item job) 
 	if err := out.Close(); err != nil {
 		return report, err
 	}
+	keepFile = true
 	report.OriginalPath = targetPath
 
 	width, height, thumbPath, err := generatePreview(targetPath, targetDir, item.MediaType)

@@ -1,16 +1,32 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getOriginalUrl, getPreviewUrl } from "../../../lib/api";
+import { useEffect, useRef, useState } from "react";
+import { getOriginalUrl, getPreviewUrl, loadOriginalStatus } from "../../../lib/api";
 import { useLightboxOriginalImage } from "../hooks/use-lightbox-original-image";
 import { formatDateTime, formatRelativeUploadTime } from "../model/format";
 import type { LightboxState } from "../model/types";
+
+const VIDEO_RESTORE_POLL_INTERVAL_MS = 3000;
+const VIDEO_URL_REFRESH_SKEW_MS = 30_000;
 
 interface LightboxViewerProps {
   lightbox: LightboxState;
   closing: boolean;
   onClose: () => void;
   onNavigate: (direction: -1 | 1) => void;
+}
+
+function originalUrlNeedsRefresh(url: string) {
+  try {
+    const parsed = new URL(url, window.location.origin);
+    const expiry = Number(parsed.searchParams.get("exp"));
+    if (!Number.isFinite(expiry) || expiry <= 0) {
+      return false;
+    }
+    return expiry * 1000 <= Date.now() + VIDEO_URL_REFRESH_SKEW_MS;
+  } catch {
+    return false;
+  }
 }
 
 function LightboxDownloadProgress({ progress }: { progress: number | null }) {
@@ -52,10 +68,13 @@ export function LightboxViewer({ lightbox, closing, onClose, onNavigate }: Light
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [visible, setVisible] = useState(false);
   const [originalVisible, setOriginalVisible] = useState(false);
+  const [videoOriginalUrl, setVideoOriginalUrl] = useState("");
+  const [videoState, setVideoState] = useState<"idle" | "ready" | "restoring" | "unavailable">("idle");
+  const [videoRefreshNonce, setVideoRefreshNonce] = useState(0);
+  const handledVideoRefreshNonceRef = useRef(0);
   const currentItem = lightbox.batch.items[lightbox.index];
   const isVideo = currentItem.mediaType.startsWith("video/");
   const previewUrl = currentItem.previewUrl || getPreviewUrl(currentItem.id, lightbox.albumId, currentItem.processedAt ?? currentItem.uploadedAt);
-  const originalUrl = currentItem.originalUrl || getOriginalUrl(currentItem.id, lightbox.albumId);
   const hasMultiple = lightbox.batch.items.length > 1;
   const originalImage = useLightboxOriginalImage({ albumId: lightbox.albumId, currentItem });
   const hasPreview = currentItem.previewStatus === "ready";
@@ -75,6 +94,75 @@ export function LightboxViewer({ lightbox, closing, onClose, onNavigate }: Light
   useEffect(() => {
     setOriginalVisible(false);
   }, [currentItem.id, originalImage.objectUrl]);
+
+  useEffect(() => {
+    if (!isVideo) {
+      setVideoOriginalUrl("");
+      setVideoState("idle");
+      return;
+    }
+    let cancelled = false;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+    const forceStatusRefresh = videoRefreshNonce !== handledVideoRefreshNonceRef.current;
+
+    async function refreshVideoUrl(triggerRestore: boolean) {
+      try {
+        const result = await loadOriginalStatus(lightbox.albumId, currentItem.id, { triggerRestore });
+        if (cancelled) {
+          return;
+        }
+        if ((result.originalAvailability === "hot" || result.originalAvailability === "warm") && result.originalUrl) {
+          setVideoOriginalUrl(result.originalUrl);
+          setVideoState("ready");
+          return;
+        }
+        if (result.originalAvailability === "cold" || result.originalAvailability === "restoring") {
+          setVideoOriginalUrl("");
+          setVideoState("restoring");
+          pollTimer = setTimeout(() => {
+            void refreshVideoUrl(false);
+          }, VIDEO_RESTORE_POLL_INTERVAL_MS);
+          return;
+        }
+        setVideoOriginalUrl("");
+        setVideoState("unavailable");
+      } catch {
+        if (!cancelled) {
+          setVideoOriginalUrl("");
+          setVideoState("unavailable");
+        }
+      }
+    }
+
+    if (currentItem.originalAvailability === "hot" || currentItem.originalAvailability === "warm") {
+      if (currentItem.originalUrl && !forceStatusRefresh && !originalUrlNeedsRefresh(currentItem.originalUrl)) {
+        setVideoOriginalUrl(currentItem.originalUrl);
+        setVideoState("ready");
+      } else {
+        handledVideoRefreshNonceRef.current = videoRefreshNonce;
+        setVideoOriginalUrl("");
+        setVideoState("idle");
+        void refreshVideoUrl(false);
+      }
+    } else if (currentItem.originalAvailability === "cold" || currentItem.originalAvailability === "restoring") {
+      setVideoOriginalUrl("");
+      setVideoState("restoring");
+      void refreshVideoUrl(currentItem.originalAvailability === "cold");
+    } else if (currentItem.originalUrl) {
+      setVideoOriginalUrl(currentItem.originalUrl);
+      setVideoState("ready");
+    } else {
+      setVideoOriginalUrl("");
+      setVideoState("unavailable");
+    }
+
+    return () => {
+      cancelled = true;
+      if (pollTimer) {
+        clearTimeout(pollTimer);
+      }
+    };
+  }, [currentItem.id, currentItem.originalAvailability, currentItem.originalUrl, isVideo, lightbox.albumId, videoRefreshNonce]);
 
   return (
     <div className={`lightboxOverlay${visible ? " lightboxOverlayOpen" : ""}${closing ? " lightboxOverlayClosing" : ""}`} onClick={onClose} role="dialog" aria-modal="true">
@@ -104,17 +192,23 @@ export function LightboxViewer({ lightbox, closing, onClose, onNavigate }: Light
         >
           {hasMultiple ? <button className="lightboxArrow lightboxArrowLeft" onClick={() => onNavigate(-1)} type="button">‹</button> : null}
           {isVideo ? (
-            originalUrl ? (
+            videoOriginalUrl ? (
               <video
                 autoPlay
                 className="lightboxVideo"
                 controls
+                key={`${currentItem.id}:${videoRefreshNonce}:${videoOriginalUrl}`}
                 playsInline
+                onError={() => {
+                  setVideoOriginalUrl("");
+                  setVideoState("idle");
+                  setVideoRefreshNonce((value) => value + 1);
+                }}
                 poster={currentItem.previewStatus === "ready" ? previewUrl : undefined}
-                src={originalUrl}
+                src={videoOriginalUrl || getOriginalUrl(currentItem.id, lightbox.albumId)}
               />
             ) : (
-              <div className="lightboxFallback">{currentItem.originalAvailability === "cold" || currentItem.originalAvailability === "restoring" ? "原视频正在从 NAS 恢复" : "原视频暂不可用"}</div>
+              <div className="lightboxFallback">{videoState === "restoring" ? "原视频正在从 NAS 恢复" : "原视频暂不可用"}</div>
             )
           ) : (
             <div className="lightboxMediaFrame">

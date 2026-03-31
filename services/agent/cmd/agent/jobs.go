@@ -78,6 +78,8 @@ func processJobs(ctx context.Context, controlClient, transferClient *http.Client
 
 func processJob(ctx context.Context, client *http.Client, cfg config, item job, hooks workerHooks) (processingReport, error) {
 	switch item.Type {
+	case "delete_media":
+		return deleteMedia(ctx, cfg, item, hooks)
 	case "restore_original":
 		return restoreOriginal(ctx, client, cfg, item, hooks)
 	case "rehydrate_media":
@@ -159,6 +161,28 @@ func restoreOriginal(ctx context.Context, client *http.Client, cfg config, item 
 	if width, height, sizeErr := probeImageSize(item.OriginalPath); sizeErr == nil {
 		report.Width = width
 		report.Height = height
+	}
+	return report, nil
+}
+
+func deleteMedia(_ context.Context, cfg config, item job, hooks workerHooks) (processingReport, error) {
+	report := processingReport{PreviewStatus: "unavailable", OriginalPath: item.OriginalPath}
+	if strings.TrimSpace(item.OriginalPath) == "" {
+		return report, nil
+	}
+	targetDir := filepath.Dir(item.OriginalPath)
+	relativeDir, err := filepath.Rel(cfg.libraryRoot, targetDir)
+	if err != nil {
+		return report, err
+	}
+	if relativeDir == "." || strings.HasPrefix(relativeDir, "..") {
+		return report, fmt.Errorf("refusing to delete path outside library root: %s", targetDir)
+	}
+	if hooks != nil {
+		hooks.onJobStage("deleting_media")
+	}
+	if err := os.RemoveAll(targetDir); err != nil && !os.IsNotExist(err) {
+		return report, err
 	}
 	return report, nil
 }

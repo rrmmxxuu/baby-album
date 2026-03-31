@@ -1,7 +1,16 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MediaAsset } from "../../../lib/types";
+import { loadOriginalStatus } from "../../../lib/api";
 import { useLightboxOriginalImage } from "./use-lightbox-original-image";
+
+vi.mock("../../../lib/api", async () => {
+  const actual = await vi.importActual<typeof import("../../../lib/api")>("../../../lib/api");
+  return {
+    ...actual,
+    loadOriginalStatus: vi.fn()
+  };
+});
 
 class FakeXMLHttpRequest {
   static instances: FakeXMLHttpRequest[] = [];
@@ -64,6 +73,7 @@ const originalCreateObjectURL = URL.createObjectURL;
 const originalRevokeObjectURL = URL.revokeObjectURL;
 const createObjectURL = vi.fn<(blob: Blob) => string>();
 const revokeObjectURL = vi.fn<(url: string) => void>();
+const mockedLoadOriginalStatus = vi.mocked(loadOriginalStatus);
 
 function buildMedia(id: string): MediaAsset {
   return {
@@ -95,6 +105,12 @@ describe("useLightboxOriginalImage", () => {
     let objectUrlId = 0;
     FakeXMLHttpRequest.reset();
     globalThis.XMLHttpRequest = FakeXMLHttpRequest as unknown as typeof XMLHttpRequest;
+    mockedLoadOriginalStatus.mockReset();
+    mockedLoadOriginalStatus.mockResolvedValue({
+      originalAvailability: "hot",
+      originalUrl: "https://album-api.example.com/api/v1/media/media-1/original?sig=refreshed",
+      media: buildMedia("media-1")
+    });
     createObjectURL.mockReset();
     revokeObjectURL.mockReset();
     createObjectURL.mockImplementation(() => `blob:${++objectUrlId}`);
@@ -184,6 +200,42 @@ describe("useLightboxOriginalImage", () => {
     rerender({ currentItem: first });
     await waitFor(() => expect(FakeXMLHttpRequest.instances).toHaveLength(3));
     expect(FakeXMLHttpRequest.instances[2].url).toContain("/api/v1/media/media-1/original");
+  });
+
+  it("refreshes the original URL after a 401 response instead of requiring a full app reload", async () => {
+    const item = buildMedia("media-1");
+    item.originalUrl = "https://album-api.example.com/api/v1/media/media-1/original?exp=1&sig=expired";
+    const { result } = renderHook(({ currentItem }) => useLightboxOriginalImage({ albumId: "album-1", currentItem }), {
+      initialProps: { currentItem: item }
+    });
+
+    await waitFor(() => expect(mockedLoadOriginalStatus).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(FakeXMLHttpRequest.instances).toHaveLength(1));
+    expect(FakeXMLHttpRequest.instances[0].url).toContain("sig=refreshed");
+
+    act(() => FakeXMLHttpRequest.instances[0].succeed(new Blob(["fresh-original"])));
+    expect(result.current.status).toBe("loaded");
+    expect(result.current.objectUrl).toBe("blob:1");
+  });
+
+  it("retries with a refreshed signed URL when the original request returns 401", async () => {
+    const item = buildMedia("media-1");
+    item.originalUrl = "https://album-api.example.com/api/v1/media/media-1/original?exp=9999999999&sig=stale";
+    const { result } = renderHook(({ currentItem }) => useLightboxOriginalImage({ albumId: "album-1", currentItem }), {
+      initialProps: { currentItem: item }
+    });
+
+    await waitFor(() => expect(FakeXMLHttpRequest.instances).toHaveLength(1));
+    expect(FakeXMLHttpRequest.instances[0].url).toContain("sig=stale");
+
+    act(() => FakeXMLHttpRequest.instances[0].succeed(new Blob(['{"error":"unauthorized"}'], { type: "application/json" }), 401));
+    await waitFor(() => expect(mockedLoadOriginalStatus).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(FakeXMLHttpRequest.instances).toHaveLength(2));
+    expect(FakeXMLHttpRequest.instances[1].url).toContain("sig=refreshed");
+
+    act(() => FakeXMLHttpRequest.instances[1].succeed(new Blob(["fresh-original"])));
+    expect(result.current.status).toBe("loaded");
+    expect(result.current.objectUrl).toBe("blob:1");
   });
 
   it("aborts in-flight requests and revokes cached blob URLs on unmount", async () => {

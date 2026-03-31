@@ -258,6 +258,11 @@ type AppState struct {
 	ActiveAlbumID string          `json:"activeAlbumId,omitempty"`
 }
 
+type DeleteCleanup struct {
+	LocalBlobKeys  []string
+	WarmObjectKeys []string
+}
+
 type Repository interface {
 	RegisterUser(input RegisterUserInput) (AuthResult, error)
 	Login(input LoginInput) (AuthResult, error)
@@ -273,8 +278,8 @@ type Repository interface {
 	CreateTimelineEntry(userID string, input CreateTimelineEntryInput) (domain.TimelineEntry, error)
 	CreateTimelineComment(userID string, input CreateTimelineCommentInput) (domain.TimelineComment, error)
 	UpdateTimelineEntry(userID string, input UpdateTimelineEntryInput) (domain.TimelineEntry, error)
-	DeleteTimelineEntry(userID, albumID, entryID string) error
-	DeleteTimelineEntryMedia(userID, albumID, entryID, mediaID string) error
+	DeleteTimelineEntry(userID, albumID, entryID string) (DeleteCleanup, error)
+	DeleteTimelineEntryMedia(userID, albumID, entryID, mediaID string) (DeleteCleanup, error)
 	CreateAlbum(userID string, input CreateAlbumInput) (domain.Album, error)
 	CreateBaby(userID string, input CreateBabyInput) (domain.BabyProfile, error)
 	BabyByID(userID, albumID, babyID string) (domain.BabyProfile, error)

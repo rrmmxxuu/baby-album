@@ -72,10 +72,12 @@ func (s *stubRepository) UpdateTimelineEntry(userID string, input store.UpdateTi
 	return domain.TimelineEntry{}, nil
 }
 
-func (s *stubRepository) DeleteTimelineEntry(userID, albumID, entryID string) error { return nil }
+func (s *stubRepository) DeleteTimelineEntry(userID, albumID, entryID string) (store.DeleteCleanup, error) {
+	return store.DeleteCleanup{}, nil
+}
 
-func (s *stubRepository) DeleteTimelineEntryMedia(userID, albumID, entryID, mediaID string) error {
-	return nil
+func (s *stubRepository) DeleteTimelineEntryMedia(userID, albumID, entryID, mediaID string) (store.DeleteCleanup, error) {
+	return store.DeleteCleanup{}, nil
 }
 
 func (s *stubRepository) CreateAlbum(userID string, input store.CreateAlbumInput) (domain.Album, error) {

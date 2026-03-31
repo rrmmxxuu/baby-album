@@ -6,6 +6,7 @@ import type { MediaAsset } from "../../../lib/types";
 
 const MAX_RECENT_COMPLETED_ORIGINALS = 2;
 const RESTORE_POLL_INTERVAL_MS = 3000;
+const ORIGINAL_URL_REFRESH_SKEW_MS = 30_000;
 
 type OriginalImageTaskStatus = "idle" | "loading" | "loaded" | "restoring" | "unavailable" | "error";
 
@@ -161,11 +162,16 @@ export function useLightboxOriginalImage({ albumId, currentItem }: UseLightboxOr
     publish();
   }
 
-  function finalizeAsLoaded(task: OriginalImageTask, xhr: XMLHttpRequest) {
+  function finalizeAsLoaded(task: OriginalImageTask, xhr: XMLHttpRequest, item: MediaAsset, allowAuthRefresh: boolean) {
     if (task.xhr !== xhr) {
       return;
     }
     if (xhr.status < 200 || xhr.status >= 300 || !(xhr.response instanceof Blob)) {
+      if (allowAuthRefresh && (xhr.status === 401 || xhr.status === 403)) {
+        releaseXhr(task, xhr);
+        void refreshOriginal(task, item, false);
+        return;
+      }
       finalizeAsError(task, xhr);
       return;
     }
@@ -183,7 +189,7 @@ export function useLightboxOriginalImage({ albumId, currentItem }: UseLightboxOr
     publish();
   }
 
-  function startXhr(task: OriginalImageTask, url: string) {
+  function startXhr(task: OriginalImageTask, item: MediaAsset, url: string, allowAuthRefresh: boolean) {
     clearPoll(task);
     revokeObjectUrl(task.objectUrl);
     task.objectUrl = "";
@@ -216,7 +222,7 @@ export function useLightboxOriginalImage({ albumId, currentItem }: UseLightboxOr
       publish();
     };
 
-    xhr.onload = () => finalizeAsLoaded(task, xhr);
+    xhr.onload = () => finalizeAsLoaded(task, xhr, item, allowAuthRefresh);
     xhr.onerror = () => finalizeAsError(task, xhr);
     xhr.onabort = () => {
       if (task.xhr !== xhr) {
@@ -230,6 +236,19 @@ export function useLightboxOriginalImage({ albumId, currentItem }: UseLightboxOr
     xhr.open("GET", url);
     xhr.send();
     publish();
+  }
+
+  function originalUrlNeedsRefresh(url: string) {
+    try {
+      const parsed = new URL(url, window.location.origin);
+      const expiry = Number(parsed.searchParams.get("exp"));
+      if (!Number.isFinite(expiry) || expiry <= 0) {
+        return false;
+      }
+      return expiry * 1000 <= Date.now() + ORIGINAL_URL_REFRESH_SKEW_MS;
+    } catch {
+      return false;
+    }
   }
 
   function scheduleRestorePoll(task: OriginalImageTask, item: MediaAsset) {
@@ -252,7 +271,7 @@ export function useLightboxOriginalImage({ albumId, currentItem }: UseLightboxOr
       }
       const availability = result.originalAvailability;
       if ((availability === "hot" || availability === "warm") && result.originalUrl) {
-        startXhr(task, result.originalUrl);
+        startXhr(task, item, result.originalUrl, false);
         return;
       }
       if (availability === "cold" || availability === "restoring") {
@@ -291,7 +310,11 @@ export function useLightboxOriginalImage({ albumId, currentItem }: UseLightboxOr
     }
 
     if ((item.originalAvailability === "hot" || item.originalAvailability === "warm") && item.originalUrl) {
-      startXhr(task, item.originalUrl);
+      if (originalUrlNeedsRefresh(item.originalUrl)) {
+        void refreshOriginal(task, item, false);
+        return;
+      }
+      startXhr(task, item, item.originalUrl, true);
       return;
     }
 

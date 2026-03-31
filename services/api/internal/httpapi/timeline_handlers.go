@@ -142,10 +142,12 @@ func (s *Server) handleTimelineEntryDelete(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "albumId is required"})
 		return
 	}
-	if err := s.store.DeleteTimelineEntry(userID, albumID, entryID); err != nil {
+	cleanup, err := s.store.DeleteTimelineEntry(userID, albumID, entryID)
+	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
+	s.applyDeleteCleanup(cleanup)
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": true})
 }
 
@@ -176,9 +178,11 @@ func (s *Server) handleTimelineEntryMediaDelete(w http.ResponseWriter, r *http.R
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "albumId is required"})
 		return
 	}
-	if err := s.store.DeleteTimelineEntryMedia(userID, albumID, entryID, mediaID); err != nil {
+	cleanup, err := s.store.DeleteTimelineEntryMedia(userID, albumID, entryID, mediaID)
+	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
+	s.applyDeleteCleanup(cleanup)
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": true})
 }

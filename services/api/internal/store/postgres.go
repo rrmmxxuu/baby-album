@@ -3,6 +3,8 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -85,7 +87,7 @@ func (s *PostgresStore) migrate() error {
 		`update media_assets set upload_batch_id = id where upload_batch_id = ''`,
 		`update media_assets set uploaded_by_name = '家人' where uploaded_by_name = ''`,
 		`update media_assets set entry_id = upload_batch_id where entry_id = ''`,
-		`update media_assets set original_local_state = case when original_blob_key <> '' then 'online' when original_path <> '' then 'evicted' else 'pending' end where original_local_state not in ('pending', 'online', 'evicted') or original_local_state = ''`,
+		`update media_assets set original_local_state = case when original_blob_key <> '' then 'online' when original_path <> '' then 'evicted' else 'pending' end where (original_blob_key <> '' and original_local_state <> 'online') or (original_blob_key = '' and original_path <> '' and original_local_state = 'pending') or (original_blob_key = '' and original_path = '' and original_local_state <> 'pending')`,
 		`insert into timeline_entries (id, family_id, caption, visibility, time_mode, display_at, timeline_day, uploaded_by, uploaded_by_name, uploaded_at, created_at) select distinct m.entry_id, m.family_id, '', 'members', 'captured_at', m.captured_at, m.timeline_day, m.uploaded_by, case when m.uploaded_by_name = '' then '家人' else m.uploaded_by_name end, m.uploaded_at, m.uploaded_at from media_assets m where m.entry_id <> '' on conflict (id) do nothing`,
 		`insert into media_placements (media_id, family_id, node_id, kind, status, local_path, created_at, updated_at, last_verified_at) select m.id, m.family_id, sb.node_id, 'primary', case when m.status = 'ready' then 'ready' else 'pending' end, m.original_path, coalesce(m.processed_at, m.uploaded_at), coalesce(m.processed_at, m.uploaded_at), m.processed_at from media_assets m join storage_node_bindings sb on sb.family_id = m.family_id and sb.mode = 'primary' and sb.status = 'active' where m.original_blob_key <> '' on conflict (media_id, node_id) do nothing`,
 		`create table if not exists upload_sessions (id text primary key, family_id text not null references families(id), entry_id text not null default '', upload_batch_id text not null default '', uploaded_by text not null default '', uploaded_by_name text not null default '', media_id text not null references media_assets(id), file_name text not null, media_type text not null, status text not null, created_at timestamptz not null, assigned_to text not null references storage_nodes(id), byte_size bigint not null default 0, blob_key text not null default '')`,
@@ -97,6 +99,7 @@ func (s *PostgresStore) migrate() error {
 		`update upload_sessions set uploaded_by_name = '家人' where uploaded_by_name = ''`,
 		`update upload_sessions set entry_id = upload_batch_id where entry_id = ''`,
 		`create table if not exists agent_jobs (id text primary key, node_id text not null references storage_nodes(id), family_id text not null references families(id), media_id text not null references media_assets(id), type text not null, status text not null, created_at timestamptz not null, updated_at timestamptz not null)`,
+		`create table if not exists media_deletion_jobs (id text primary key, node_id text not null references storage_nodes(id), family_id text not null references families(id), media_id text not null, original_path text not null default '', status text not null, created_at timestamptz not null, updated_at timestamptz not null)`,
 		`create table if not exists r2_usage_counters (month_key text primary key, class_a_count bigint not null default 0, class_b_count bigint not null default 0, updated_at timestamptz not null)`,
 		`create index if not exists idx_family_members_user on family_members (user_id)`,
 		`alter table family_members add column if not exists relation text not null default ''`,
@@ -111,6 +114,7 @@ func (s *PostgresStore) migrate() error {
 		`create index if not exists idx_media_assets_local_eviction on media_assets (original_local_state, processed_at asc, original_last_accessed_at asc)`,
 		`create index if not exists idx_media_assets_r2_eviction on media_assets (original_r2_state, original_last_accessed_at asc)`,
 		`create index if not exists idx_agent_jobs_node_status_created on agent_jobs (node_id, status, created_at asc)`,
+		`create index if not exists idx_media_deletion_jobs_node_status_created on media_deletion_jobs (node_id, status, created_at asc)`,
 	}
 	for _, statement := range statements {
 		if _, err := s.db.Exec(statement); err != nil {
@@ -719,76 +723,206 @@ func (s *PostgresStore) UpdateTimelineEntry(userID string, input UpdateTimelineE
 	return entry, nil
 }
 
-func (s *PostgresStore) DeleteTimelineEntry(userID, albumID, entryID string) error {
-	entry, err := s.timelineEntryByID(albumID, entryID)
-	if err != nil {
-		return err
-	}
-	if err := s.authorizeTimelineEntryEdit(userID, entry); err != nil {
-		return err
-	}
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if _, err := tx.Exec(`delete from timeline_comments where family_id = $1 and entry_id = $2`, albumID, entryID); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(`delete from agent_jobs where family_id = $1 and media_id in (select id from media_assets where family_id = $1 and entry_id = $2)`, albumID, entryID); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(`delete from upload_sessions where family_id = $1 and entry_id = $2`, albumID, entryID); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(`delete from media_placements where family_id = $1 and media_id in (select id from media_assets where family_id = $1 and entry_id = $2)`, albumID, entryID); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(`delete from media_assets where family_id = $1 and entry_id = $2`, albumID, entryID); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(`delete from timeline_entries where family_id = $1 and id = $2`, albumID, entryID); err != nil {
-		return err
-	}
-	return tx.Commit()
+type mediaDeletionJob struct {
+	MediaID      string
+	NodeID       string
+	OriginalPath string
 }
 
-func (s *PostgresStore) DeleteTimelineEntryMedia(userID, albumID, entryID, mediaID string) error {
+func (s *PostgresStore) collectEntryDeleteCleanupTx(tx *sql.Tx, albumID, entryID string) (DeleteCleanup, []mediaDeletionJob, error) {
+	rows, err := tx.Query(`select preview_blob_key, original_blob_key, original_r2_key from media_assets where family_id = $1 and entry_id = $2`, albumID, entryID)
+	if err != nil {
+		return DeleteCleanup{}, nil, err
+	}
+	defer rows.Close()
+	localKeys := make(map[string]struct{})
+	warmKeys := make(map[string]struct{})
+	for rows.Next() {
+		var previewKey, originalKey, warmKey string
+		if err := rows.Scan(&previewKey, &originalKey, &warmKey); err != nil {
+			return DeleteCleanup{}, nil, err
+		}
+		if previewKey != "" {
+			localKeys[previewKey] = struct{}{}
+		}
+		if originalKey != "" {
+			localKeys[originalKey] = struct{}{}
+		}
+		if warmKey != "" {
+			warmKeys[warmKey] = struct{}{}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return DeleteCleanup{}, nil, err
+	}
+	jobRows, err := tx.Query(`select mp.media_id, mp.node_id, mp.local_path from media_placements mp join media_assets ma on ma.id = mp.media_id where mp.family_id = $1 and ma.entry_id = $2 and mp.local_path <> ''`, albumID, entryID)
+	if err != nil {
+		return DeleteCleanup{}, nil, err
+	}
+	defer jobRows.Close()
+	var jobs []mediaDeletionJob
+	for jobRows.Next() {
+		var item mediaDeletionJob
+		if err := jobRows.Scan(&item.MediaID, &item.NodeID, &item.OriginalPath); err != nil {
+			return DeleteCleanup{}, nil, err
+		}
+		jobs = append(jobs, item)
+	}
+	if err := jobRows.Err(); err != nil {
+		return DeleteCleanup{}, nil, err
+	}
+	return DeleteCleanup{
+		LocalBlobKeys:  mapKeys(localKeys),
+		WarmObjectKeys: mapKeys(warmKeys),
+	}, jobs, nil
+}
+
+func (s *PostgresStore) collectMediaDeleteCleanupTx(tx *sql.Tx, albumID, entryID, mediaID string) (DeleteCleanup, []mediaDeletionJob, error) {
+	var previewKey, originalKey, warmKey string
+	err := tx.QueryRow(`select preview_blob_key, original_blob_key, original_r2_key from media_assets where family_id = $1 and entry_id = $2 and id = $3`, albumID, entryID, mediaID).Scan(&previewKey, &originalKey, &warmKey)
+	if err == sql.ErrNoRows {
+		return DeleteCleanup{}, nil, ErrNotFound
+	}
+	if err != nil {
+		return DeleteCleanup{}, nil, err
+	}
+	rows, err := tx.Query(`select media_id, node_id, local_path from media_placements where family_id = $1 and media_id = $2 and local_path <> ''`, albumID, mediaID)
+	if err != nil {
+		return DeleteCleanup{}, nil, err
+	}
+	defer rows.Close()
+	var jobs []mediaDeletionJob
+	for rows.Next() {
+		var item mediaDeletionJob
+		if err := rows.Scan(&item.MediaID, &item.NodeID, &item.OriginalPath); err != nil {
+			return DeleteCleanup{}, nil, err
+		}
+		jobs = append(jobs, item)
+	}
+	if err := rows.Err(); err != nil {
+		return DeleteCleanup{}, nil, err
+	}
+	cleanup := DeleteCleanup{}
+	if previewKey != "" {
+		cleanup.LocalBlobKeys = append(cleanup.LocalBlobKeys, previewKey)
+	}
+	if originalKey != "" {
+		cleanup.LocalBlobKeys = append(cleanup.LocalBlobKeys, originalKey)
+	}
+	if warmKey != "" {
+		cleanup.WarmObjectKeys = append(cleanup.WarmObjectKeys, warmKey)
+	}
+	return cleanup, jobs, nil
+}
+
+func (s *PostgresStore) enqueueMediaDeletionJobsTx(tx *sql.Tx, albumID string, jobs []mediaDeletionJob, now time.Time) error {
+	for _, item := range jobs {
+		if strings.TrimSpace(item.NodeID) == "" || strings.TrimSpace(item.OriginalPath) == "" {
+			continue
+		}
+		if _, err := tx.Exec(`insert into media_deletion_jobs (id, node_id, family_id, media_id, original_path, status, created_at, updated_at) values ($1, $2, $3, $4, $5, $6, $7, $7)`, newID("job"), item.NodeID, albumID, item.MediaID, item.OriginalPath, domain.JobPending, now); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func mapKeys(items map[string]struct{}) []string {
+	keys := make([]string, 0, len(items))
+	for key := range items {
+		keys = append(keys, key)
+	}
+	return keys
+}
+
+func (s *PostgresStore) DeleteTimelineEntry(userID, albumID, entryID string) (DeleteCleanup, error) {
 	entry, err := s.timelineEntryByID(albumID, entryID)
 	if err != nil {
-		return err
+		return DeleteCleanup{}, err
 	}
 	if err := s.authorizeTimelineEntryEdit(userID, entry); err != nil {
-		return err
+		return DeleteCleanup{}, err
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
-		return err
+		return DeleteCleanup{}, err
 	}
 	defer tx.Rollback()
-	result, err := tx.Exec(`delete from agent_jobs where family_id = $1 and media_id = $2`, albumID, mediaID)
+	cleanup, deletionJobs, err := s.collectEntryDeleteCleanupTx(tx, albumID, entryID)
 	if err != nil {
-		return err
+		return DeleteCleanup{}, err
 	}
-	_ = result
+	if err := s.enqueueMediaDeletionJobsTx(tx, albumID, deletionJobs, time.Now().UTC()); err != nil {
+		return DeleteCleanup{}, err
+	}
+	if _, err := tx.Exec(`delete from timeline_comments where family_id = $1 and entry_id = $2`, albumID, entryID); err != nil {
+		return DeleteCleanup{}, err
+	}
+	if _, err := tx.Exec(`delete from agent_jobs where family_id = $1 and media_id in (select id from media_assets where family_id = $1 and entry_id = $2)`, albumID, entryID); err != nil {
+		return DeleteCleanup{}, err
+	}
+	if _, err := tx.Exec(`delete from upload_sessions where family_id = $1 and entry_id = $2`, albumID, entryID); err != nil {
+		return DeleteCleanup{}, err
+	}
+	if _, err := tx.Exec(`delete from media_placements where family_id = $1 and media_id in (select id from media_assets where family_id = $1 and entry_id = $2)`, albumID, entryID); err != nil {
+		return DeleteCleanup{}, err
+	}
+	if _, err := tx.Exec(`delete from media_assets where family_id = $1 and entry_id = $2`, albumID, entryID); err != nil {
+		return DeleteCleanup{}, err
+	}
+	if _, err := tx.Exec(`delete from timeline_entries where family_id = $1 and id = $2`, albumID, entryID); err != nil {
+		return DeleteCleanup{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return DeleteCleanup{}, err
+	}
+	return cleanup, nil
+}
+
+func (s *PostgresStore) DeleteTimelineEntryMedia(userID, albumID, entryID, mediaID string) (DeleteCleanup, error) {
+	entry, err := s.timelineEntryByID(albumID, entryID)
+	if err != nil {
+		return DeleteCleanup{}, err
+	}
+	if err := s.authorizeTimelineEntryEdit(userID, entry); err != nil {
+		return DeleteCleanup{}, err
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return DeleteCleanup{}, err
+	}
+	defer tx.Rollback()
+	cleanup, deletionJobs, err := s.collectMediaDeleteCleanupTx(tx, albumID, entryID, mediaID)
+	if err != nil {
+		return DeleteCleanup{}, err
+	}
+	if err := s.enqueueMediaDeletionJobsTx(tx, albumID, deletionJobs, time.Now().UTC()); err != nil {
+		return DeleteCleanup{}, err
+	}
+	if _, err := tx.Exec(`delete from agent_jobs where family_id = $1 and media_id = $2`, albumID, mediaID); err != nil {
+		return DeleteCleanup{}, err
+	}
 	if _, err := tx.Exec(`delete from upload_sessions where family_id = $1 and media_id = $2`, albumID, mediaID); err != nil {
-		return err
+		return DeleteCleanup{}, err
 	}
 	if _, err := tx.Exec(`delete from media_placements where family_id = $1 and media_id = $2`, albumID, mediaID); err != nil {
-		return err
+		return DeleteCleanup{}, err
 	}
 	deleteResult, err := tx.Exec(`delete from media_assets where family_id = $1 and entry_id = $2 and id = $3`, albumID, entryID, mediaID)
 	if err != nil {
-		return err
+		return DeleteCleanup{}, err
 	}
 	affected, err := deleteResult.RowsAffected()
 	if err != nil {
-		return err
+		return DeleteCleanup{}, err
 	}
 	if affected == 0 {
-		return ErrNotFound
+		return DeleteCleanup{}, ErrNotFound
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return DeleteCleanup{}, err
+	}
+	return cleanup, nil
 }
 
 func (s *PostgresStore) CreateAlbum(userID string, input CreateAlbumInput) (domain.Album, error) {
@@ -1415,7 +1549,30 @@ func (s *PostgresStore) PendingJobs(nodeID, token string) ([]domain.AgentJob, er
 		}
 		jobs = append(jobs, item)
 	}
-	return jobs, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	deleteRows, err := s.db.Query(`select id, node_id, family_id, media_id, status, created_at, updated_at, original_path from media_deletion_jobs where node_id = $1 and status = $2 order by created_at asc`, nodeID, domain.JobPending)
+	if err != nil {
+		return nil, err
+	}
+	defer deleteRows.Close()
+	for deleteRows.Next() {
+		var item domain.AgentJob
+		if err := deleteRows.Scan(&item.ID, &item.NodeID, &item.FamilyID, &item.MediaID, &item.Status, &item.CreatedAt, &item.UpdatedAt, &item.OriginalPath); err != nil {
+			return nil, err
+		}
+		item.Type = "delete_media"
+		item.FileName = filepath.Base(strings.TrimSpace(item.OriginalPath))
+		jobs = append(jobs, item)
+	}
+	if err := deleteRows.Err(); err != nil {
+		return nil, err
+	}
+	sort.Slice(jobs, func(i, j int) bool {
+		return jobs[i].CreatedAt.Before(jobs[j].CreatedAt)
+	})
+	return jobs, nil
 }
 
 func (s *PostgresStore) AgentJob(nodeID, token, jobID string) (domain.AgentJob, error) {
@@ -1429,7 +1586,24 @@ func (s *PostgresStore) AgentJob(nodeID, token, jobID string) (domain.AgentJob, 
 	var item domain.AgentJob
 	err = s.db.QueryRow(`select aj.id, aj.node_id, aj.family_id, aj.media_id, aj.type, aj.status, aj.created_at, aj.updated_at, ma.file_name, ma.media_type, coalesce(us.byte_size, 0), ma.original_blob_key, ma.original_path, ma.original_r2_state, ma.original_r2_key from agent_jobs aj join media_assets ma on ma.id = aj.media_id left join upload_sessions us on us.media_id = aj.media_id where aj.id = $1`, jobID).Scan(&item.ID, &item.NodeID, &item.FamilyID, &item.MediaID, &item.Type, &item.Status, &item.CreatedAt, &item.UpdatedAt, &item.FileName, &item.MediaType, &item.ByteSize, &item.BlobKey, &item.OriginalPath, &item.OriginalR2State, &item.OriginalR2Key)
 	if err == sql.ErrNoRows {
-		return domain.AgentJob{}, ErrNotFound
+		err = s.db.QueryRow(`select id, node_id, family_id, media_id, status, created_at, updated_at, original_path from media_deletion_jobs where id = $1`, jobID).Scan(&item.ID, &item.NodeID, &item.FamilyID, &item.MediaID, &item.Status, &item.CreatedAt, &item.UpdatedAt, &item.OriginalPath)
+		if err == sql.ErrNoRows {
+			return domain.AgentJob{}, ErrNotFound
+		}
+		if err != nil {
+			return domain.AgentJob{}, err
+		}
+		item.Type = "delete_media"
+		item.FileName = filepath.Base(strings.TrimSpace(item.OriginalPath))
+		item.MediaType = ""
+		item.ByteSize = 0
+		item.BlobKey = ""
+		item.OriginalR2State = ""
+		item.OriginalR2Key = ""
+		if item.NodeID != nodeID {
+			return domain.AgentJob{}, ErrForbidden
+		}
+		return item, nil
 	}
 	if err != nil {
 		return domain.AgentJob{}, err
@@ -1459,7 +1633,26 @@ func (s *PostgresStore) CompleteJob(nodeID, token, jobID string, input JobComple
 	var job domain.AgentJob
 	err = tx.QueryRow(`select id, node_id, family_id, media_id, type, status, created_at, updated_at from agent_jobs where id = $1`, jobID).Scan(&job.ID, &job.NodeID, &job.FamilyID, &job.MediaID, &job.Type, &job.Status, &job.CreatedAt, &job.UpdatedAt)
 	if err == sql.ErrNoRows {
-		return domain.AgentJob{}, ErrNotFound
+		err = tx.QueryRow(`select id, node_id, family_id, media_id, status, created_at, updated_at, original_path from media_deletion_jobs where id = $1`, jobID).Scan(&job.ID, &job.NodeID, &job.FamilyID, &job.MediaID, &job.Status, &job.CreatedAt, &job.UpdatedAt, &job.OriginalPath)
+		if err == sql.ErrNoRows {
+			return domain.AgentJob{}, ErrNotFound
+		}
+		if err != nil {
+			return domain.AgentJob{}, err
+		}
+		if job.NodeID != nodeID {
+			return domain.AgentJob{}, ErrForbidden
+		}
+		job.Type = "delete_media"
+		job.Status = domain.JobCompleted
+		job.UpdatedAt = time.Now().UTC()
+		if _, err := tx.Exec(`delete from media_deletion_jobs where id = $1`, job.ID); err != nil {
+			return domain.AgentJob{}, err
+		}
+		if err := tx.Commit(); err != nil {
+			return domain.AgentJob{}, err
+		}
+		return job, nil
 	}
 	if err != nil {
 		return domain.AgentJob{}, err

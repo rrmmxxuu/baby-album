@@ -215,6 +215,13 @@ func (c *mediaCacheController) OpenWarmOriginal(ctx context.Context, item domain
 	return result, nil
 }
 
+func (c *mediaCacheController) DeleteWarmObject(ctx context.Context, key string) error {
+	if !c.r2.Enabled() || strings.TrimSpace(key) == "" {
+		return nil
+	}
+	return c.r2.Delete(ctx, key)
+}
+
 func (c *mediaCacheController) runMaintenance() {
 	c.mu.Lock()
 	defer c.mu.Unlock()

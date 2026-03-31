@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"time"
@@ -77,4 +78,17 @@ func (s *Server) ListenAndServe(addr string) error {
 		go s.cacheController.Run()
 	}
 	return http.ListenAndServe(addr, s.withMiddleware(s.mux))
+}
+
+func (s *Server) applyDeleteCleanup(cleanup store.DeleteCleanup) {
+	for _, key := range cleanup.LocalBlobKeys {
+		_ = s.blob.Delete(key)
+	}
+	if s.cacheController == nil {
+		return
+	}
+	for _, key := range cleanup.WarmObjectKeys {
+		_ = s.cacheController.DeleteWarmObject(context.Background(), key)
+	}
+	s.cacheController.RunNow()
 }

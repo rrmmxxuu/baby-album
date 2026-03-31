@@ -99,6 +99,39 @@ export function formatBabyAge(birthDate: string, targetDate = new Date().toISOSt
   return months > 0 ? `${years}岁${months}个月` : `${years}岁`;
 }
 
+export function formatDetailedBabyAge(birthDate: string, targetDate = new Date().toISOString()) {
+  const start = startOfDay(new Date(birthDate));
+  const end = startOfDay(new Date(targetDate));
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end < start) {
+    return "1天";
+  }
+  if (isSameDay(start, end)) {
+    return "1天";
+  }
+
+  let years = end.getFullYear() - start.getFullYear();
+  let months = end.getMonth() - start.getMonth();
+  let days = end.getDate() - start.getDate();
+
+  if (days < 0) {
+    const previousMonthLastDay = new Date(end.getFullYear(), end.getMonth(), 0).getDate();
+    days += previousMonthLastDay;
+    months -= 1;
+  }
+  if (months < 0) {
+    months += 12;
+    years -= 1;
+  }
+
+  if (years > 0) {
+    return `${years}岁${months}个月${days}天`;
+  }
+  if (months > 0) {
+    return `${months}个月${days}天`;
+  }
+  return `${Math.max(days, 1)}天`;
+}
+
 export function formatRelativeUploadTime(value: string) {
   const time = new Date(value);
   const now = new Date();

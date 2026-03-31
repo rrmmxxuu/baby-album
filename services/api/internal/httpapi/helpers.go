@@ -187,9 +187,39 @@ func writeStoreError(w http.ResponseWriter, err error) {
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {
+	if w.Header().Get("Cache-Control") == "" {
+		w.Header().Set("Cache-Control", "private, no-store")
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func etagMatches(r *http.Request, etag string) bool {
+	if strings.TrimSpace(etag) == "" {
+		return false
+	}
+	for _, item := range strings.Split(r.Header.Get("If-None-Match"), ",") {
+		if strings.TrimSpace(item) == etag || strings.TrimSpace(item) == "*" {
+			return true
+		}
+	}
+	return false
+}
+
+func modifiedSince(r *http.Request, lastModified time.Time) bool {
+	if lastModified.IsZero() {
+		return false
+	}
+	value := strings.TrimSpace(r.Header.Get("If-Modified-Since"))
+	if value == "" {
+		return false
+	}
+	parsed, err := http.ParseTime(value)
+	if err != nil {
+		return false
+	}
+	return !lastModified.After(parsed)
 }
 
 type multipartFile = multipart.File

@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { getOriginalUrl } from "../../../lib/api";
+import { loadOriginalStatus } from "../../../lib/api";
 import type { MediaAsset } from "../../../lib/types";
 
 const MAX_RECENT_COMPLETED_ORIGINALS = 2;
+const RESTORE_POLL_INTERVAL_MS = 3000;
 
-type OriginalImageTaskStatus = "idle" | "loading" | "loaded" | "error";
+type OriginalImageTaskStatus = "idle" | "loading" | "loaded" | "restoring" | "unavailable" | "error";
 
 type OriginalImageTask = {
   mediaId: string;
@@ -16,6 +17,7 @@ type OriginalImageTask = {
   progress: number | null;
   objectUrl: string;
   xhr: XMLHttpRequest | null;
+  pollTimer: ReturnType<typeof setTimeout> | null;
   lastAccessedAt: number;
 };
 
@@ -41,6 +43,7 @@ function createTask(mediaId: string): OriginalImageTask {
     progress: null,
     objectUrl: "",
     xhr: null,
+    pollTimer: null,
     lastAccessedAt: Date.now()
   };
 }
@@ -89,6 +92,13 @@ export function useLightboxOriginalImage({ albumId, currentItem }: UseLightboxOr
     xhr.onloadend = null;
   }
 
+  function clearPoll(task: OriginalImageTask) {
+    if (task.pollTimer) {
+      clearTimeout(task.pollTimer);
+      task.pollTimer = null;
+    }
+  }
+
   function revokeObjectUrl(objectUrl: string) {
     if (!objectUrl) {
       return;
@@ -97,6 +107,7 @@ export function useLightboxOriginalImage({ albumId, currentItem }: UseLightboxOr
   }
 
   function removeTask(task: OriginalImageTask) {
+    clearPoll(task);
     const xhr = task.xhr;
     if (xhr) {
       releaseXhr(task, xhr);
@@ -126,8 +137,8 @@ export function useLightboxOriginalImage({ albumId, currentItem }: UseLightboxOr
       .forEach((task) => keep.add(task.mediaId));
 
     for (const task of Array.from(tasksRef.current.values())) {
-      if (task.status === "error" && task.mediaId !== currentMediaId) {
-        tasksRef.current.delete(task.mediaId);
+      if ((task.status === "error" || task.status === "unavailable") && task.mediaId !== currentMediaId) {
+        removeTask(task);
         continue;
       }
       if (task.status === "loaded" && task.objectUrl && !keep.has(task.mediaId)) {
@@ -172,24 +183,8 @@ export function useLightboxOriginalImage({ albumId, currentItem }: UseLightboxOr
     publish();
   }
 
-  function startDownload(item: MediaAsset) {
-    if (!item.mediaType.startsWith("image/")) {
-      return;
-    }
-
-    const existing = tasksRef.current.get(item.id);
-    const task = existing ?? createTask(item.id);
-    task.lastAccessedAt = Date.now();
-    if (!existing) {
-      tasksRef.current.set(item.id, task);
-    }
-
-    if (task.status === "loading" || task.status === "loaded") {
-      pruneTasks();
-      publish();
-      return;
-    }
-
+  function startXhr(task: OriginalImageTask, url: string) {
+    clearPoll(task);
     revokeObjectUrl(task.objectUrl);
     task.objectUrl = "";
     task.status = "loading";
@@ -232,9 +227,75 @@ export function useLightboxOriginalImage({ albumId, currentItem }: UseLightboxOr
       publish();
     };
 
-    xhr.open("GET", getOriginalUrl(item.id, albumId));
+    xhr.open("GET", url);
     xhr.send();
     publish();
+  }
+
+  function scheduleRestorePoll(task: OriginalImageTask, item: MediaAsset) {
+    clearPoll(task);
+    task.pollTimer = setTimeout(() => {
+      void refreshOriginal(task, item, false);
+    }, RESTORE_POLL_INTERVAL_MS);
+  }
+
+  async function refreshOriginal(task: OriginalImageTask, item: MediaAsset, triggerRestore: boolean) {
+    if (!mountedRef.current || currentMediaIdRef.current !== item.id) {
+      return;
+    }
+    task.status = triggerRestore || item.originalAvailability === "restoring" ? "restoring" : "loading";
+    publish();
+    try {
+      const result = await loadOriginalStatus(albumId, item.id, { triggerRestore });
+      if (!mountedRef.current || currentMediaIdRef.current !== item.id) {
+        return;
+      }
+      const availability = result.originalAvailability;
+      if ((availability === "hot" || availability === "warm") && result.originalUrl) {
+        startXhr(task, result.originalUrl);
+        return;
+      }
+      if (availability === "cold" || availability === "restoring") {
+        task.status = "restoring";
+        scheduleRestorePoll(task, item);
+        publish();
+        return;
+      }
+      task.status = "unavailable";
+      task.loadedBytes = 0;
+      task.totalBytes = 0;
+      task.progress = null;
+      publish();
+    } catch {
+      task.status = "error";
+      publish();
+    }
+  }
+
+  function startDownload(item: MediaAsset) {
+    if (!item.mediaType.startsWith("image/")) {
+      return;
+    }
+
+    const existing = tasksRef.current.get(item.id);
+    const task = existing ?? createTask(item.id);
+    task.lastAccessedAt = Date.now();
+    if (!existing) {
+      tasksRef.current.set(item.id, task);
+    }
+
+    if (task.status === "loading" || task.status === "loaded" || task.status === "restoring") {
+      pruneTasks();
+      publish();
+      return;
+    }
+
+    if ((item.originalAvailability === "hot" || item.originalAvailability === "warm") && item.originalUrl) {
+      startXhr(task, item.originalUrl);
+      return;
+    }
+
+    void refreshOriginal(task, item, item.originalAvailability === "cold");
   }
 
   useEffect(() => {
@@ -256,7 +317,7 @@ export function useLightboxOriginalImage({ albumId, currentItem }: UseLightboxOr
     }
     pruneTasks();
     startDownload(currentItem);
-  }, [albumId, currentItem.id, currentItem.mediaType]);
+  }, [albumId, currentItem.id, currentItem.mediaType, currentItem.originalAvailability, currentItem.originalUrl]);
 
   return toSnapshot(tasksRef.current.get(currentItem.id));
 }

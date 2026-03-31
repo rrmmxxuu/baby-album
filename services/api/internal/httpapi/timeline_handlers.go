@@ -35,7 +35,7 @@ func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, page)
+	writeJSON(w, http.StatusOK, s.decorateTimelinePage(page))
 }
 
 func (s *Server) handleTimelineEntries(w http.ResponseWriter, r *http.Request) {

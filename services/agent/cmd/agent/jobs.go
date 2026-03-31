@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type workerHooks interface {
@@ -49,12 +50,12 @@ func processJobs(ctx context.Context, controlClient, transferClient *http.Client
 		if hooks != nil && !hooks.allowJobStart() {
 			return nil
 		}
-		log.Printf("processing job=%s media=%s file=%s type=%s", item.ID, item.MediaID, item.FileName, item.MediaType)
+		log.Printf("processing job=%s media=%s file=%s type=%s", item.ID, item.MediaID, item.FileName, item.Type)
 		if hooks != nil {
 			hooks.onJobStart(item, result.Items[index+1:])
 		}
 		jobCtx, cancel := context.WithTimeout(ctx, cfg.jobTimeout)
-		report, err := ingestFile(jobCtx, transferClient, cfg, item, hooks)
+		report, err := processJob(jobCtx, transferClient, cfg, item, hooks)
 		cancel()
 		if err != nil {
 			return err
@@ -75,56 +76,26 @@ func processJobs(ctx context.Context, controlClient, transferClient *http.Client
 	return nil
 }
 
-func ingestFile(ctx context.Context, client *http.Client, cfg config, item job, hooks workerHooks) (processingReport, error) {
+func processJob(ctx context.Context, client *http.Client, cfg config, item job, hooks workerHooks) (processingReport, error) {
+	switch item.Type {
+	case "restore_original":
+		return restoreOriginal(ctx, client, cfg, item, hooks)
+	case "rehydrate_media":
+		return rehydrateMedia(ctx, client, cfg, item, hooks)
+	default:
+		return ingestMedia(ctx, client, cfg, item, hooks)
+	}
+}
+
+func ingestMedia(ctx context.Context, client *http.Client, cfg config, item job, hooks workerHooks) (processingReport, error) {
 	report := processingReport{PreviewStatus: "unavailable"}
-	if item.BlobKey == "" {
-		return report, fmt.Errorf("job %s missing blob key", item.ID)
-	}
-	downloadURL := fmt.Sprintf("%s/api/v1/agents/jobs/%s/blob?nodeId=%s", cfg.apiBaseURL, item.ID, cfg.nodeID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
+	targetPath, err := downloadOriginalToLibrary(ctx, client, cfg, item, hooks)
 	if err != nil {
 		return report, err
 	}
-	req.Header.Set("X-Node-Token", cfg.nodeToken)
-	resp, err := client.Do(req)
-	if err != nil {
-		return report, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		return report, fmt.Errorf("download blob status=%s", resp.Status)
-	}
-	targetDir := filepath.Join(cfg.libraryRoot, item.FamilyID, item.MediaID)
-	if err := os.MkdirAll(targetDir, 0o755); err != nil {
-		return report, err
-	}
-	targetPath := filepath.Join(targetDir, sanitizeName(item.FileName))
-	log.Printf("downloading media=%s to %s", item.MediaID, targetPath)
-	if hooks != nil {
-		hooks.onJobStage("downloading")
-	}
-	out, err := os.Create(targetPath)
-	if err != nil {
-		return report, err
-	}
-	keepFile := false
-	defer func() {
-		if keepFile {
-			return
-		}
-		_ = out.Close()
-		_ = os.Remove(targetPath)
-	}()
-	if _, err := io.Copy(out, resp.Body); err != nil {
-		_ = out.Close()
-		return report, err
-	}
-	if err := out.Close(); err != nil {
-		return report, err
-	}
-	keepFile = true
 	report.OriginalPath = targetPath
 
+	targetDir := filepath.Dir(targetPath)
 	if hooks != nil {
 		hooks.onJobStage("generating_preview")
 	}
@@ -153,4 +124,88 @@ func ingestFile(ctx context.Context, client *http.Client, cfg config, item job, 
 		}
 	}
 	return report, nil
+}
+
+func rehydrateMedia(ctx context.Context, client *http.Client, cfg config, item job, hooks workerHooks) (processingReport, error) {
+	report := processingReport{PreviewStatus: "unavailable"}
+	targetPath, err := downloadOriginalToLibrary(ctx, client, cfg, item, hooks)
+	if err != nil {
+		return report, err
+	}
+	report.OriginalPath = targetPath
+	if width, height, sizeErr := probeImageSize(targetPath); sizeErr == nil {
+		report.Width = width
+		report.Height = height
+	}
+	return report, nil
+}
+
+func restoreOriginal(ctx context.Context, client *http.Client, cfg config, item job, hooks workerHooks) (processingReport, error) {
+	report := processingReport{PreviewStatus: "unavailable", OriginalPath: item.OriginalPath}
+	if strings.TrimSpace(item.OriginalPath) == "" {
+		return report, fmt.Errorf("job %s missing original path", item.ID)
+	}
+	if _, err := os.Stat(item.OriginalPath); err != nil {
+		return report, err
+	}
+	if hooks != nil {
+		hooks.onJobStage("uploading_restore")
+	}
+	blobKey, err := uploadRestoredOriginal(ctx, client, cfg, item.ID, item.OriginalPath)
+	if err != nil {
+		return report, err
+	}
+	report.RestoredBlobKey = blobKey
+	if width, height, sizeErr := probeImageSize(item.OriginalPath); sizeErr == nil {
+		report.Width = width
+		report.Height = height
+	}
+	return report, nil
+}
+
+func downloadOriginalToLibrary(ctx context.Context, client *http.Client, cfg config, item job, hooks workerHooks) (string, error) {
+	downloadURL := fmt.Sprintf("%s/api/v1/agents/jobs/%s/blob?nodeId=%s", cfg.apiBaseURL, item.ID, cfg.nodeID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("X-Node-Token", cfg.nodeToken)
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return "", fmt.Errorf("download blob status=%s", resp.Status)
+	}
+	targetDir := filepath.Join(cfg.libraryRoot, item.FamilyID, item.MediaID)
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		return "", err
+	}
+	targetPath := filepath.Join(targetDir, sanitizeName(item.FileName))
+	log.Printf("downloading media=%s to %s", item.MediaID, targetPath)
+	if hooks != nil {
+		hooks.onJobStage("downloading")
+	}
+	out, err := os.Create(targetPath)
+	if err != nil {
+		return "", err
+	}
+	keepFile := false
+	defer func() {
+		if keepFile {
+			return
+		}
+		_ = out.Close()
+		_ = os.Remove(targetPath)
+	}()
+	if _, err := io.Copy(out, resp.Body); err != nil {
+		_ = out.Close()
+		return "", err
+	}
+	if err := out.Close(); err != nil {
+		return "", err
+	}
+	keepFile = true
+	return targetPath, nil
 }

@@ -23,7 +23,23 @@ services:
       API_ADDR: ${API_ADDR:-:8080}
       DATABASE_URL: ${DATABASE_URL:-postgres://baby_album:baby_album@postgres:5432/baby_album?sslmode=disable}
       CACHE_ROOT: /var/lib/baby-album/cache
+      PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-https://album-api.example.com}
+      MEDIA_URL_SIGNING_SECRET: ${MEDIA_URL_SIGNING_SECRET:-change-me}
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-512}
+      BLOB_STORAGE_MAX_GB: ${BLOB_STORAGE_MAX_GB:-50}
+      BLOB_STORAGE_TARGET_GB: ${BLOB_STORAGE_TARGET_GB:-35}
+      ORIGINAL_HOT_MIN_RETENTION_DAYS: ${ORIGINAL_HOT_MIN_RETENTION_DAYS:-30}
+      BLOB_MAINTENANCE_INTERVAL_MINUTES: ${BLOB_MAINTENANCE_INTERVAL_MINUTES:-15}
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+      R2_ENDPOINT: ${R2_ENDPOINT:-}
+      R2_BUCKET: ${R2_BUCKET:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      R2_REGION: ${R2_REGION:-auto}
+      R2_MAX_GB: ${R2_MAX_GB:-8}
+      R2_TARGET_GB: ${R2_TARGET_GB:-6}
+      R2_CLASS_A_SOFT_LIMIT: ${R2_CLASS_A_SOFT_LIMIT:-800000}
+      R2_CLASS_B_SOFT_LIMIT: ${R2_CLASS_B_SOFT_LIMIT:-8000000}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://album.example.com}
     volumes:
       - media-cache:/var/lib/baby-album/cache
@@ -37,6 +53,7 @@ services:
     depends_on:
       - baby-album-api
     environment:
+      INTERNAL_API_BASE_URL: ${INTERNAL_API_BASE_URL:-http://baby-album-api:8080}
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-https://album-api.example.com}
     ports:
       - "127.0.0.1:${WEB_PORT:-3000}:3000"

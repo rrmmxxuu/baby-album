@@ -126,7 +126,7 @@ func (s *Server) handleCreateBaby(w http.ResponseWriter, r *http.Request, userID
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, baby)
+	writeJSON(w, http.StatusCreated, s.decorateBaby(baby))
 }
 
 func (s *Server) handleBabyActions(w http.ResponseWriter, r *http.Request, userID, familyID, babyID string) {
@@ -161,7 +161,7 @@ func (s *Server) handleBabyActions(w http.ResponseWriter, r *http.Request, userI
 			writeStoreError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, baby)
+		writeJSON(w, http.StatusOK, s.decorateBaby(baby))
 	default:
 		writeMethodNotAllowed(w)
 	}
@@ -177,6 +177,16 @@ func (s *Server) handleBabyAvatarUpload(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	defer file.Close()
+	if s.cacheController != nil {
+		if err := s.cacheController.EnsureSpace(header.Size); err != nil {
+			status := http.StatusInsufficientStorage
+			if !errors.Is(err, errInsufficientLocalStorage) {
+				status = http.StatusInternalServerError
+			}
+			writeJSON(w, status, map[string]string{"error": err.Error()})
+			return
+		}
+	}
 
 	saved, err := s.saveAvatar(babyID, header.Filename, file)
 	if err != nil {
@@ -192,7 +202,10 @@ func (s *Server) handleBabyAvatarUpload(w http.ResponseWriter, r *http.Request, 
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, baby)
+	if s.cacheController != nil {
+		s.cacheController.RunNow()
+	}
+	writeJSON(w, http.StatusOK, s.decorateBaby(baby))
 }
 
 func (s *Server) handleLeaveFamily(w http.ResponseWriter, r *http.Request, userID, familyID string) {

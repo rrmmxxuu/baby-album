@@ -95,7 +95,7 @@ export function buildDraftFromEntry(entry: TimelineEntry, albumId: string): Uplo
       id: createClientId("media"),
       file: null,
       fileName: item.fileName,
-      previewUrl: getPreviewUrl(item.id, albumId, item.processedAt ?? item.uploadedAt),
+      previewUrl: item.previewUrl || getPreviewUrl(item.id, albumId, item.processedAt ?? item.uploadedAt),
       capturedAt: item.capturedAt,
       mediaType: item.mediaType,
       existingMediaId: item.id

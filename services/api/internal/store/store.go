@@ -120,12 +120,23 @@ type DuplicateMediaResolveResult struct {
 }
 
 type JobCompletionInput struct {
-	OriginalPath   string
-	PreviewBlobKey string
-	Width          int
-	Height         int
-	PreviewStatus  domain.PreviewStatus
-	ProcessedAt    time.Time
+	OriginalPath    string
+	PreviewBlobKey  string
+	RestoredBlobKey string
+	Width           int
+	Height          int
+	PreviewStatus   domain.PreviewStatus
+	ProcessedAt     time.Time
+}
+
+type OriginalStatusInput struct {
+	AlbumID        string
+	MediaID        string
+	TriggerRestore bool
+}
+
+type OriginalStatusResult struct {
+	Media domain.MediaAsset `json:"media"`
 }
 
 type StorageCapacityReport struct {

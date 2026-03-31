@@ -1,5 +1,5 @@
 import type { AlbumSummary, AlbumWorkspace, BabyProfile } from "../../../lib/types";
-import { formatDate, formatDaysSinceBirth } from "../model/format";
+import { formatDate, formatDetailedBabyAge } from "../model/format";
 import { BabyAvatar } from "./baby-avatar";
 
 interface PhotosHeroProps {
@@ -13,7 +13,7 @@ interface PhotosHeroProps {
 
 export function PhotosHero({ activeAlbum, activeBaby, albumOptions, timelineCount, timelineLoading, onAlbumChange }: PhotosHeroProps) {
   const birthSummary = activeBaby?.birthDate
-    ? `${formatDate(activeBaby.birthDate)} · ${formatDaysSinceBirth(activeBaby.birthDate)}天`
+    ? `${formatDate(activeBaby.birthDate)} · ${formatDetailedBabyAge(activeBaby.birthDate)}`
     : "还没有填写出生日期";
 
   return (

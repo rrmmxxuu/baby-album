@@ -7,9 +7,11 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"babyalbum/api/internal/blob"
 	"babyalbum/api/internal/httpapi"
+	"babyalbum/api/internal/r2cache"
 	"babyalbum/api/internal/store"
 )
 
@@ -32,7 +34,28 @@ func main() {
 		}
 	}
 	allowedOrigins := parseAllowedOrigins(os.Getenv("ALLOWED_ORIGINS"))
-	server := httpapi.NewServer(repository, blob.New(cacheRoot), maxUploadBytes, allowedOrigins)
+	server := httpapi.NewServerWithOptions(repository, blob.New(cacheRoot), httpapi.Options{
+		MaxUploadBytes:            maxUploadBytes,
+		AllowedOrigins:            allowedOrigins,
+		PublicBaseURL:             firstNonEmpty(os.Getenv("PUBLIC_API_BASE_URL"), "http://localhost:8080"),
+		MediaURLSigningSecret:     firstNonEmpty(os.Getenv("MEDIA_URL_SIGNING_SECRET"), "dev-media-secret"),
+		LocalStorageMaxBytes:      parseByteEnv("BLOB_STORAGE_MAX_GB", 50),
+		LocalStorageTargetBytes:   parseByteEnv("BLOB_STORAGE_TARGET_GB", 35),
+		LocalOriginalMinRetention: time.Duration(parseIntEnv("ORIGINAL_HOT_MIN_RETENTION_DAYS", 30)) * 24 * time.Hour,
+		LocalMaintenanceInterval:  time.Duration(parseIntEnv("BLOB_MAINTENANCE_INTERVAL_MINUTES", 15)) * time.Minute,
+		R2Config: r2cache.Config{
+			AccountID:       os.Getenv("R2_ACCOUNT_ID"),
+			Endpoint:        os.Getenv("R2_ENDPOINT"),
+			Bucket:          os.Getenv("R2_BUCKET"),
+			AccessKeyID:     os.Getenv("R2_ACCESS_KEY_ID"),
+			SecretAccessKey: os.Getenv("R2_SECRET_ACCESS_KEY"),
+			Region:          firstNonEmpty(os.Getenv("R2_REGION"), "auto"),
+		},
+		R2MaxBytes:        parseByteEnv("R2_MAX_GB", 8),
+		R2TargetBytes:     parseByteEnv("R2_TARGET_GB", 6),
+		R2ClassASoftLimit: int64(parseIntEnv("R2_CLASS_A_SOFT_LIMIT", 800000)),
+		R2ClassBSoftLimit: int64(parseIntEnv("R2_CLASS_B_SOFT_LIMIT", 8000000)),
+	})
 	log.Printf("baby album api listening on %s cache=%s max_upload_mb=%d allowed_origins=%s", addr, cacheRoot, maxUploadBytes>>20, strings.Join(allowedOrigins, ","))
 	if err := server.ListenAndServe(addr); err != nil {
 		log.Fatal(err)
@@ -112,4 +135,29 @@ func parseAllowedOrigins(raw string) []string {
 		return []string{"http://localhost:3000", "http://127.0.0.1:3000"}
 	}
 	return origins
+}
+
+func parseIntEnv(key string, fallback int) int {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed <= 0 {
+		return fallback
+	}
+	return parsed
+}
+
+func parseByteEnv(key string, fallbackGiB int) int64 {
+	return int64(parseIntEnv(key, fallbackGiB)) << 30
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }

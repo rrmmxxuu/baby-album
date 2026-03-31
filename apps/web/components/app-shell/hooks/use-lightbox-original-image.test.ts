@@ -83,6 +83,9 @@ function buildMedia(id: string): MediaAsset {
     width: 1200,
     height: 900,
     previewStatus: "ready",
+    previewUrl: `https://album-api.example.com/api/v1/media/${id}/preview?sig=test`,
+    originalUrl: `https://album-api.example.com/api/v1/media/${id}/original?sig=test`,
+    originalAvailability: "hot",
     processedAt: "2026-03-20T08:40:00.000Z"
   };
 }

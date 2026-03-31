@@ -42,20 +42,22 @@ type storageCapacity struct {
 }
 
 type job struct {
-	ID        string `json:"id"`
-	Type      string `json:"type"`
-	MediaID   string `json:"mediaId"`
-	FamilyID  string `json:"familyId"`
-	FileName  string `json:"fileName"`
-	MediaType string `json:"mediaType"`
-	ByteSize  int64  `json:"byteSize"`
-	BlobKey   string `json:"blobKey"`
+	ID           string `json:"id"`
+	Type         string `json:"type"`
+	MediaID      string `json:"mediaId"`
+	FamilyID     string `json:"albumId"`
+	FileName     string `json:"fileName"`
+	MediaType    string `json:"mediaType"`
+	ByteSize     int64  `json:"byteSize"`
+	BlobKey      string `json:"blobKey"`
+	OriginalPath string `json:"originalPath"`
 }
 
 type processingReport struct {
-	OriginalPath   string `json:"originalPath"`
-	PreviewBlobKey string `json:"previewBlobKey,omitempty"`
-	Width          int    `json:"width"`
-	Height         int    `json:"height"`
-	PreviewStatus  string `json:"previewStatus"`
+	OriginalPath    string `json:"originalPath"`
+	PreviewBlobKey  string `json:"previewBlobKey,omitempty"`
+	RestoredBlobKey string `json:"restoredBlobKey,omitempty"`
+	Width           int    `json:"width"`
+	Height          int    `json:"height"`
+	PreviewStatus   string `json:"previewStatus"`
 }

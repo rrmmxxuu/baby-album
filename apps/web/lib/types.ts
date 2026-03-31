@@ -22,6 +22,7 @@ export interface BabyProfile {
   birthDate?: string;
   hasAvatar?: boolean;
   avatarUpdatedAt?: string;
+  avatarUrl?: string;
   createdAt: string;
 }
 
@@ -76,7 +77,10 @@ export interface MediaAsset {
   width: number;
   height: number;
   previewStatus: "pending" | "ready" | "unavailable";
+  previewUrl?: string;
   previewBlobKey?: string;
+  originalUrl?: string;
+  originalAvailability?: "hot" | "warm" | "cold" | "restoring" | "unavailable";
   processedAt?: string;
 }
 

@@ -9,7 +9,7 @@ interface MomentThumbProps {
 }
 
 export function MomentThumb({ albumId, item, large, onOpen }: MomentThumbProps) {
-  const previewUrl = getPreviewUrl(item.id, albumId, item.processedAt ?? item.uploadedAt);
+  const previewUrl = item.previewUrl || getPreviewUrl(item.id, albumId, item.processedAt ?? item.uploadedAt);
   return (
     <button className={`momentThumb${large ? " momentThumbLarge" : ""}`} onClick={onOpen} type="button">
       {item.previewStatus === "ready" ? (

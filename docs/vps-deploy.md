@@ -33,7 +33,7 @@ For the first smoke test, DNS-only mode is the simplest path because it removes 
 Create `.env` from `deploy/vps/.env.example`, then set at least:
 
 ```env
-NEXT_PUBLIC_API_BASE_URL=https://album-api.ramonxu.com
+INTERNAL_API_BASE_URL=http://baby-album-api:8080
 WEB_IMAGE=ghcr.io/rrmmxxuu/baby-album-web
 API_IMAGE=ghcr.io/rrmmxxuu/baby-album-api
 IMAGE_TAG=main
@@ -46,7 +46,14 @@ POSTGRES_PASSWORD=REPLACE_ME
 API_ADDR=:8080
 DATABASE_URL=postgres://baby_album:REPLACE_ME@postgres:5432/baby_album?sslmode=disable
 CACHE_ROOT=/var/lib/baby-album/cache
+PUBLIC_API_BASE_URL=https://album-api.ramonxu.com
+MEDIA_URL_SIGNING_SECRET=REPLACE_WITH_A_LONG_RANDOM_SECRET
 MAX_UPLOAD_MB=512
+BLOB_STORAGE_MAX_GB=50
+BLOB_STORAGE_TARGET_GB=35
+ORIGINAL_HOT_MIN_RETENTION_DAYS=30
+R2_MAX_GB=8
+R2_TARGET_GB=6
 ALLOWED_ORIGINS=https://album.ramonxu.com
 ```
 
@@ -60,7 +67,6 @@ Leave `IMAGE_TAG=main` if the VPS should always track the latest published image
 
 Set these GitHub repository variables:
 
-- `PROD_NEXT_PUBLIC_API_BASE_URL`: the public API origin baked into the published web image
 - `PROD_SSH_HOST`: VPS hostname or IP
 - `PROD_SSH_PORT`: optional SSH port, default `22`
 - `PROD_SSH_USER`: SSH user for the deployment workflow

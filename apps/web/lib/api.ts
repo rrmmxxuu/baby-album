@@ -74,6 +74,17 @@ export function getBabyAvatarUrl(babyId: string, albumId: string, version?: stri
   return `${apiBaseUrl}/api/v1/babies/${encodeURIComponent(babyId)}/avatar?albumId=${encodeURIComponent(albumId)}${suffix}`;
 }
 
+export async function loadOriginalStatus(albumId: string, mediaId: string, options?: { triggerRestore?: boolean }) {
+  const query = new URLSearchParams({ albumId });
+  if (options?.triggerRestore) {
+    query.set("triggerRestore", "true");
+  }
+  const response = await fetch(`${apiBaseUrl}/api/v1/media/${encodeURIComponent(mediaId)}/original-status?${query.toString()}`, {
+    cache: "no-store"
+  });
+  return parseResponse<{ originalAvailability: "hot" | "warm" | "cold" | "restoring" | "unavailable"; originalUrl?: string; media: import("./types").MediaAsset }>(response);
+}
+
 export async function loadAppState(albumId?: string): Promise<AppStatePayload> {
   const albumQuery = albumId ? `?albumId=${encodeURIComponent(albumId)}` : "";
   const response = await fetch(`${apiBaseUrl}/api/v1/auth/app${albumQuery}`, {

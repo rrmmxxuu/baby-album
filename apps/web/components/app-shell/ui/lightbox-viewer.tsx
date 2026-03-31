@@ -54,12 +54,14 @@ export function LightboxViewer({ lightbox, closing, onClose, onNavigate }: Light
   const [originalVisible, setOriginalVisible] = useState(false);
   const currentItem = lightbox.batch.items[lightbox.index];
   const isVideo = currentItem.mediaType.startsWith("video/");
-  const previewUrl = getPreviewUrl(currentItem.id, lightbox.albumId, currentItem.processedAt ?? currentItem.uploadedAt);
-  const originalUrl = getOriginalUrl(currentItem.id, lightbox.albumId);
+  const previewUrl = currentItem.previewUrl || getPreviewUrl(currentItem.id, lightbox.albumId, currentItem.processedAt ?? currentItem.uploadedAt);
+  const originalUrl = currentItem.originalUrl || getOriginalUrl(currentItem.id, lightbox.albumId);
   const hasMultiple = lightbox.batch.items.length > 1;
   const originalImage = useLightboxOriginalImage({ albumId: lightbox.albumId, currentItem });
   const hasPreview = currentItem.previewStatus === "ready";
   const showDownloadProgress = !isVideo && originalImage.status === "loading";
+  const showRestoreMessage = !isVideo && originalImage.status === "restoring";
+  const showUnavailableMessage = !isVideo && originalImage.status === "unavailable";
 
   useEffect(() => {
     if (closing) {
@@ -102,14 +104,18 @@ export function LightboxViewer({ lightbox, closing, onClose, onNavigate }: Light
         >
           {hasMultiple ? <button className="lightboxArrow lightboxArrowLeft" onClick={() => onNavigate(-1)} type="button">‹</button> : null}
           {isVideo ? (
-            <video
-              autoPlay
-              className="lightboxVideo"
-              controls
-              playsInline
-              poster={currentItem.previewStatus === "ready" ? previewUrl : undefined}
-              src={originalUrl}
-            />
+            originalUrl ? (
+              <video
+                autoPlay
+                className="lightboxVideo"
+                controls
+                playsInline
+                poster={currentItem.previewStatus === "ready" ? previewUrl : undefined}
+                src={originalUrl}
+              />
+            ) : (
+              <div className="lightboxFallback">{currentItem.originalAvailability === "cold" || currentItem.originalAvailability === "restoring" ? "原视频正在从 NAS 恢复" : "原视频暂不可用"}</div>
+            )
           ) : (
             <div className="lightboxMediaFrame">
               {hasPreview ? <img alt={currentItem.fileName} className="lightboxImage lightboxPreviewImage" decoding="async" src={previewUrl} /> : null}
@@ -125,6 +131,8 @@ export function LightboxViewer({ lightbox, closing, onClose, onNavigate }: Light
                 />
               ) : null}
               {!hasPreview && !originalImage.objectUrl ? <div className="lightboxFallback">照片预览待生成</div> : null}
+              {showRestoreMessage ? <div className="lightboxFallback">原图正在从 NAS 恢复，请稍候…</div> : null}
+              {showUnavailableMessage ? <div className="lightboxFallback">原图暂不可用</div> : null}
               {showDownloadProgress ? <LightboxDownloadProgress progress={originalImage.progress} /> : null}
             </div>
           )}

@@ -86,5 +86,5 @@ func (s *Server) handleAuthApp(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, payload)
+	writeJSON(w, http.StatusOK, s.decorateAppState(payload))
 }

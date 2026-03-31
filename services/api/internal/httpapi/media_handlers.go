@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -78,7 +80,16 @@ func (s *Server) handleUploadSessionActions(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	defer file.Close()
-
+	if s.cacheController != nil {
+		if err := s.cacheController.EnsureSpace(header.Size); err != nil {
+			status := http.StatusInsufficientStorage
+			if !errors.Is(err, errInsufficientLocalStorage) {
+				status = http.StatusInternalServerError
+			}
+			writeJSON(w, status, map[string]string{"error": err.Error()})
+			return
+		}
+	}
 	saved, err := s.blob.Save(sessionID, header.Filename, file)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -93,17 +104,55 @@ func (s *Server) handleUploadSessionActions(w http.ResponseWriter, r *http.Reque
 		writeStoreError(w, err)
 		return
 	}
+	if s.cacheController != nil {
+		s.cacheController.RunNow()
+	}
 	writeJSON(w, http.StatusOK, session)
 }
 
 func (s *Server) handleMediaActions(w http.ResponseWriter, r *http.Request) {
 	path := trimAPIPrefix(r.URL.Path, "/api/v1/media/")
-	if !strings.HasSuffix(path, "/preview") && !strings.HasSuffix(path, "/original") {
+	switch {
+	case strings.HasSuffix(path, "/preview"), strings.HasSuffix(path, "/original"):
+		s.handleMediaBinary(w, r, path)
+	case strings.HasSuffix(path, "/original-status"):
+		s.handleMediaOriginalStatus(w, r, path)
+	default:
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
-		return
 	}
+}
+
+func (s *Server) handleMediaBinary(w http.ResponseWriter, r *http.Request, path string) {
 	if r.Method != http.MethodGet {
 		writeMethodNotAllowed(w)
+		return
+	}
+	serveOriginal := strings.HasSuffix(path, "/original")
+	mediaID := strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(path, "/preview"), "/original"), "/")
+	if mediaID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "media id is required"})
+		return
+	}
+	item, err := s.resolveMediaAssetRequest(r, mediaID, mediaRequestKind(serveOriginal))
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	item = s.decorateMediaAsset(item)
+	if serveOriginal {
+		s.serveOriginalAsset(w, r, item)
+		return
+	}
+	s.servePreviewAsset(w, r, item)
+}
+
+func (s *Server) handleMediaOriginalStatus(w http.ResponseWriter, r *http.Request, path string) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w)
+		return
+	}
+	if s.mediaStore == nil {
+		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "media state store unavailable"})
 		return
 	}
 	userID, err := s.actorID(r)
@@ -111,42 +160,132 @@ func (s *Server) handleMediaActions(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	serveOriginal := strings.HasSuffix(path, "/original")
-	mediaID := strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(path, "/preview"), "/original"), "/")
+	mediaID := strings.TrimSuffix(strings.TrimSuffix(path, "/original-status"), "/")
 	if mediaID == "" || albumID(r) == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "media id and albumId are required"})
 		return
 	}
-	item, err := s.store.MediaByID(albumID(r), userID, mediaID)
+	triggerRestore := r.URL.Query().Get("triggerRestore") == "true"
+	item, err := s.mediaStore.ResolveOriginalStatus(userID, albumID(r), mediaID, triggerRestore)
 	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
-	blobKey := item.PreviewBlobKey
-	contentType := "image/jpeg"
-	fileName := filepath.Base(item.FileName) + "-preview.jpg"
-	if serveOriginal {
-		if item.OriginalBlobKey == "" {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "original not available"})
-			return
-		}
-		blobKey = item.OriginalBlobKey
-		contentType = item.MediaType
-		fileName = filepath.Base(item.FileName)
-	} else {
-		if item.PreviewStatus != domain.PreviewReady || item.PreviewBlobKey == "" {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "preview not available"})
-			return
-		}
-	}
-	blobFile, err := s.blob.Open(blobKey)
-	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+	item = s.decorateMediaAsset(item)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"media":                item,
+		"originalAvailability": item.OriginalAvail,
+		"originalUrl":          item.OriginalURL,
+	})
+}
+
+func (s *Server) servePreviewAsset(w http.ResponseWriter, r *http.Request, item domain.MediaAsset) {
+	if item.PreviewStatus != domain.PreviewReady || item.PreviewBlobKey == "" {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "preview not available"})
 		return
 	}
-	defer blobFile.Close()
-	w.Header().Set("Content-Type", contentType)
-	http.ServeContent(w, r, fileName, time.Time{}, blobFile)
+	file, err := s.blob.Open(item.PreviewBlobKey)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "preview blob not found"})
+		return
+	}
+	defer file.Close()
+	lastModified := item.UploadedAt
+	if item.ProcessedAt != nil {
+		lastModified = item.ProcessedAt.UTC()
+	}
+	etag := mediaETag(previewURLKind, item)
+	if etagMatches(r, etag) || modifiedSince(r, lastModified) {
+		w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
+		w.Header().Set("ETag", etag)
+		w.Header().Set("Last-Modified", lastModified.UTC().Format(http.TimeFormat))
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("ETag", etag)
+	w.Header().Set("Last-Modified", lastModified.UTC().Format(http.TimeFormat))
+	http.ServeContent(w, r, filepath.Base(item.FileName)+"-preview.jpg", lastModified, file)
+}
+
+func (s *Server) serveOriginalAsset(w http.ResponseWriter, r *http.Request, item domain.MediaAsset) {
+	availability := mediaOriginalAvailability(item)
+	if availability == domain.OriginalHot {
+		if err := s.serveLocalOriginal(w, r, item); err == nil {
+			return
+		}
+		if item.OriginalR2State == "online" && strings.TrimSpace(item.OriginalR2Key) != "" {
+			availability = domain.OriginalWarm
+		} else if item.OriginalPath != "" {
+			availability = domain.OriginalCold
+		} else {
+			availability = domain.OriginalUnavailable
+		}
+	}
+	if availability == domain.OriginalWarm {
+		if s.cacheController != nil {
+			restored, err := s.cacheController.RestoreLocalOriginalFromWarmCache(r.Context(), item)
+			if err == nil {
+				restored = s.decorateMediaAsset(restored)
+				if err := s.serveLocalOriginal(w, r, restored); err == nil {
+					return
+				}
+			}
+			warmResult, warmErr := s.cacheController.OpenWarmOriginal(r.Context(), item)
+			if warmErr == nil {
+				defer warmResult.Body.Close()
+				s.serveWarmOriginalStream(w, item, warmResult.Body)
+				return
+			}
+		}
+	}
+	status := http.StatusNotFound
+	message := "original not available"
+	if availability == domain.OriginalCold || availability == domain.OriginalRestoring {
+		status = http.StatusAccepted
+		message = "original restoring"
+	}
+	writeJSON(w, status, map[string]any{
+		"error":                message,
+		"originalAvailability": availability,
+	})
+}
+
+func (s *Server) serveLocalOriginal(w http.ResponseWriter, r *http.Request, item domain.MediaAsset) error {
+	file, err := s.blob.Open(item.OriginalBlobKey)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	lastModified := item.UploadedAt
+	if item.ProcessedAt != nil {
+		lastModified = item.ProcessedAt.UTC()
+	}
+	etag := mediaETag(originalURLKind, item)
+	if etagMatches(r, etag) || modifiedSince(r, lastModified) {
+		w.Header().Set("Cache-Control", "private, no-store")
+		w.Header().Set("ETag", etag)
+		w.Header().Set("Last-Modified", lastModified.UTC().Format(http.TimeFormat))
+		w.WriteHeader(http.StatusNotModified)
+		return nil
+	}
+	if s.mediaStore != nil {
+		_ = s.mediaStore.RecordOriginalAccess(item.ID, time.Now().UTC())
+	}
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("Content-Type", item.MediaType)
+	w.Header().Set("ETag", etag)
+	w.Header().Set("Last-Modified", lastModified.UTC().Format(http.TimeFormat))
+	http.ServeContent(w, r, filepath.Base(item.FileName), lastModified, file)
+	return nil
+}
+
+func (s *Server) serveWarmOriginalStream(w http.ResponseWriter, item domain.MediaAsset, result io.Reader) {
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("Content-Type", item.MediaType)
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.Copy(w, result)
 }
 
 func (s *Server) handleBabyAssets(w http.ResponseWriter, r *http.Request) {
@@ -160,16 +299,11 @@ func (s *Server) handleBabyAssets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	babyID := parts[0]
-	if babyID == "" || albumID(r) == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "baby id and albumId are required"})
+	if babyID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "baby id is required"})
 		return
 	}
-	userID, err := s.actorID(r)
-	if err != nil {
-		writeStoreError(w, err)
-		return
-	}
-	baby, err := s.store.BabyByID(userID, albumID(r), babyID)
+	baby, err := s.resolveBabyAssetRequest(r, babyID)
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -178,12 +312,82 @@ func (s *Server) handleBabyAssets(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "avatar not available"})
 		return
 	}
-	blobFile, err := s.blob.Open(baby.AvatarKey)
+	file, err := s.blob.Open(baby.AvatarKey)
 	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "avatar blob not found"})
 		return
 	}
-	defer blobFile.Close()
+	defer file.Close()
+	lastModified := baby.CreatedAt
+	if baby.AvatarUpdatedAt != nil {
+		lastModified = baby.AvatarUpdatedAt.UTC()
+	}
+	etag := `"` + strings.ReplaceAll(strings.TrimSpace(baby.AvatarKey), `"`, "") + `"`
+	if etagMatches(r, etag) || modifiedSince(r, lastModified) {
+		w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
+		w.Header().Set("ETag", etag)
+		w.Header().Set("Last-Modified", lastModified.UTC().Format(http.TimeFormat))
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
 	w.Header().Set("Content-Type", contentTypeForFileName(baby.AvatarKey))
-	http.ServeContent(w, r, filepath.Base(baby.AvatarKey), time.Time{}, blobFile)
+	w.Header().Set("ETag", etag)
+	w.Header().Set("Last-Modified", lastModified.UTC().Format(http.TimeFormat))
+	http.ServeContent(w, r, filepath.Base(baby.AvatarKey), lastModified, file)
+}
+
+func mediaRequestKind(serveOriginal bool) string {
+	if serveOriginal {
+		return originalURLKind
+	}
+	return previewURLKind
+}
+
+func (s *Server) resolveMediaAssetRequest(r *http.Request, mediaID, expectedKind string) (domain.MediaAsset, error) {
+	if s.mediaStore != nil && s.verifySignedMediaRequest(r, expectedKind) {
+		item, err := s.mediaStore.MediaByPublicID(mediaID)
+		if err != nil {
+			return domain.MediaAsset{}, err
+		}
+		if version := strings.TrimSpace(r.URL.Query().Get("v")); version != "" && version != mediaVersion(item) {
+			return domain.MediaAsset{}, store.ErrNotFound
+		}
+		return item, nil
+	}
+	userID, err := s.actorID(r)
+	if err != nil {
+		return domain.MediaAsset{}, err
+	}
+	if albumID(r) == "" {
+		return domain.MediaAsset{}, store.ErrUnauthorized
+	}
+	return s.store.MediaByID(albumID(r), userID, mediaID)
+}
+
+func (s *Server) resolveBabyAssetRequest(r *http.Request, babyID string) (domain.BabyProfile, error) {
+	if s.mediaStore != nil && s.verifySignedMediaRequest(r, avatarURLKind) {
+		item, err := s.mediaStore.BabyByPublicID(babyID)
+		if err != nil {
+			return domain.BabyProfile{}, err
+		}
+		if version := strings.TrimSpace(r.URL.Query().Get("v")); version != "" {
+			currentVersion := item.CreatedAt.UTC().Format(time.RFC3339Nano)
+			if item.AvatarUpdatedAt != nil {
+				currentVersion = item.AvatarUpdatedAt.UTC().Format(time.RFC3339Nano)
+			}
+			if version != currentVersion {
+				return domain.BabyProfile{}, store.ErrNotFound
+			}
+		}
+		return item, nil
+	}
+	userID, err := s.actorID(r)
+	if err != nil {
+		return domain.BabyProfile{}, err
+	}
+	if albumID(r) == "" {
+		return domain.BabyProfile{}, store.ErrUnauthorized
+	}
+	return s.store.BabyByID(userID, albumID(r), babyID)
 }

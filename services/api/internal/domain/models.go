@@ -43,6 +43,7 @@ type BabyProfile struct {
 	BirthDate       *time.Time `json:"birthDate,omitempty"`
 	HasAvatar       bool       `json:"hasAvatar,omitempty"`
 	AvatarUpdatedAt *time.Time `json:"avatarUpdatedAt,omitempty"`
+	AvatarURL       string     `json:"avatarUrl,omitempty"`
 	AvatarKey       string     `json:"-"`
 	CreatedAt       time.Time  `json:"createdAt"`
 }
@@ -114,6 +115,16 @@ const (
 	PreviewUnavailable PreviewStatus = "unavailable"
 )
 
+type OriginalAvailability string
+
+const (
+	OriginalHot         OriginalAvailability = "hot"
+	OriginalWarm        OriginalAvailability = "warm"
+	OriginalCold        OriginalAvailability = "cold"
+	OriginalRestoring   OriginalAvailability = "restoring"
+	OriginalUnavailable OriginalAvailability = "unavailable"
+)
+
 type TimelineEntryVisibility string
 
 const (
@@ -156,28 +167,37 @@ type TimelineEntry struct {
 }
 
 type MediaAsset struct {
-	ID              string        `json:"id"`
-	FamilyID        string        `json:"albumId"`
-	EntryID         string        `json:"entryId"`
-	UploadBatchID   string        `json:"uploadBatchId"`
-	UploadedBy      string        `json:"uploadedBy"`
-	UploadedByName  string        `json:"uploadedByName"`
-	FileName        string        `json:"fileName"`
-	MediaType       string        `json:"mediaType"`
-	CapturedAt      time.Time     `json:"capturedAt"`
-	UploadedAt      time.Time     `json:"uploadedAt"`
-	TimelineDay     string        `json:"timelineDay"`
-	Status          MediaStatus   `json:"status"`
-	Source          string        `json:"source"`
-	Width           int           `json:"width"`
-	Height          int           `json:"height"`
-	ByteSize        int64         `json:"-"`
-	PreviewStatus   PreviewStatus `json:"previewStatus"`
-	PreviewBlobKey  string        `json:"previewBlobKey,omitempty"`
-	OriginalBlobKey string        `json:"-"`
-	ContentSHA256   string        `json:"-"`
-	ProcessedAt     *time.Time    `json:"processedAt,omitempty"`
-	OriginalPath    string        `json:"-"`
+	ID                     string               `json:"id"`
+	FamilyID               string               `json:"albumId"`
+	EntryID                string               `json:"entryId"`
+	UploadBatchID          string               `json:"uploadBatchId"`
+	UploadedBy             string               `json:"uploadedBy"`
+	UploadedByName         string               `json:"uploadedByName"`
+	FileName               string               `json:"fileName"`
+	MediaType              string               `json:"mediaType"`
+	CapturedAt             time.Time            `json:"capturedAt"`
+	UploadedAt             time.Time            `json:"uploadedAt"`
+	TimelineDay            string               `json:"timelineDay"`
+	Status                 MediaStatus          `json:"status"`
+	Source                 string               `json:"source"`
+	Width                  int                  `json:"width"`
+	Height                 int                  `json:"height"`
+	ByteSize               int64                `json:"-"`
+	PreviewStatus          PreviewStatus        `json:"previewStatus"`
+	PreviewURL             string               `json:"previewUrl,omitempty"`
+	PreviewBlobKey         string               `json:"previewBlobKey,omitempty"`
+	OriginalURL            string               `json:"originalUrl,omitempty"`
+	OriginalAvail          OriginalAvailability `json:"originalAvailability,omitempty"`
+	OriginalBlobKey        string               `json:"-"`
+	ContentSHA256          string               `json:"-"`
+	ProcessedAt            *time.Time           `json:"processedAt,omitempty"`
+	OriginalPath           string               `json:"-"`
+	OriginalLocalState     string               `json:"-"`
+	OriginalR2State        string               `json:"-"`
+	OriginalR2Key          string               `json:"-"`
+	OriginalRestoreState   string               `json:"-"`
+	OriginalLastAccessedAt *time.Time           `json:"-"`
+	OriginalEvictedAt      *time.Time           `json:"-"`
 }
 
 type UploadSession struct {
@@ -205,16 +225,19 @@ const (
 )
 
 type AgentJob struct {
-	ID        string         `json:"id"`
-	NodeID    string         `json:"nodeId"`
-	FamilyID  string         `json:"albumId"`
-	MediaID   string         `json:"mediaId"`
-	Type      string         `json:"type"`
-	Status    AgentJobStatus `json:"status"`
-	CreatedAt time.Time      `json:"createdAt"`
-	UpdatedAt time.Time      `json:"updatedAt"`
-	FileName  string         `json:"fileName"`
-	MediaType string         `json:"mediaType"`
-	ByteSize  int64          `json:"byteSize"`
-	BlobKey   string         `json:"blobKey"`
+	ID              string         `json:"id"`
+	NodeID          string         `json:"nodeId"`
+	FamilyID        string         `json:"albumId"`
+	MediaID         string         `json:"mediaId"`
+	Type            string         `json:"type"`
+	Status          AgentJobStatus `json:"status"`
+	CreatedAt       time.Time      `json:"createdAt"`
+	UpdatedAt       time.Time      `json:"updatedAt"`
+	FileName        string         `json:"fileName"`
+	MediaType       string         `json:"mediaType"`
+	ByteSize        int64          `json:"byteSize"`
+	BlobKey         string         `json:"blobKey"`
+	OriginalPath    string         `json:"originalPath,omitempty"`
+	OriginalR2State string         `json:"-"`
+	OriginalR2Key   string         `json:"-"`
 }

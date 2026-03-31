@@ -24,6 +24,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/v1/babies/", s.handleBabyAssets)
 	s.mux.HandleFunc("/api/v1/storage-nodes/register", s.handleNodeRegister)
 	s.mux.HandleFunc("/api/v1/storage-nodes/heartbeat", s.handleNodeHeartbeat)
+	s.mux.HandleFunc("/api/v1/storage-nodes/unbind", s.handleNodeUnbind)
 	s.mux.HandleFunc("/api/v1/agents/jobs", s.handleAgentJobs)
 	s.mux.HandleFunc("/api/v1/agents/jobs/", s.handleAgentJobActions)
 }

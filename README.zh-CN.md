@@ -140,33 +140,53 @@ GitHub Actions 现在会覆盖：
 
 ## Agent Docker Compose
 
-推荐在 NAS 上用 Docker Compose 启动 agent，因为镜像里已经内置了 `ffmpeg`，可用于视频海报生成。
+推荐在 NAS 上用 Docker Compose 启动 agent，并直接使用镜像内置的本地控制面完成首次接入。
 
-1. 先在网页里生成配对码
-2. 运行：
-
-```bash
-./scripts/agent-init.sh \
-  --api-base-url https://album-api.example.com \
-  --pairing-code ABC123 \
-  --node-name "Living Room NAS" \
-  --library-path /volume1/baby-album/library
-```
-
-3. 再启动 agent：
+1. 先准备一个简单的 `.env`，至少包含：
+   - `AGENT_IMAGE`
+   - `AGENT_IMAGE_TAG`
+   - `AGENT_LIBRARY_HOST_PATH`
+   - `AGENT_CONFIG_HOST_PATH`
+2. 启动 agent：
 
 ```bash
 cd deploy/agent
 docker compose pull && docker compose up -d
 ```
 
+3. 在家里局域网打开 `http://<nas局域网IP>:8091`
+4. 执行 `docker logs baby-album-agent`，找到启动时打印的 bootstrap secret，首次输入后再设置一个本地管理密码
+5. 在本地控制面中填写：
+   - API Base URL
+   - Node Name
+   - Pairing Code
+6. 首次绑定成功后，面板会自动把 `agent.json` 和节点状态写入挂载出来的配置目录；worker 也会开始处理任务，后续重启只需要 `docker compose up -d`
+
 这套部署会使用：
 
-- 一个挂载出来的媒体库目录，用来存原图和 `.agent-state.json`
-- 一个挂载出来的 `config/agent.json`，用于保存可读配置
-- 一个极简 `.env`，只放宿主机路径和心跳间隔
+- 一个挂载出来的媒体库目录，用来存原图
+- 一个挂载出来的配置目录，首次 setup 后会在里面写入 `agent.json`、`node-state.json`、`panel-auth.json`、`runtime.json` 和持久化日志
+- 一个对局域网暴露的本地管理页面端口
 
-如果 `config/agent.json` 不存在，并且你以前台交互方式启动容器，agent 会进入交互式配置向导并自动写入这个配置文件。首次完成后，后续就可以直接 `docker compose up -d`。
+旧的交互式 `agent setup` 仍然保留作为 fallback，但 Docker 场景默认应通过本地控制面完成首次 setup。
+
+### Agent 本地迁盘
+
+当当前 NAS 盘空间不够时，可以先用 migration override 把新盘临时挂进容器：
+
+```bash
+cd deploy/agent
+docker compose -f docker-compose.yml -f docker-compose.migration.yml up -d
+```
+
+其中 `AGENT_MIGRATION_HOST_PATH` 指向新盘路径。
+
+然后：
+
+1. 打开本地控制面，确认迁移目标显示为“已挂载”
+2. 点击迁移操作。agent 会自动进入维护模式，等待当前任务完成后复制媒体库并校验结果
+3. 页面显示 `awaiting_cutover` 后，把正式的 `AGENT_LIBRARY_HOST_PATH` 改到新盘，去掉 migration override，再重启一次容器
+4. 新容器启动后会自动识别切换完成，并恢复正常工作
 
 ## 生产说明
 

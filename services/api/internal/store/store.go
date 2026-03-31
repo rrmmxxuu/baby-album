@@ -282,6 +282,7 @@ type Repository interface {
 	CreateStorageNodePairing(userID string, input CreateStorageNodePairingInput) (domain.StorageNodePairing, error)
 	RegisterStorageNode(input StorageNodeRegisterInput) (StorageNodeRegisterResult, error)
 	HeartbeatStorageNode(nodeID, token string, capacity StorageCapacityReport) (domain.StorageNode, error)
+	UnbindStorageNode(nodeID, token string) error
 	PendingJobs(nodeID, token string) ([]domain.AgentJob, error)
 	AgentJob(nodeID, token, jobID string) (domain.AgentJob, error)
 	CompleteJob(nodeID, token, jobID string, input JobCompletionInput) (domain.AgentJob, error)

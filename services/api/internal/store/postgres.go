@@ -1333,6 +1333,54 @@ func (s *PostgresStore) HeartbeatStorageNode(nodeID, token string, capacity Stor
 	return s.touchNode(nodeID, "", token, capacity)
 }
 
+func (s *PostgresStore) UnbindStorageNode(nodeID, token string) error {
+	node, err := s.nodeByID(nodeID)
+	if err != nil {
+		return err
+	}
+	if node.RegistrationToken != token {
+		return ErrNodeUnauthorized
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var pendingJobs int
+	if err := tx.QueryRow(`select count(1) from agent_jobs where node_id = $1 and status = $2`, nodeID, domain.JobPending).Scan(&pendingJobs); err != nil {
+		return err
+	}
+	if pendingJobs > 0 {
+		return fmt.Errorf("%w: node has pending jobs", ErrConflict)
+	}
+
+	var pendingUploads int
+	if err := tx.QueryRow(`select count(1) from upload_sessions where assigned_to = $1 and status = 'created'`, nodeID).Scan(&pendingUploads); err != nil {
+		return err
+	}
+	if pendingUploads > 0 {
+		return fmt.Errorf("%w: node has pending upload sessions", ErrConflict)
+	}
+
+	var pendingPlacements int
+	if err := tx.QueryRow(`select count(1) from media_placements where node_id = $1 and status = 'pending'`, nodeID).Scan(&pendingPlacements); err != nil {
+		return err
+	}
+	if pendingPlacements > 0 {
+		return fmt.Errorf("%w: node has pending media placements", ErrConflict)
+	}
+
+	now := time.Now().UTC()
+	if _, err := tx.Exec(`update storage_node_bindings set status = 'inactive', updated_at = $1 where family_id = $2 and node_id = $3 and mode = 'primary' and status <> 'inactive'`, now, node.FamilyID, nodeID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`update media_placements set kind = 'replica', updated_at = $1 where family_id = $2 and node_id = $3 and kind = 'primary'`, now, node.FamilyID, nodeID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 func (s *PostgresStore) PendingJobs(nodeID, token string) ([]domain.AgentJob, error) {
 	node, err := s.nodeByID(nodeID)
 	if err != nil {

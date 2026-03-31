@@ -1,0 +1,4 @@
+services:
+  agent:
+    volumes:
+      - ${AGENT_MIGRATION_HOST_PATH}:/data/migration-target

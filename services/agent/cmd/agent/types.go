@@ -4,6 +4,11 @@ import "time"
 
 type config struct {
 	configFile        string
+	configDir         string
+	stateFile         string
+	authFile          string
+	runtimeFile       string
+	logFile           string
 	apiBaseURL        string
 	nodeID            string
 	nodeName          string
@@ -12,6 +17,8 @@ type config struct {
 	heartbeatInterval time.Duration
 	jobTimeout        time.Duration
 	libraryRoot       string
+	panelAddr         string
+	migrationTarget   string
 }
 
 type agentState struct {
@@ -24,6 +31,7 @@ type persistentConfig struct {
 	NodeName          string `json:"nodeName"`
 	PairingCode       string `json:"pairingCode"`
 	HeartbeatInterval string `json:"heartbeatInterval,omitempty"`
+	JobTimeout        string `json:"jobTimeout,omitempty"`
 	LibraryRoot       string `json:"libraryRoot,omitempty"`
 }
 

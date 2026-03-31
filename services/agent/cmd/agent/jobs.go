@@ -11,7 +11,15 @@ import (
 	"path/filepath"
 )
 
-func processJobs(ctx context.Context, controlClient, transferClient *http.Client, cfg config) error {
+type workerHooks interface {
+	onPendingJobs(items []job)
+	allowJobStart() bool
+	onJobStart(item job, remaining []job)
+	onJobStage(stage string)
+	onJobCompleted(report processingReport)
+}
+
+func processJobs(ctx context.Context, controlClient, transferClient *http.Client, cfg config, hooks workerHooks) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/api/v1/agents/jobs?nodeId=%s", cfg.apiBaseURL, cfg.nodeID), nil)
 	if err != nil {
 		return err
@@ -34,25 +42,40 @@ func processJobs(ctx context.Context, controlClient, transferClient *http.Client
 	if len(result.Items) > 0 {
 		log.Printf("received %d pending jobs", len(result.Items))
 	}
-	for _, item := range result.Items {
+	if hooks != nil {
+		hooks.onPendingJobs(result.Items)
+	}
+	for index, item := range result.Items {
+		if hooks != nil && !hooks.allowJobStart() {
+			return nil
+		}
 		log.Printf("processing job=%s media=%s file=%s type=%s", item.ID, item.MediaID, item.FileName, item.MediaType)
+		if hooks != nil {
+			hooks.onJobStart(item, result.Items[index+1:])
+		}
 		jobCtx, cancel := context.WithTimeout(ctx, cfg.jobTimeout)
-		report, err := ingestFile(jobCtx, transferClient, cfg, item)
+		report, err := ingestFile(jobCtx, transferClient, cfg, item, hooks)
 		cancel()
 		if err != nil {
 			return err
 		}
 		completeURL := fmt.Sprintf("%s/api/v1/agents/jobs/%s/complete", cfg.apiBaseURL, item.ID)
 		payload := map[string]any{"nodeId": cfg.nodeID, "report": report}
+		if hooks != nil {
+			hooks.onJobStage("completing")
+		}
 		if err := postJSON(ctx, controlClient, completeURL, cfg.nodeToken, payload, nil); err != nil {
 			return err
 		}
 		log.Printf("completed job=%s media=%s preview=%s size=%dx%d", item.ID, item.MediaID, report.PreviewStatus, report.Width, report.Height)
+		if hooks != nil {
+			hooks.onJobCompleted(report)
+		}
 	}
 	return nil
 }
 
-func ingestFile(ctx context.Context, client *http.Client, cfg config, item job) (processingReport, error) {
+func ingestFile(ctx context.Context, client *http.Client, cfg config, item job, hooks workerHooks) (processingReport, error) {
 	report := processingReport{PreviewStatus: "unavailable"}
 	if item.BlobKey == "" {
 		return report, fmt.Errorf("job %s missing blob key", item.ID)
@@ -77,6 +100,9 @@ func ingestFile(ctx context.Context, client *http.Client, cfg config, item job) 
 	}
 	targetPath := filepath.Join(targetDir, sanitizeName(item.FileName))
 	log.Printf("downloading media=%s to %s", item.MediaID, targetPath)
+	if hooks != nil {
+		hooks.onJobStage("downloading")
+	}
 	out, err := os.Create(targetPath)
 	if err != nil {
 		return report, err
@@ -99,11 +125,17 @@ func ingestFile(ctx context.Context, client *http.Client, cfg config, item job) 
 	keepFile = true
 	report.OriginalPath = targetPath
 
+	if hooks != nil {
+		hooks.onJobStage("generating_preview")
+	}
 	width, height, thumbPath, err := generatePreview(targetPath, targetDir, item.MediaType)
 	if err == nil {
 		log.Printf("generated preview media=%s preview=%s size=%dx%d", item.MediaID, thumbPath, width, height)
 		report.Width = width
 		report.Height = height
+		if hooks != nil {
+			hooks.onJobStage("uploading_preview")
+		}
 		blobKey, err := uploadPreview(ctx, client, cfg, item.ID, thumbPath)
 		if err == nil {
 			report.PreviewBlobKey = blobKey

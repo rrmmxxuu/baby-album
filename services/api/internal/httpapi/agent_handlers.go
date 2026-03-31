@@ -80,6 +80,29 @@ func (s *Server) handleNodeHeartbeat(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, node)
 }
 
+func (s *Server) handleNodeUnbind(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w)
+		return
+	}
+	var input struct {
+		NodeID string `json:"nodeId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	if strings.TrimSpace(input.NodeID) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "nodeId is required"})
+		return
+	}
+	if err := s.store.UnbindStorageNode(input.NodeID, r.Header.Get("X-Node-Token")); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "unbound"})
+}
+
 func (s *Server) handleAgentJobs(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeMethodNotAllowed(w)

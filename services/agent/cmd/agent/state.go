@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,8 +25,7 @@ func detectStorageCapacity(root string) (storageCapacity, error) {
 	}, nil
 }
 
-func loadAgentState(libraryRoot string) (agentState, error) {
-	statePath := filepath.Join(libraryRoot, ".agent-state.json")
+func loadAgentState(statePath string) (agentState, error) {
 	file, err := os.Open(statePath)
 	if err != nil {
 		return agentState{}, err
@@ -38,11 +38,17 @@ func loadAgentState(libraryRoot string) (agentState, error) {
 	return state, nil
 }
 
-func saveAgentState(libraryRoot string, state agentState) error {
-	if err := os.MkdirAll(libraryRoot, 0o755); err != nil {
+func loadLegacyAgentState(libraryRoot string) (agentState, error) {
+	if strings.TrimSpace(libraryRoot) == "" {
+		return agentState{}, errors.New("library root is empty")
+	}
+	return loadAgentState(filepath.Join(libraryRoot, ".agent-state.json"))
+}
+
+func saveAgentState(statePath string, state agentState) error {
+	if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
 		return err
 	}
-	statePath := filepath.Join(libraryRoot, ".agent-state.json")
 	file, err := os.Create(statePath)
 	if err != nil {
 		return err

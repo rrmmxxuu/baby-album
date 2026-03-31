@@ -25,7 +25,7 @@ Options:
   --api-base-url URL     Control plane base URL, e.g. http://192.168.31.200:8080
   --pairing-code CODE    Pairing code generated in the web control panel
   --node-name NAME       Friendly NAS node name shown in the app
-  --library-path PATH    Host path to store originals and agent state
+  --library-path PATH    Host path to store originals
   --heartbeat DURATION   Optional heartbeat interval, default 15s
   --target-dir PATH      Optional output directory, default deploy/agent
   --help                 Show this help
@@ -133,6 +133,7 @@ Next:
 
   cd $TARGET_DIR
   docker compose pull && docker compose up -d
+  docker logs baby-album-agent
 
 Library path:
 
@@ -141,7 +142,8 @@ Library path:
 Notes:
 
   - The container includes ffmpeg for video poster generation.
-  - After first successful pairing, node credentials are saved under the mounted library path.
+  - This script now prepares the Docker files for the local control panel flow.
+  - Open the panel on http://<nas-lan-ip>:8091, read the bootstrap secret from docker logs, set a local admin password, and then confirm the setup form.
+  - Node credentials are persisted under the mounted config directory, not under the library path.
   - The runtime config lives in $CONFIG_FILE.
-  - If you need to re-pair, stop the container and delete .agent-state.json under the library path and pairingCode in $CONFIG_FILE.
 EOF

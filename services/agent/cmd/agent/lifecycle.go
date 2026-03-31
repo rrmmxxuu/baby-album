@@ -29,7 +29,7 @@ func registerNode(ctx context.Context, client *http.Client, cfg config) (config,
 	cfg.nodeID = result.NodeID
 	cfg.nodeToken = result.NodeToken
 	log.Printf("node registered node=%s", cfg.nodeID)
-	if err := saveAgentState(cfg.libraryRoot, agentState{NodeID: cfg.nodeID, NodeToken: cfg.nodeToken}); err != nil {
+	if err := saveAgentState(cfg.stateFile, agentState{NodeID: cfg.nodeID, NodeToken: cfg.nodeToken}); err != nil {
 		return cfg, err
 	}
 	if cfg.configFile != "" {
@@ -38,6 +38,7 @@ func registerNode(ctx context.Context, client *http.Client, cfg config) (config,
 			NodeName:          cfg.nodeName,
 			PairingCode:       "",
 			HeartbeatInterval: cfg.heartbeatInterval.String(),
+			JobTimeout:        cfg.jobTimeout.String(),
 			LibraryRoot:       cfg.libraryRoot,
 		})
 	}

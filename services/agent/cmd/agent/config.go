@@ -14,14 +14,21 @@ import (
 func loadConfig() (config, error) {
 	cfg := config{
 		configFile:        envOrDefault("AGENT_CONFIG_FILE", "tmp/agent/config.json"),
-		apiBaseURL:        "http://localhost:8080",
+		apiBaseURL:        "",
 		nodeName:          fallbackHostname(),
 		heartbeatInterval: 15 * time.Second,
 		jobTimeout:        30 * time.Minute,
 		libraryRoot:       envOrDefault("AGENT_LIBRARY_ROOT", "tmp/library"),
+		panelAddr:         envOrDefault("AGENT_PANEL_ADDR", ":8091"),
+		migrationTarget:   envOrDefault("AGENT_MIGRATION_TARGET_ROOT", "/data/migration-target"),
 		nodeID:            strings.TrimSpace(os.Getenv("AGENT_NODE_ID")),
 		pairingCode:       strings.TrimSpace(os.Getenv("AGENT_PAIRING_CODE")),
 	}
+	cfg.configDir = filepath.Dir(cfg.configFile)
+	cfg.stateFile = filepath.Join(cfg.configDir, "node-state.json")
+	cfg.authFile = filepath.Join(cfg.configDir, "panel-auth.json")
+	cfg.runtimeFile = filepath.Join(cfg.configDir, "runtime.json")
+	cfg.logFile = filepath.Join(cfg.configDir, "agent.log")
 	if cfg.nodeName == "" {
 		cfg.nodeName = "Living Room NAS"
 	}
@@ -42,6 +49,11 @@ func loadConfig() (config, error) {
 		if saved.HeartbeatInterval != "" {
 			if parsed, err := time.ParseDuration(saved.HeartbeatInterval); err == nil {
 				cfg.heartbeatInterval = parsed
+			}
+		}
+		if saved.JobTimeout != "" {
+			if parsed, err := time.ParseDuration(saved.JobTimeout); err == nil {
+				cfg.jobTimeout = parsed
 			}
 		}
 		if saved.LibraryRoot != "" && os.Getenv("AGENT_LIBRARY_ROOT") == "" {
@@ -67,21 +79,29 @@ func loadConfig() (config, error) {
 	if raw := strings.TrimSpace(os.Getenv("AGENT_LIBRARY_ROOT")); raw != "" {
 		cfg.libraryRoot = raw
 	}
-	if state, err := loadAgentState(cfg.libraryRoot); err == nil {
+	if raw := strings.TrimSpace(os.Getenv("AGENT_PANEL_ADDR")); raw != "" {
+		cfg.panelAddr = raw
+	}
+	if raw := strings.TrimSpace(os.Getenv("AGENT_MIGRATION_TARGET_ROOT")); raw != "" {
+		cfg.migrationTarget = raw
+	}
+	if state, err := loadAgentState(cfg.stateFile); err == nil {
 		if cfg.nodeID == "" {
 			cfg.nodeID = state.NodeID
 		}
 		if cfg.nodeToken == "" {
 			cfg.nodeToken = state.NodeToken
 		}
+	} else if legacy, legacyErr := loadLegacyAgentState(cfg.libraryRoot); legacyErr == nil {
+		if cfg.nodeID == "" {
+			cfg.nodeID = legacy.NodeID
+		}
+		if cfg.nodeToken == "" {
+			cfg.nodeToken = legacy.NodeToken
+		}
+		_ = saveAgentState(cfg.stateFile, legacy)
 	}
 	if len(os.Args) > 1 && os.Args[1] == "setup" {
-		return runSetupWizard(cfg)
-	}
-	if needsSetup(cfg) {
-		if !isInteractiveTerminal() {
-			return config{}, fmt.Errorf("agent is not configured; run `agent setup` or start the container once with an attached terminal to create %s", cfg.configFile)
-		}
 		return runSetupWizard(cfg)
 	}
 	return cfg, nil
@@ -167,6 +187,7 @@ func runSetupWizard(cfg config) (config, error) {
 		NodeName:          cfg.nodeName,
 		PairingCode:       cfg.pairingCode,
 		HeartbeatInterval: cfg.heartbeatInterval.String(),
+		JobTimeout:        cfg.jobTimeout.String(),
 		LibraryRoot:       cfg.libraryRoot,
 	}); err != nil {
 		return config{}, err

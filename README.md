@@ -140,33 +140,53 @@ For a fuller VPS guide built around Nginx Proxy Manager and Cloudflare, use [doc
 
 ## Agent Docker Compose
 
-The recommended NAS startup path is now Docker Compose, because the agent container includes `ffmpeg` for video poster generation.
+The recommended NAS startup path is now Docker Compose with the built-in local control panel.
 
-1. Generate a pairing code in the web control panel
-2. Run:
-
-```bash
-./scripts/agent-init.sh \
-  --api-base-url https://album-api.example.com \
-  --pairing-code ABC123 \
-  --node-name "Living Room NAS" \
-  --library-path /volume1/baby-album/library
-```
-
-3. Start the agent:
+1. Prepare a simple `.env` with:
+   - `AGENT_IMAGE`
+   - `AGENT_IMAGE_TAG`
+   - `AGENT_LIBRARY_HOST_PATH`
+   - `AGENT_CONFIG_HOST_PATH`
+2. Start the agent:
 
 ```bash
 cd deploy/agent
 docker compose pull && docker compose up -d
 ```
 
-The deployment now uses:
+3. Open `http://<nas-lan-ip>:8091` on your home network.
+4. Read the bootstrap secret from `docker logs baby-album-agent`, enter it once, then set a local admin password.
+5. In the local panel, fill in:
+   - API Base URL
+   - Node Name
+   - Pairing Code
+6. After the first bind succeeds, the panel writes `agent.json` and node state into the mounted config directory automatically. Future restarts can use `docker compose up -d` directly.
 
-- a mounted library directory for originals and `.agent-state.json`
-- a mounted `config/agent.json` for user-facing setup values
-- a minimal `.env` for host paths and heartbeat interval
+The deployment uses:
 
-If `config/agent.json` is missing and you start the container with an attached terminal, the agent will enter an interactive setup wizard and write the config file for you. After setup, future runs can use `docker compose up -d` directly.
+- a mounted library directory for originals
+- a mounted config directory where `agent.json`, `node-state.json`, `panel-auth.json`, `runtime.json`, and persistent logs will be written
+- a published local control-panel port
+
+The old interactive `agent setup` CLI remains available as a fallback, but Docker deployments should use the web control panel instead.
+
+### Agent disk migration
+
+When the current NAS disk is no longer large enough, use the migration override to temporarily mount the new disk into the container:
+
+```bash
+cd deploy/agent
+docker compose -f docker-compose.yml -f docker-compose.migration.yml up -d
+```
+
+with `AGENT_MIGRATION_HOST_PATH` pointing to the new disk path.
+
+Then:
+
+1. Open the local control panel and confirm the migration target shows as mounted.
+2. Click the migration action. The agent enters maintenance mode, waits for the current job to finish, copies the library, and verifies the result.
+3. After the panel reports `awaiting_cutover`, change the main `AGENT_LIBRARY_HOST_PATH` bind mount to the new disk, remove the migration override, and restart the container once.
+4. On the next boot, the agent detects the cutover and resumes normal work automatically.
 
 ## Production note
 

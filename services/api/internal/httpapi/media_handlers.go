@@ -95,10 +95,15 @@ func (s *Server) handleUploadSessionActions(w http.ResponseWriter, r *http.Reque
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+	preview := s.generateUploadedMediaPreview(saved.Key, header.Filename)
 	session, err := s.store.AttachUploadContent(userID, sessionID, store.UploadContentInput{
-		ByteSize:      saved.ByteSize,
-		BlobKey:       saved.Key,
-		ContentSHA256: saved.ContentSHA256,
+		ByteSize:       saved.ByteSize,
+		BlobKey:        saved.Key,
+		ContentSHA256:  saved.ContentSHA256,
+		Width:          preview.Width,
+		Height:         preview.Height,
+		PreviewStatus:  preview.Status,
+		PreviewBlobKey: preview.BlobKey,
 	})
 	if err != nil {
 		writeStoreError(w, err)

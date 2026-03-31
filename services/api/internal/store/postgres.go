@@ -1354,7 +1354,7 @@ func (s *PostgresStore) AttachUploadContent(userID, sessionID string, input Uplo
 	if _, err := tx.Exec(`update upload_sessions set status = $1, byte_size = $2, blob_key = $3 where id = $4`, "uploaded", input.ByteSize, input.BlobKey, sessionID); err != nil {
 		return domain.UploadSession{}, err
 	}
-	if _, err := tx.Exec(`update media_assets set byte_size = $1, original_blob_key = $2, content_sha256 = $3, original_local_state = 'online', original_restore_state = 'idle', original_last_accessed_at = $4 where id = $5`, input.ByteSize, input.BlobKey, strings.ToLower(strings.TrimSpace(input.ContentSHA256)), now, session.MediaID); err != nil {
+	if _, err := tx.Exec(`update media_assets set byte_size = $1, original_blob_key = $2, content_sha256 = $3, width = $4, height = $5, preview_status = $6, preview_blob_key = $7, original_local_state = 'online', original_restore_state = 'idle', original_last_accessed_at = $8 where id = $9`, input.ByteSize, input.BlobKey, strings.ToLower(strings.TrimSpace(input.ContentSHA256)), input.Width, input.Height, input.PreviewStatus, input.PreviewBlobKey, now, session.MediaID); err != nil {
 		return domain.UploadSession{}, err
 	}
 	if _, err := tx.Exec(`insert into agent_jobs (id, node_id, family_id, media_id, type, status, created_at, updated_at) values ($1,$2,$3,$4,$5,$6,$7,$8)`, jobID, session.AssignedTo, session.FamilyID, session.MediaID, "ingest_media", domain.JobPending, now, now); err != nil {
@@ -1671,7 +1671,7 @@ func (s *PostgresStore) CompleteJob(nodeID, token, jobID string, input JobComple
 			return domain.AgentJob{}, err
 		}
 	default:
-		if _, err := tx.Exec(`update media_assets set status = $1, width = $2, height = $3, preview_status = $4, preview_blob_key = $5, processed_at = $6, original_path = $7, original_restore_state = 'idle' where id = $8`, domain.MediaReady, input.Width, input.Height, input.PreviewStatus, input.PreviewBlobKey, input.ProcessedAt, input.OriginalPath, job.MediaID); err != nil {
+		if _, err := tx.Exec(`update media_assets set status = $1, width = case when $2 > 0 then $2 else width end, height = case when $3 > 0 then $3 else height end, preview_status = case when $5 <> '' then $4 when preview_status = 'pending' and $4 <> '' then $4 when preview_status = 'pending' then 'unavailable' else preview_status end, preview_blob_key = case when $5 <> '' then $5 else preview_blob_key end, processed_at = $6, original_path = $7, original_restore_state = 'idle' where id = $8`, domain.MediaReady, input.Width, input.Height, input.PreviewStatus, input.PreviewBlobKey, input.ProcessedAt, input.OriginalPath, job.MediaID); err != nil {
 			return domain.AgentJob{}, err
 		}
 	}

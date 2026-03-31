@@ -49,16 +49,15 @@ type panelSession struct {
 }
 
 type runtimeJob struct {
-	ID            string     `json:"id"`
-	MediaID       string     `json:"mediaId"`
-	FileName      string     `json:"fileName"`
-	MediaType     string     `json:"mediaType"`
-	Stage         string     `json:"stage"`
-	Status        string     `json:"status"`
-	PreviewStatus string     `json:"previewStatus,omitempty"`
-	Error         string     `json:"error,omitempty"`
-	StartedAt     *time.Time `json:"startedAt,omitempty"`
-	FinishedAt    *time.Time `json:"finishedAt,omitempty"`
+	ID         string     `json:"id"`
+	MediaID    string     `json:"mediaId"`
+	FileName   string     `json:"fileName"`
+	MediaType  string     `json:"mediaType"`
+	Stage      string     `json:"stage"`
+	Status     string     `json:"status"`
+	Error      string     `json:"error,omitempty"`
+	StartedAt  *time.Time `json:"startedAt,omitempty"`
+	FinishedAt *time.Time `json:"finishedAt,omitempty"`
 }
 
 type migrationState struct {
@@ -503,7 +502,6 @@ func (c *agentController) onJobCompleted(report processingReport) {
 	if c.runtime.CurrentJob != nil {
 		c.runtime.CurrentJob.Status = "completed"
 		c.runtime.CurrentJob.Stage = "done"
-		c.runtime.CurrentJob.PreviewStatus = report.PreviewStatus
 		c.runtime.CurrentJob.FinishedAt = &now
 		c.prependRecentJobLocked(*c.runtime.CurrentJob)
 		c.runtime.CurrentJob = nil

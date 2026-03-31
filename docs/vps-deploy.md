@@ -213,7 +213,7 @@ Validate the public app:
 2. Log in.
 3. Switch between photos and settings.
 4. Upload one image.
-5. Confirm the preview appears after the agent processes it.
+5. Confirm the preview appears after upload and the agent still finishes persisting the original to the NAS.
 6. Generate an invite code.
 7. Log out and log back in.
 

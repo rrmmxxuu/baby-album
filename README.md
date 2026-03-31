@@ -13,7 +13,7 @@ Open source baby photo platform for self-hosted households. The current test bui
 
 - `apps/web`: Next.js mobile-first PWA shell for timeline, uploads, onboarding, members, and settings
 - `services/api`: Go control plane API with PostgreSQL persistence, auth sessions, invite flows, blob-cache-backed upload ingestion, health checks, and configurable CORS allow-lists
-- `services/agent`: Go NAS connector that registers, heartbeats, polls jobs, downloads original blobs from the API, generates previews for supported images, and stores originals locally
+- `services/agent`: Go NAS connector that registers, heartbeats, polls jobs, downloads originals from the API, stores them locally on the NAS, and restores originals back to the API only when both the API and R2 no longer have them
 - `deploy/vps`: production-oriented Docker Compose for `web + api + postgres`
 - `deploy/agent`: NAS-side Docker Compose for the outbound-only agent
 - `docs/architecture.md`: architecture and data-flow notes
@@ -124,12 +124,11 @@ For a fuller VPS guide built around Nginx Proxy Manager and Cloudflare, use [doc
 
 1. The web app creates an upload session with metadata only.
 2. The browser uploads the actual file to `POST /api/v1/upload-sessions/{id}/content`.
-3. The API stores the file in its local blob cache and marks the session as `uploaded`.
+3. The API stores the file in its local blob cache, generates the preview locally, and marks the session as `uploaded`.
 4. The API enqueues an ingest job for the assigned NAS node.
 5. The NAS agent polls jobs and downloads the original blob from `GET /api/v1/agents/jobs/{id}/blob?nodeId=...`.
 6. The NAS agent stores the original file in its own library root.
-7. For supported images, the NAS agent generates a JPEG thumbnail and uploads it back to `POST /api/v1/agents/jobs/{id}/preview?nodeId=...`.
-8. The NAS agent completes the job with width, height, preview status, preview blob key, and original-path metadata.
+7. The NAS agent completes the job with the NAS original-path metadata; previews and media dimensions are owned by the API upload pipeline.
 
 ## NAS pairing and storage reporting
 

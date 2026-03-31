@@ -55,9 +55,7 @@ type job struct {
 
 type processingReport struct {
 	OriginalPath    string `json:"originalPath"`
-	PreviewBlobKey  string `json:"previewBlobKey,omitempty"`
 	RestoredBlobKey string `json:"restoredBlobKey,omitempty"`
 	Width           int    `json:"width"`
 	Height          int    `json:"height"`
-	PreviewStatus   string `json:"previewStatus"`
 }

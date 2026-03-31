@@ -15,7 +15,8 @@ import (
 )
 
 type stubRepository struct {
-	unbindStorageNode func(nodeID, token string) error
+	unbindStorageNode   func(nodeID, token string) error
+	attachUploadContent func(userID, sessionID string, input store.UploadContentInput) (domain.UploadSession, error)
 }
 
 func (s *stubRepository) RegisterUser(input store.RegisterUserInput) (store.AuthResult, error) {
@@ -133,6 +134,9 @@ func (s *stubRepository) CreateUploadSession(userID string, input store.UploadSe
 }
 
 func (s *stubRepository) AttachUploadContent(userID, sessionID string, input store.UploadContentInput) (domain.UploadSession, error) {
+	if s.attachUploadContent != nil {
+		return s.attachUploadContent(userID, sessionID, input)
+	}
 	return domain.UploadSession{}, nil
 }
 

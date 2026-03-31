@@ -68,7 +68,7 @@ func processJobs(ctx context.Context, controlClient, transferClient *http.Client
 		if err := postJSON(ctx, controlClient, completeURL, cfg.nodeToken, payload, nil); err != nil {
 			return err
 		}
-		log.Printf("completed job=%s media=%s preview=%s size=%dx%d", item.ID, item.MediaID, report.PreviewStatus, report.Width, report.Height)
+		log.Printf("completed job=%s media=%s size=%dx%d", item.ID, item.MediaID, report.Width, report.Height)
 		if hooks != nil {
 			hooks.onJobCompleted(report)
 		}
@@ -90,60 +90,27 @@ func processJob(ctx context.Context, client *http.Client, cfg config, item job, 
 }
 
 func ingestMedia(ctx context.Context, client *http.Client, cfg config, item job, hooks workerHooks) (processingReport, error) {
-	report := processingReport{PreviewStatus: "unavailable"}
+	report := processingReport{}
 	targetPath, err := downloadOriginalToLibrary(ctx, client, cfg, item, hooks)
 	if err != nil {
 		return report, err
 	}
 	report.OriginalPath = targetPath
-
-	targetDir := filepath.Dir(targetPath)
-	if hooks != nil {
-		hooks.onJobStage("generating_preview")
-	}
-	width, height, thumbPath, err := generatePreview(targetPath, targetDir, item.MediaType)
-	if err == nil {
-		log.Printf("generated preview media=%s preview=%s size=%dx%d", item.MediaID, thumbPath, width, height)
-		report.Width = width
-		report.Height = height
-		if hooks != nil {
-			hooks.onJobStage("uploading_preview")
-		}
-		blobKey, err := uploadPreview(ctx, client, cfg, item.ID, thumbPath)
-		if err == nil {
-			report.PreviewBlobKey = blobKey
-			report.PreviewStatus = "ready"
-			log.Printf("uploaded preview media=%s blob=%s", item.MediaID, blobKey)
-		} else {
-			report.PreviewStatus = "unavailable"
-			log.Printf("preview upload failed media=%s err=%v", item.MediaID, err)
-		}
-	} else {
-		log.Printf("preview unavailable media=%s err=%v", item.MediaID, err)
-		if width, height, sizeErr := probeImageSize(targetPath); sizeErr == nil {
-			report.Width = width
-			report.Height = height
-		}
-	}
 	return report, nil
 }
 
 func rehydrateMedia(ctx context.Context, client *http.Client, cfg config, item job, hooks workerHooks) (processingReport, error) {
-	report := processingReport{PreviewStatus: "unavailable"}
+	report := processingReport{}
 	targetPath, err := downloadOriginalToLibrary(ctx, client, cfg, item, hooks)
 	if err != nil {
 		return report, err
 	}
 	report.OriginalPath = targetPath
-	if width, height, sizeErr := probeImageSize(targetPath); sizeErr == nil {
-		report.Width = width
-		report.Height = height
-	}
 	return report, nil
 }
 
 func restoreOriginal(ctx context.Context, client *http.Client, cfg config, item job, hooks workerHooks) (processingReport, error) {
-	report := processingReport{PreviewStatus: "unavailable", OriginalPath: item.OriginalPath}
+	report := processingReport{OriginalPath: item.OriginalPath}
 	if strings.TrimSpace(item.OriginalPath) == "" {
 		return report, fmt.Errorf("job %s missing original path", item.ID)
 	}
@@ -158,15 +125,11 @@ func restoreOriginal(ctx context.Context, client *http.Client, cfg config, item 
 		return report, err
 	}
 	report.RestoredBlobKey = blobKey
-	if width, height, sizeErr := probeImageSize(item.OriginalPath); sizeErr == nil {
-		report.Width = width
-		report.Height = height
-	}
 	return report, nil
 }
 
 func deleteMedia(_ context.Context, cfg config, item job, hooks workerHooks) (processingReport, error) {
-	report := processingReport{PreviewStatus: "unavailable", OriginalPath: item.OriginalPath}
+	report := processingReport{OriginalPath: item.OriginalPath}
 	if strings.TrimSpace(item.OriginalPath) == "" {
 		return report, nil
 	}

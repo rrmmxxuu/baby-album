@@ -124,7 +124,7 @@ func (s *Server) handleAgentJobs(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleAgentJobActions(w http.ResponseWriter, r *http.Request) {
 	path := trimAPIPrefix(r.URL.Path, "/api/v1/agents/jobs/")
-	jobID := strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(path, "/complete"), "/blob"), "/preview"), "/restore"), "/")
+	jobID := strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(path, "/complete"), "/blob"), "/restore"), "/")
 	if jobID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "job id is required"})
 		return
@@ -134,8 +134,6 @@ func (s *Server) handleAgentJobActions(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case strings.HasSuffix(path, "/blob"):
 		s.handleAgentJobBlob(w, r, nodeID, nodeToken, jobID)
-	case strings.HasSuffix(path, "/preview"):
-		s.handleAgentJobPreviewUpload(w, r, nodeID, nodeToken, jobID)
 	case strings.HasSuffix(path, "/restore"):
 		s.handleAgentJobRestoreUpload(w, r, nodeID, nodeToken, jobID)
 	case strings.HasSuffix(path, "/complete"):
@@ -187,42 +185,6 @@ func (s *Server) handleAgentJobBlob(w http.ResponseWriter, r *http.Request, node
 		}
 	}
 	writeJSON(w, http.StatusNotFound, map[string]string{"error": "job blob not available"})
-}
-
-func (s *Server) handleAgentJobPreviewUpload(w http.ResponseWriter, r *http.Request, nodeID, nodeToken, jobID string) {
-	if r.Method != http.MethodPost {
-		writeMethodNotAllowed(w)
-		return
-	}
-	if nodeID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "nodeId is required"})
-		return
-	}
-	if _, err := s.store.AgentJob(nodeID, nodeToken, jobID); err != nil {
-		writeStoreError(w, err)
-		return
-	}
-	file, header, ok := parseMultipartFile(w, r, s.maxUploadBytes)
-	if !ok {
-		return
-	}
-	defer file.Close()
-	if s.cacheController != nil {
-		if err := s.cacheController.EnsureSpace(header.Size); err != nil {
-			status := http.StatusInsufficientStorage
-			if err != errInsufficientLocalStorage {
-				status = http.StatusInternalServerError
-			}
-			writeJSON(w, status, map[string]string{"error": err.Error()})
-			return
-		}
-	}
-	saved, err := s.blob.Save(jobID+"-preview", header.Filename, file)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"blobKey": saved.Key, "byteSize": saved.ByteSize})
 }
 
 func (s *Server) handleAgentJobRestoreUpload(w http.ResponseWriter, r *http.Request, nodeID, nodeToken, jobID string) {
@@ -289,17 +251,13 @@ func (s *Server) handleAgentJobComplete(w http.ResponseWriter, r *http.Request, 
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
-	previewStatus := domain.PreviewStatus(input.Report.PreviewStatus)
-	if previewStatus == "" {
-		previewStatus = domain.PreviewUnavailable
-	}
 	job, err := s.store.CompleteJob(input.NodeID, nodeToken, jobID, store.JobCompletionInput{
 		OriginalPath:    input.Report.OriginalPath,
 		PreviewBlobKey:  input.Report.PreviewBlobKey,
 		RestoredBlobKey: input.Report.RestoredBlobKey,
 		Width:           input.Report.Width,
 		Height:          input.Report.Height,
-		PreviewStatus:   previewStatus,
+		PreviewStatus:   domain.PreviewStatus(strings.TrimSpace(input.Report.PreviewStatus)),
 		ProcessedAt:     time.Now().UTC(),
 	})
 	if err != nil {

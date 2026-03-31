@@ -75,9 +75,13 @@ type CreateTimelineCommentInput struct {
 }
 
 type UploadContentInput struct {
-	ByteSize      int64
-	BlobKey       string
-	ContentSHA256 string
+	ByteSize       int64
+	BlobKey        string
+	ContentSHA256  string
+	Width          int
+	Height         int
+	PreviewStatus  domain.PreviewStatus
+	PreviewBlobKey string
 }
 
 type DuplicateMediaProbeItemInput struct {

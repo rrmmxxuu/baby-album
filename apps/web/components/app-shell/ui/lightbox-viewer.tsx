@@ -29,7 +29,7 @@ function originalUrlNeedsRefresh(url: string) {
   }
 }
 
-function LightboxDownloadProgress({ progress }: { progress: number | null }) {
+function LightboxDownloadProgress({ progress, label }: { progress: number | null; label: string }) {
   const size = 28;
   const strokeWidth = 3;
   const radius = (size - strokeWidth) / 2;
@@ -48,11 +48,11 @@ function LightboxDownloadProgress({ progress }: { progress: number | null }) {
 
   return (
     <div
-      aria-label="原图下载进度"
+      aria-label={label}
       aria-valuemax={100}
       aria-valuemin={0}
       aria-valuenow={percent}
-      aria-valuetext={percent === undefined ? "正在下载原图" : `原图已下载 ${percent}%`}
+      aria-valuetext={percent === undefined ? label : `原图已下载 ${percent}%`}
       className={`lightboxDownloadBadge${percent === undefined ? " lightboxDownloadBadgeIndeterminate" : ""}`}
       role="progressbar"
     >
@@ -67,7 +67,7 @@ function LightboxDownloadProgress({ progress }: { progress: number | null }) {
 export function LightboxViewer({ lightbox, closing, onClose, onNavigate }: LightboxViewerProps) {
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [visible, setVisible] = useState(false);
-  const [originalVisible, setOriginalVisible] = useState(false);
+  const [visibleOriginalUrl, setVisibleOriginalUrl] = useState("");
   const [videoOriginalUrl, setVideoOriginalUrl] = useState("");
   const [videoState, setVideoState] = useState<"idle" | "ready" | "restoring" | "unavailable">("idle");
   const [videoRefreshNonce, setVideoRefreshNonce] = useState(0);
@@ -78,8 +78,11 @@ export function LightboxViewer({ lightbox, closing, onClose, onNavigate }: Light
   const hasMultiple = lightbox.batch.items.length > 1;
   const originalImage = useLightboxOriginalImage({ albumId: lightbox.albumId, currentItem });
   const hasPreview = currentItem.previewStatus === "ready";
-  const showDownloadProgress = !isVideo && originalImage.status === "loading";
-  const showRestoreMessage = !isVideo && originalImage.status === "restoring";
+  const hasPrevious = lightbox.index > 0;
+  const hasNext = lightbox.index < lightbox.batch.items.length - 1;
+  const originalImageVisible = Boolean(originalImage.objectUrl) && visibleOriginalUrl === originalImage.objectUrl;
+  const showImageProgressBadge = !isVideo && (originalImage.status === "loading" || originalImage.status === "restoring");
+  const showVideoRestoreBadge = isVideo && videoState === "restoring";
   const showUnavailableMessage = !isVideo && originalImage.status === "unavailable";
 
   useEffect(() => {
@@ -90,10 +93,6 @@ export function LightboxViewer({ lightbox, closing, onClose, onNavigate }: Light
     const frame = window.requestAnimationFrame(() => setVisible(true));
     return () => window.cancelAnimationFrame(frame);
   }, [closing]);
-
-  useEffect(() => {
-    setOriginalVisible(false);
-  }, [currentItem.id, originalImage.objectUrl]);
 
   useEffect(() => {
     if (!isVideo) {
@@ -186,11 +185,21 @@ export function LightboxViewer({ lightbox, closing, onClose, onNavigate }: Light
             if (Math.abs(delta) < 36 || !hasMultiple) {
               return;
             }
-            onNavigate(delta > 0 ? -1 : 1);
+            if (delta > 0) {
+              if (!hasPrevious) {
+                return;
+              }
+              onNavigate(-1);
+              return;
+            }
+            if (!hasNext) {
+              return;
+            }
+            onNavigate(1);
           }}
           onTouchStart={(event) => setTouchStartX(event.touches[0].clientX)}
         >
-          {hasMultiple ? <button className="lightboxArrow lightboxArrowLeft" onClick={() => onNavigate(-1)} type="button">‹</button> : null}
+          {hasPrevious ? <button className="lightboxArrow lightboxArrowLeft" onClick={() => onNavigate(-1)} type="button">‹</button> : null}
           {isVideo ? (
             videoOriginalUrl ? (
               <video
@@ -208,7 +217,15 @@ export function LightboxViewer({ lightbox, closing, onClose, onNavigate }: Light
                 src={videoOriginalUrl || getOriginalUrl(currentItem.id, lightbox.albumId)}
               />
             ) : (
-              <div className="lightboxFallback">{videoState === "restoring" ? "原视频正在从 NAS 恢复" : "原视频暂不可用"}</div>
+              <div className="lightboxMediaFrame">
+                {hasPreview ? <img alt={currentItem.fileName} className="lightboxImage lightboxPreviewImage" decoding="async" src={previewUrl} /> : null}
+                {!hasPreview || videoState === "unavailable" ? (
+                  <div className="lightboxFallback">
+                    {videoState === "unavailable" ? "原视频暂不可用" : ""}
+                  </div>
+                ) : null}
+                {showVideoRestoreBadge ? <LightboxDownloadProgress label="原视频正在从 NAS 恢复" progress={null} /> : null}
+              </div>
             )
           ) : (
             <div className="lightboxMediaFrame">
@@ -217,20 +234,25 @@ export function LightboxViewer({ lightbox, closing, onClose, onNavigate }: Light
                 <img
                   alt={hasPreview ? "" : currentItem.fileName}
                   aria-hidden={hasPreview}
-                  className={`lightboxImage lightboxOriginalImage${originalVisible ? " lightboxOriginalImageVisible" : ""}`}
+                  className={`lightboxImage lightboxOriginalImage${originalImageVisible ? " lightboxOriginalImageVisible" : ""}`}
                   decoding="async"
-                  onError={() => setOriginalVisible(false)}
-                  onLoad={() => setOriginalVisible(true)}
+                  key={`${currentItem.id}:${originalImage.objectUrl}`}
+                  onError={() => setVisibleOriginalUrl("")}
+                  onLoad={() => setVisibleOriginalUrl(originalImage.objectUrl)}
                   src={originalImage.objectUrl}
                 />
               ) : null}
               {!hasPreview && !originalImage.objectUrl ? <div className="lightboxFallback">照片预览待生成</div> : null}
-              {showRestoreMessage ? <div className="lightboxFallback">原图正在从 NAS 恢复，请稍候…</div> : null}
               {showUnavailableMessage ? <div className="lightboxFallback">原图暂不可用</div> : null}
-              {showDownloadProgress ? <LightboxDownloadProgress progress={originalImage.progress} /> : null}
+              {showImageProgressBadge ? (
+                <LightboxDownloadProgress
+                  label={originalImage.status === "restoring" ? "原图正在从 NAS 恢复" : "正在下载原图"}
+                  progress={originalImage.status === "loading" ? originalImage.progress : null}
+                />
+              ) : null}
             </div>
           )}
-          {hasMultiple ? <button className="lightboxArrow lightboxArrowRight" onClick={() => onNavigate(1)} type="button">›</button> : null}
+          {hasNext ? <button className="lightboxArrow lightboxArrowRight" onClick={() => onNavigate(1)} type="button">›</button> : null}
         </div>
 
         <div className="lightboxBottomBar">

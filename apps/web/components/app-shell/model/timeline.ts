@@ -67,6 +67,6 @@ export function canEditTimelineEntry(role: Role, currentUserId: string | undefin
 }
 
 export function moveLightbox(current: LightboxState, direction: -1 | 1) {
-  const nextIndex = (current.index + direction + current.batch.items.length) % current.batch.items.length;
+  const nextIndex = Math.min(Math.max(current.index + direction, 0), current.batch.items.length - 1);
   return { ...current, index: nextIndex };
 }

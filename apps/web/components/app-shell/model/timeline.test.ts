@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildRelationLabels, buildTimelineFeed, canEditTimelineEntry, moveLightbox } from "./timeline";
+import type { LightboxState } from "./types";
 
 describe("app-shell timeline helpers", () => {
   it("builds relation labels for members with explicit relations", () => {
@@ -87,7 +88,7 @@ describe("app-shell timeline helpers", () => {
     expect(canEditTimelineEntry("member", "u1", "u1")).toBe(true);
     expect(canEditTimelineEntry("member", "u1", "u2")).toBe(false);
 
-    expect(moveLightbox({
+    const lightbox: LightboxState = {
       albumId: "album-1",
       index: 0,
       batch: {
@@ -103,6 +104,10 @@ describe("app-shell timeline helpers", () => {
         entry: {} as never,
         items: [{ id: "1" }, { id: "2" }] as never
       }
-    }, 1).index).toBe(1);
+    };
+
+    expect(moveLightbox(lightbox, 1).index).toBe(1);
+    expect(moveLightbox(lightbox, -1).index).toBe(0);
+    expect(moveLightbox({ ...lightbox, index: 1 }, 1).index).toBe(1);
   });
 });

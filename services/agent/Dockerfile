@@ -7,6 +7,6 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -o /out/
 
 FROM alpine:3.21
 WORKDIR /app
-RUN apk add --no-cache ca-certificates ffmpeg
+RUN apk add --no-cache ca-certificates
 COPY --from=build /out/agent /usr/local/bin/agent
 CMD ["agent"]

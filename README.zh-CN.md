@@ -13,7 +13,7 @@
 
 - `apps/web`：基于 Next.js 的移动优先 PWA，负责时间线、上传、引导、成员与设置界面
 - `services/api`：Go 控制面 API，负责 PostgreSQL 持久化、登录会话、邀请码、上传会话、blob 缓存接入、健康检查与 CORS
-- `services/agent`：Go 编写的 NAS 连接器，负责注册、心跳、轮询任务、从 API 下载原图、生成预览并把文件存到本地
+- `services/agent`：Go 编写的 NAS 连接器，负责注册、心跳、轮询任务、从 API 下载原图并把原图存到本地；当 API 和 R2 都没有原图时，再把 NAS 原图回传给 API
 - `deploy/vps`：面向生产部署的 Docker Compose，只包含 `web + api + postgres`
 - `deploy/agent`：NAS 侧独立部署的 agent Compose
 - `docs/architecture.md`：架构与数据流说明
@@ -124,12 +124,11 @@ GitHub Actions 现在会覆盖：
 
 1. Web 先创建只带元数据的上传会话
 2. 浏览器把实际文件上传到 `POST /api/v1/upload-sessions/{id}/content`
-3. API 把文件写入本地 blob 缓存，并把会话状态标记为 `uploaded`
+3. API 把文件写入本地 blob 缓存，并在本地直接生成预览图，然后把会话状态标记为 `uploaded`
 4. API 为被分配到的 NAS 节点创建一条媒体处理任务
 5. NAS agent 轮询任务，并通过 `GET /api/v1/agents/jobs/{id}/blob?nodeId=...` 下载原图
 6. NAS agent 把原文件落到自己的本地媒体库
-7. 对支持的图片，NAS agent 会生成 JPEG 预览图，并回传到 `POST /api/v1/agents/jobs/{id}/preview?nodeId=...`
-8. NAS agent 最终回报处理完成状态，包括宽高、预览状态、预览 blob key 和原始文件路径
+7. NAS agent 最终回报处理完成状态，主要包含 NAS 原始文件路径；预览和媒体尺寸都以 API 上传阶段提取的结果为准
 
 ## NAS 配对与存储状态上报
 

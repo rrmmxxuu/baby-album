@@ -15,6 +15,8 @@ interface RefreshOptions {
 }
 
 export function useAppSession(queryInviteCode: string, initialAuthenticated = false) {
+  const PASSIVE_REFRESH_MIN_INTERVAL_MS = 10_000;
+  const PASSIVE_REFRESH_POLL_INTERVAL_MS = 30_000;
   const router = useRouter();
   const [origin, setOrigin] = useState("");
   const [hydrated, setHydrated] = useState(false);
@@ -44,6 +46,7 @@ export function useAppSession(queryInviteCode: string, initialAuthenticated = fa
   const bootstrappedRef = useRef(false);
   const recoveryKeyRef = useRef("");
   const feedbackIdRef = useRef(0);
+  const lastPassiveRefreshAtRef = useRef(0);
 
   const clearFeedback = useCallback(() => {
     setFeedback(null);
@@ -196,6 +199,41 @@ export function useAppSession(queryInviteCode: string, initialAuthenticated = fa
     recoveryKeyRef.current = key;
     void refreshApp(selectedAlbumId || undefined, { silent: true });
   }, [appState, bootPhase, hydrated, isAuthenticated, refreshApp, selectedAlbumId]);
+
+  useEffect(() => {
+    if (!hydrated || !isAuthenticated || bootPhase !== "done") {
+      return;
+    }
+
+    function refreshIfNeeded() {
+      const now = Date.now();
+      if (now - lastPassiveRefreshAtRef.current < PASSIVE_REFRESH_MIN_INTERVAL_MS) {
+        return;
+      }
+      lastPassiveRefreshAtRef.current = now;
+      void refreshApp(selectedAlbumId || undefined, { silent: true });
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        refreshIfNeeded();
+      }
+    }
+
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        refreshIfNeeded();
+      }
+    }, PASSIVE_REFRESH_POLL_INTERVAL_MS);
+
+    window.addEventListener("focus", refreshIfNeeded);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshIfNeeded);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [bootPhase, hydrated, isAuthenticated, refreshApp, selectedAlbumId]);
 
   function saveSession() {
     setIsAuthenticated(true);

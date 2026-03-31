@@ -62,6 +62,7 @@ export function AlbumRouteShell({ albumId, children: _children }: AlbumRouteShel
   const requestedEditEntryId = sceneSearchParams.get("edit") ?? "";
   const activeTab = toTab(scenePathname);
   const requestedScreenKeyRef = useRef("");
+  const settingsRefreshKeyRef = useRef("");
   const inviteCode = sceneSearchParams.get("invite") ?? "";
 
   const activeAlbum = session.appState?.activeAlbum ?? null;
@@ -120,6 +121,7 @@ export function AlbumRouteShell({ albumId, children: _children }: AlbumRouteShel
   useEffect(() => {
     if (activeTab !== "settings") {
       requestedScreenKeyRef.current = "";
+      settingsRefreshKeyRef.current = "";
       return;
     }
     const routeScreen = requestedScreen ?? "menu";
@@ -134,6 +136,20 @@ export function AlbumRouteShell({ albumId, children: _children }: AlbumRouteShel
     const direction = previousScreen && SETTINGS_SCREEN_DEPTH[routeScreen] < SETTINGS_SCREEN_DEPTH[previousScreen] ? "back" : "forward";
     settings.openSettingsScreen(routeScreen, direction, routeMemberId ? { memberId: routeMemberId } : undefined);
   }, [activeTab, requestedMemberId, requestedScreen, scenePathname, settings]);
+
+  useEffect(() => {
+    if (activeTab !== "settings" || !activeAlbum || !session.isAuthenticated || session.bootPhase !== "done") {
+      return;
+    }
+    const routeScreen = requestedScreen ?? "menu";
+    const routeMemberId = routeScreen === "memberDetail" ? requestedMemberId : "";
+    const key = `${activeAlbum.album.id}:${routeScreen}:${routeMemberId}`;
+    if (settingsRefreshKeyRef.current === key) {
+      return;
+    }
+    settingsRefreshKeyRef.current = key;
+    void session.refreshApp(activeAlbum.album.id, { silent: true });
+  }, [activeAlbum, activeTab, requestedMemberId, requestedScreen, session.bootPhase, session.isAuthenticated, session.refreshApp]);
 
   const appView = useMemo(() => buildAppShellViewModel({
     activeAlbum,
@@ -289,7 +305,7 @@ export function AlbumRouteShell({ albumId, children: _children }: AlbumRouteShel
     });
   }
 
-  function handleOpenUploadFlow() {
+  async function handleOpenUploadFlow() {
     if (!activeAlbum) {
       return;
     }
@@ -297,17 +313,24 @@ export function AlbumRouteShell({ albumId, children: _children }: AlbumRouteShel
       session.showWarning("正在上传", "当前已有上传进行中，完成后再试。");
       return;
     }
-    if (!appView.storageNode) {
-      session.showWarning("还差一步", "请先去设置里配对储存节点。");
-      timeline.captureTabScrollPosition(activeTab);
-      navigateAlbumScene(buildAlbumPath(activeAlbum.album.id, "settings", { screen: "storage" }));
+    const nextState = await session.refreshApp(activeAlbum.album.id, { silent: true });
+    const latestAlbum = nextState?.activeAlbum?.album.id === activeAlbum.album.id ? nextState.activeAlbum : activeAlbum;
+
+    if (!latestAlbum || latestAlbum.album.id !== activeAlbum.album.id) {
+      session.showWarning("状态已变化", "当前相册状态已更新，请稍后重试。");
       return;
     }
-    if (activeAlbum.membership.role === "viewer") {
+    if (!latestAlbum.storageNode) {
+      session.showWarning("还差一步", "请先去设置里配对储存节点。");
+      timeline.captureTabScrollPosition(activeTab);
+      navigateAlbumScene(buildAlbumPath(latestAlbum.album.id, "settings", { screen: "storage" }));
+      return;
+    }
+    if (latestAlbum.membership.role === "viewer") {
       session.showWarning("没有权限", "当前身份没有上传权限。");
       return;
     }
-    navigateAlbumScene(buildPhotosPath(activeAlbum.album.id, { composer: "new" }));
+    navigateAlbumScene(buildPhotosPath(latestAlbum.album.id, { composer: "new" }));
   }
 
   async function handleOpenAlbumSettings(nextAlbumId: string) {

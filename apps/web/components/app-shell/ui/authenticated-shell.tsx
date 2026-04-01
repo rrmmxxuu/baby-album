@@ -20,7 +20,7 @@ interface AuthenticatedShellProps {
 export function AuthenticatedShell({ children, activeNav, blocking, bottomNavHidden, photosHref, feedingHref, settingsHref }: AuthenticatedShellProps) {
   const session = useAppSessionContext();
   const currentUser = session.appState?.currentUser ?? null;
-  const showBottomNav = Boolean(activeNav && photosHref && feedingHref && settingsHref);
+  const showBottomNav = Boolean(activeNav && photosHref && feedingHref && settingsHref && !bottomNavHidden);
 
   return (
     <AppPageFrame

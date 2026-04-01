@@ -66,7 +66,7 @@ export async function logout(page: Page) {
 }
 
 export function latestInviteCode(inviteCards: Locator) {
-  return inviteCards.first();
+  return inviteCards.last();
 }
 
 export function samplePng(name: string, colorSeed: number) {

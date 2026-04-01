@@ -35,6 +35,9 @@ describe("route helpers", () => {
   it("builds baby-scoped routes", () => {
     expect(buildBabyPath("baby-1")).toBe("/babies/baby-1");
     expect(buildBabyFeedingPath("baby-1")).toBe("/babies/baby-1/feeding");
+    expect(buildBabyFeedingPath("baby-1", { day: "2026-04-01" })).toBe("/babies/baby-1/feeding?day=2026-04-01");
+    expect(buildBabyFeedingPath("baby-1", { day: "2026-04-01", composer: "milk" })).toBe("/babies/baby-1/feeding?day=2026-04-01&composer=milk");
+    expect(buildBabyFeedingPath("baby-1", { day: "2026-04-01", editEntryId: "feed-1" })).toBe("/babies/baby-1/feeding?day=2026-04-01&edit=feed-1");
     expect(buildBabyManagePath("baby-1")).toBe("/babies/baby-1/manage");
     expect(buildBabyManageStoragePath("baby-1")).toBe("/babies/baby-1/manage/storage");
     expect(buildBabyManageMemberPath("baby-1", "user-1")).toBe("/babies/baby-1/manage/members/user-1");

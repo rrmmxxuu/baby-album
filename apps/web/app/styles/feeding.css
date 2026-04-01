@@ -1,0 +1,656 @@
+.feedingPage {
+  width: min(720px, 100%);
+  margin-top: 0;
+  margin-left: auto;
+  margin-right: auto;
+  padding-bottom: calc(196px + env(safe-area-inset-bottom));
+}
+
+.feedingPageDockExpanded {
+  padding-bottom: calc(306px + env(safe-area-inset-bottom));
+}
+
+.feedingTopBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.feedingTopBar h1,
+.feedingHeroCopy h2 {
+  margin: 0;
+  letter-spacing: -0.03em;
+}
+
+.feedingTopBar h1 {
+  flex: 1;
+  min-width: 0;
+  font-size: 1.25rem;
+  line-height: 1.08;
+  text-align: center;
+}
+
+.feedingTopBarBack,
+.feedingTopBarSpacer {
+  flex: 0 0 64px;
+}
+
+.feedingHero {
+  overflow: hidden;
+  padding: 20px;
+}
+
+.feedingHeroBody {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.feedingHeroAvatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 22px;
+}
+
+.feedingHeroCopy {
+  min-width: 0;
+}
+
+.feedingHeroCopy h2 {
+  font-size: clamp(1.8rem, 5vw, 2.3rem);
+  line-height: 1.05;
+}
+
+.feedingHeroCopy p {
+  margin: 6px 0 0;
+}
+
+.feedingHeroDate {
+  margin: 0 0 6px;
+  color: #d07a00;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.feedingDateStrip {
+  position: relative;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 66px;
+  gap: 8px;
+  padding: 10px 0 10px 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  scroll-behavior: smooth;
+  scroll-padding-inline: 10px 0;
+}
+
+.feedingDateStrip::-webkit-scrollbar {
+  display: none;
+}
+
+.feedingDateChip {
+  position: relative;
+  z-index: 1;
+  min-height: 78px;
+  display: grid;
+  gap: 6px;
+  align-content: center;
+  justify-items: center;
+  padding: 10px 6px;
+  border-radius: 18px;
+  background: transparent;
+  color: #6d6d72;
+}
+
+.feedingDateChipActive {
+  background: linear-gradient(180deg, #ffd35a 0%, #ffbe2e 100%);
+  color: #5c3b00;
+  box-shadow: 0 10px 20px rgba(255, 186, 46, 0.28);
+}
+
+.feedingDateWeekday {
+  font-size: 0.78rem;
+}
+
+.feedingDateNumber {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.feedingSummaryPanel {
+  gap: 10px;
+  padding: 14px;
+}
+
+.feedingSummaryHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.feedingSummaryAvatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  flex: 0 0 48px;
+}
+
+.feedingSummaryIdentity {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.feedingSummaryIdentityRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.feedingSummaryIdentityRow strong {
+  min-width: 0;
+  font-size: 1rem;
+  line-height: 1.15;
+}
+
+.feedingSummaryIdentityRow span,
+.feedingSummaryIdentity p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.feedingSummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.feedingSummaryCard {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.feedingSummaryCard span,
+.feedingSummaryCard p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.feedingSummaryCard span {
+  font-size: 0.8rem;
+}
+
+.feedingSummaryCard strong {
+  font-size: 1.02rem;
+  line-height: 1.1;
+}
+
+.feedingSummaryCard p {
+  font-size: 0.8rem;
+}
+
+.feedingTimeline {
+  display: grid;
+  gap: 14px;
+}
+
+.feedingTimelineRow {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.feedingTimelineTime {
+  display: grid;
+  gap: 4px;
+  padding-top: 10px;
+  text-align: right;
+}
+
+.feedingTimelineTime strong {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.feedingTimelineTime span {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.feedingEntryCard {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px;
+  color: inherit;
+  text-align: left;
+}
+
+.feedingEntryBadge {
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.feedingEntryBadgeMilk,
+.feedingActionIconMilk {
+  background: linear-gradient(180deg, #ffc94f, #ffb300);
+}
+
+.feedingEntryBadgeSolid,
+.feedingActionIconSolid {
+  background: linear-gradient(180deg, #ff9a4f, #ff7a00);
+}
+
+.feedingEntryBadgeDiaper,
+.feedingActionIconDiaper {
+  background: linear-gradient(180deg, #78dbb0, #3ccf8e);
+}
+
+.feedingEntryBadgeSleep,
+.feedingActionIconSleep {
+  background: linear-gradient(180deg, #86a7ff, #5c7cff);
+}
+
+.feedingEntryBadgeSupplement,
+.feedingActionIconSupplement {
+  background: linear-gradient(180deg, #ff7f9a, #ff5477);
+}
+
+.feedingEntryBadgeMedicine,
+.feedingActionIconMedicine {
+  background: linear-gradient(180deg, #7bc1ff, #2f96ff);
+}
+
+.feedingEntryBody {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.feedingEntryPrimaryRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.feedingEntryPrimaryRow strong,
+.feedingEntryPrimaryRow span,
+.feedingEntryMeta,
+.feedingEntryNote {
+  min-width: 0;
+}
+
+.feedingEntryPrimaryRow span,
+.feedingEntryMeta {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.feedingEntryNote {
+  color: #3a3a3c;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.feedingActionDockLayer {
+  position: fixed;
+  z-index: 18;
+  left: 0;
+  right: 0;
+  bottom: calc(10px + env(safe-area-inset-bottom));
+  display: flex;
+  justify-content: center;
+  padding: 0 12px;
+  pointer-events: none;
+}
+
+.feedingActionDock {
+  display: grid;
+  gap: 10px;
+  width: min(520px, 100%);
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  border-radius: 24px;
+  background: rgba(248, 248, 252, 0.92);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  box-shadow: 0 18px 34px rgba(17, 17, 17, 0.08);
+  pointer-events: auto;
+}
+
+.feedingActionDockExpanded {
+  gap: 12px;
+}
+
+.feedingActionToggle {
+  width: 20px;
+  min-height: 16px;
+  margin: 0 auto 2px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #9b9ba1;
+  font-size: 1rem;
+  line-height: 1;
+  box-shadow: none;
+}
+
+.feedingActionToggleIcon {
+  display: block;
+  transform: rotate(180deg);
+  transition: transform 180ms ease;
+}
+
+.feedingActionToggleExpanded .feedingActionToggleIcon {
+  transform: rotate(0deg);
+}
+
+.feedingActionGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.feedingActionGridSecondary {
+  animation: feedingActionExpand 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.feedingActionButton {
+  min-height: 76px;
+  display: grid;
+  gap: 8px;
+  place-items: center;
+  padding: 12px 8px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.78);
+  color: #3a3a3c;
+  font-size: 0.92rem;
+}
+
+.feedingActionButton:disabled {
+  opacity: 0.44;
+}
+
+.feedingActionIcon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.feedingActionHint {
+  margin: 4px 4px 0;
+  text-align: center;
+}
+
+.feedingSheet {
+  gap: 18px;
+}
+
+.feedingSheetBody {
+  padding-bottom: 10px;
+}
+
+.feedingEditorPanel {
+  gap: 16px;
+}
+
+.feedingEditorFields {
+  display: grid;
+  gap: 14px;
+}
+
+.feedingFieldLabel {
+  color: #3a3a3c;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.feedingSegmentGroup {
+  display: grid;
+  gap: 8px;
+}
+
+.feedingSegmentedControl {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.feedingSegmentedControlThree {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.feedingPresetBlock,
+.feedingItemsBlock {
+  display: grid;
+  gap: 10px;
+}
+
+.feedingPresetHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.feedingPresetButton {
+  min-height: 36px;
+  padding: 8px 12px;
+}
+
+.feedingItemsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.feedingMiniButton {
+  min-height: 36px;
+  padding: 8px 12px;
+  white-space: nowrap;
+}
+
+.feedingItemsList {
+  display: grid;
+  gap: 10px;
+}
+
+.feedingItemRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 112px 44px;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.feedingItemRow > input,
+.feedingDoseTrigger,
+.feedingItemRemove {
+  height: 44px;
+}
+
+.feedingDoseTrigger {
+  justify-content: flex-start;
+  padding: 10px 12px;
+  color: var(--muted);
+}
+
+.feedingDoseTriggerFilled {
+  color: var(--ink);
+}
+
+.feedingItemRemove {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  color: #ff3b30;
+  border-color: rgba(255, 59, 48, 0.16);
+  background: rgba(255, 59, 48, 0.08);
+}
+
+.feedingTrashIcon {
+  display: block;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+}
+
+.feedingDeleteButton {
+  min-width: 132px;
+  margin: 0 auto;
+  background: rgba(255, 59, 48, 0.12);
+  color: #ff3b30;
+  border: 1px solid rgba(255, 59, 48, 0.18);
+}
+
+.feedingDoseOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 41;
+  display: grid;
+  place-items: end center;
+  padding: 24px 16px calc(16px + env(safe-area-inset-bottom));
+  background: rgba(17, 17, 17, 0.28);
+}
+
+.feedingDoseDialog {
+  width: min(420px, 100%);
+  display: grid;
+  gap: 18px;
+  padding: 16px;
+  border-radius: 28px;
+}
+
+.feedingDoseHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.feedingDoseHeader h3 {
+  margin: 0;
+  flex: 1;
+  text-align: center;
+  font-size: 1.15rem;
+}
+
+.feedingDoseSpacer,
+.feedingDoseClose {
+  width: 36px;
+  flex: 0 0 36px;
+}
+
+.feedingDoseClose {
+  min-height: 36px;
+  padding: 0;
+  border-radius: 999px;
+  font-size: 1.2rem;
+}
+
+.feedingDoseBody {
+  display: grid;
+  gap: 16px;
+}
+
+.feedingDoseUnitBlock {
+  display: grid;
+  gap: 10px;
+}
+
+.feedingDoseUnitGrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.feedingDoseUnitButton {
+  min-height: 40px;
+  padding: 8px 10px;
+}
+
+.feedingDoseUnitButtonActive {
+  background: rgba(52, 199, 89, 0.16);
+  color: #1f8f46;
+  border-color: rgba(52, 199, 89, 0.36);
+}
+
+.feedingDoseSave {
+  min-height: 48px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #3ea2ff 0%, #007aff 100%);
+  color: #ffffff;
+  font-weight: 700;
+}
+
+@keyframes feedingActionExpand {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 12px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@media (max-width: 640px) {
+  .feedingPage {
+    padding-bottom: calc(208px + env(safe-area-inset-bottom));
+  }
+
+  .feedingPageDockExpanded {
+    padding-bottom: calc(318px + env(safe-area-inset-bottom));
+  }
+
+  .feedingTimelineRow {
+    grid-template-columns: 62px minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .feedingEntryCard {
+    padding: 14px;
+  }
+
+  .feedingSummaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .feedingDateStrip {
+    grid-auto-columns: 62px;
+  }
+
+  .feedingItemRow {
+    grid-template-columns: minmax(0, 1fr) 102px 44px;
+  }
+
+  .feedingDoseUnitGrid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}

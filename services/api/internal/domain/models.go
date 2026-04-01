@@ -166,6 +166,54 @@ type TimelineEntry struct {
 	Comments       []TimelineComment       `json:"comments"`
 }
 
+type FeedingCategory string
+
+const (
+	FeedingMilk       FeedingCategory = "milk"
+	FeedingSolid      FeedingCategory = "solid"
+	FeedingDiaper     FeedingCategory = "diaper"
+	FeedingSleep      FeedingCategory = "sleep"
+	FeedingSupplement FeedingCategory = "supplement"
+	FeedingMedicine   FeedingCategory = "medicine"
+)
+
+type FeedingMilkMode string
+
+const (
+	FeedingBreast  FeedingMilkMode = "breast"
+	FeedingBottle  FeedingMilkMode = "bottle"
+	FeedingFormula FeedingMilkMode = "formula"
+)
+
+type FeedingEntryItem struct {
+	ID        string    `json:"id"`
+	EntryID   string    `json:"entryId"`
+	Name      string    `json:"name"`
+	Dose      string    `json:"dose,omitempty"`
+	SortOrder int       `json:"sortOrder"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+type FeedingEntry struct {
+	ID            string             `json:"id"`
+	FamilyID      string             `json:"albumId"`
+	BabyID        string             `json:"babyId"`
+	Category      FeedingCategory    `json:"category"`
+	OccurredAt    time.Time          `json:"occurredAt"`
+	EndedAt       *time.Time         `json:"endedAt,omitempty"`
+	DayKey        string             `json:"dayKey"`
+	Note          string             `json:"note"`
+	CreatedBy     string             `json:"createdBy"`
+	CreatedByName string             `json:"createdByName,omitempty"`
+	CreatedAt     time.Time          `json:"createdAt"`
+	UpdatedAt     time.Time          `json:"updatedAt"`
+	MilkMode      FeedingMilkMode    `json:"milkMode,omitempty"`
+	AmountML      *int               `json:"amountMl,omitempty"`
+	FoodName      string             `json:"foodName,omitempty"`
+	HasStool      *bool              `json:"hasStool,omitempty"`
+	Items         []FeedingEntryItem `json:"items"`
+}
+
 type MediaAsset struct {
 	ID                     string               `json:"id"`
 	FamilyID               string               `json:"albumId"`

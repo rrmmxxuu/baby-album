@@ -113,6 +113,94 @@ export interface TimelineEntry {
   comments: TimelineComment[];
 }
 
+export type FeedingCategory = "milk" | "solid" | "diaper" | "sleep" | "supplement" | "medicine";
+export type FeedingMilkMode = "breast" | "bottle" | "formula";
+
+export interface FeedingEntryItem {
+  id: string;
+  entryId: string;
+  name: string;
+  dose?: string;
+  sortOrder: number;
+  createdAt: string;
+}
+
+export interface FeedingEntry {
+  id: string;
+  albumId: string;
+  babyId: string;
+  category: FeedingCategory;
+  occurredAt: string;
+  endedAt?: string;
+  dayKey: string;
+  note: string;
+  createdBy: string;
+  createdByName?: string;
+  createdAt: string;
+  updatedAt: string;
+  milkMode?: FeedingMilkMode;
+  amountMl?: number;
+  foodName?: string;
+  hasStool?: boolean;
+  items: FeedingEntryItem[];
+}
+
+export interface FeedingCountSummary {
+  count: number;
+  itemCount?: number;
+}
+
+export interface FeedingMilkSummary {
+  count: number;
+  breastCount: number;
+  bottleCount: number;
+  formulaCount: number;
+  totalMl: number;
+  breastMinutes: number;
+}
+
+export interface FeedingDiaperSummary {
+  count: number;
+  stoolCount: number;
+}
+
+export interface FeedingSleepSummary {
+  count: number;
+  totalMinutes: number;
+}
+
+export interface FeedingSummary {
+  milk: FeedingMilkSummary;
+  diaper: FeedingDiaperSummary;
+  solid: FeedingCountSummary;
+  supplement: FeedingCountSummary;
+  medicine: FeedingCountSummary;
+  sleep: FeedingSleepSummary;
+}
+
+export interface FeedingDayPayload {
+  day: string;
+  summary: FeedingSummary;
+  entries: FeedingEntry[];
+}
+
+export interface FeedingEntryItemInput {
+  name: string;
+  dose?: string;
+}
+
+export interface FeedingEntryUpsertInput {
+  category: FeedingCategory;
+  occurredAt: string;
+  endedAt?: string;
+  note: string;
+  milkMode?: FeedingMilkMode;
+  amountMl?: number;
+  foodName?: string;
+  hasStool?: boolean;
+  items?: FeedingEntryItemInput[];
+}
+
 export interface User {
   id: string;
   displayName: string;

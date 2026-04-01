@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { latestInviteCode, login, logout, openSettings, register, setRelation, uniqueEmail } from "./helpers";
+import { login, logout, openSettings, register, setRelation, uniqueEmail } from "./helpers";
 
 test("generates an invite code and joins an existing album", async ({ page }) => {
   await login(page, {
@@ -13,9 +13,14 @@ test("generates an invite code and joins an existing album", async ({ page }) =>
   await expect(page).toHaveURL(/\/settings\/babies$/);
   await page.getByRole("button", { name: /Little Qin/ }).click();
   await expect(page).toHaveURL(/\/babies\/baby-demo\/manage$/);
+  const inviteResponse = page.waitForResponse((response) => (
+    response.request().method() === "POST"
+    && /\/api\/proxy\/api\/v1\/albums\/[^/]+\/invites$/.test(response.url())
+    && response.status() === 201
+  ));
   await page.getByRole("button", { name: "生成邀请码" }).click();
-
-  const inviteCode = (await latestInviteCode(page.locator(".inviteLink")).textContent())?.trim() ?? "";
+  const invitePayload = await (await inviteResponse).json() as { code?: string };
+  const inviteCode = invitePayload.code?.trim() ?? "";
   expect(inviteCode).toMatch(/^[A-Z0-9]{6}$/);
 
   await logout(page);

@@ -41,6 +41,10 @@ func (s *stubRepository) AlbumWorkspace(albumID, userID string) (store.AlbumWork
 	return store.AlbumWorkspace{}, nil
 }
 
+func (s *stubRepository) FeedingDay(userID string, input store.FeedingDayInput) (store.FeedingDay, error) {
+	return store.FeedingDay{}, nil
+}
+
 func (s *stubRepository) TimelinePage(albumID, userID string, input store.TimelinePageInput) (store.TimelinePage, error) {
 	return store.TimelinePage{}, nil
 }
@@ -61,6 +65,10 @@ func (s *stubRepository) ResolveDuplicateMedia(userID string, input store.Duplic
 	return store.DuplicateMediaResolveResult{}, nil
 }
 
+func (s *stubRepository) CreateFeedingEntry(userID string, input store.CreateFeedingEntryInput) (domain.FeedingEntry, error) {
+	return domain.FeedingEntry{}, nil
+}
+
 func (s *stubRepository) CreateTimelineEntry(userID string, input store.CreateTimelineEntryInput) (domain.TimelineEntry, error) {
 	return domain.TimelineEntry{}, nil
 }
@@ -69,8 +77,16 @@ func (s *stubRepository) CreateTimelineComment(userID string, input store.Create
 	return domain.TimelineComment{}, nil
 }
 
+func (s *stubRepository) UpdateFeedingEntry(userID string, input store.UpdateFeedingEntryInput) (domain.FeedingEntry, error) {
+	return domain.FeedingEntry{}, nil
+}
+
 func (s *stubRepository) UpdateTimelineEntry(userID string, input store.UpdateTimelineEntryInput) (domain.TimelineEntry, error) {
 	return domain.TimelineEntry{}, nil
+}
+
+func (s *stubRepository) DeleteFeedingEntry(userID, babyID, entryID string) error {
+	return nil
 }
 
 func (s *stubRepository) DeleteTimelineEntry(userID, albumID, entryID string) (store.DeleteCleanup, error) {

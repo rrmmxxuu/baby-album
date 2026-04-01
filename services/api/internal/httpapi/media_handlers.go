@@ -295,17 +295,28 @@ func (s *Server) serveWarmOriginalStream(w http.ResponseWriter, item domain.Medi
 
 func (s *Server) handleBabyAssets(w http.ResponseWriter, r *http.Request) {
 	parts := splitPath(trimAPIPrefix(r.URL.Path, "/api/v1/babies/"))
-	if len(parts) != 2 || parts[1] != "avatar" {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
-		return
-	}
-	if r.Method != http.MethodGet {
-		writeMethodNotAllowed(w)
+	if len(parts) == 0 || parts[0] == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "baby id is required"})
 		return
 	}
 	babyID := parts[0]
-	if babyID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "baby id is required"})
+	switch {
+	case len(parts) == 2 && parts[1] == "avatar":
+		s.handleBabyAvatarAsset(w, r, babyID)
+	case len(parts) == 2 && parts[1] == "feeding":
+		s.handleBabyFeedingDay(w, r, babyID)
+	case len(parts) == 2 && parts[1] == "feeding-entries":
+		s.handleBabyFeedingEntries(w, r, babyID)
+	case len(parts) == 3 && parts[1] == "feeding-entries":
+		s.handleBabyFeedingEntryActions(w, r, babyID, parts[2])
+	default:
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+	}
+}
+
+func (s *Server) handleBabyAvatarAsset(w http.ResponseWriter, r *http.Request, babyID string) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w)
 		return
 	}
 	baby, err := s.resolveBabyAssetRequest(r, babyID)

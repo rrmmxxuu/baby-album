@@ -3,20 +3,23 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-RUN_DIR="$ROOT_DIR/tmp/run"
 PUBLIC_HOST="${1:-127.0.0.1}"
-WEB_PORT="${DEV_WEB_PORT:-3100}"
-API_PORT="${DEV_API_PORT:-18080}"
+WEB_PORT="${DEV_WEB_PORT:-3106}"
+API_PORT="${DEV_API_PORT:-18086}"
+POSTGRES_PORT="${E2E_POSTGRES_PORT:-15432}"
+COMPOSE_PROJECT_NAME="${E2E_COMPOSE_PROJECT_NAME:-baby-album-e2e}"
+RUN_DIR="${E2E_RUN_DIR:-$ROOT_DIR/tmp/run/e2e-$WEB_PORT-$API_PORT-$POSTGRES_PORT}"
 GO_BIN="${GO_BIN:-go}"
 API_PID_FILE="$RUN_DIR/e2e-api.pid"
 WEB_PID_FILE="$RUN_DIR/e2e-web.pid"
 AGENT_PID_FILE="$RUN_DIR/e2e-agent.pid"
+declare -a COMPOSE_CMD=("docker" "compose" "-p" "$COMPOSE_PROJECT_NAME")
 
 cleanup() {
   stop_process "$AGENT_PID_FILE"
   stop_process "$WEB_PID_FILE"
   stop_process "$API_PID_FILE"
-  docker compose stop postgres >/dev/null 2>&1 || true
+  POSTGRES_PORT="$POSTGRES_PORT" "${COMPOSE_CMD[@]}" down -v >/dev/null 2>&1 || true
 }
 
 wait_for_http() {
@@ -68,11 +71,11 @@ export AGENT_NODE_NAME="${AGENT_NODE_NAME:-Local NAS}"
 export DEV_WEB_PORT="$WEB_PORT"
 export DEV_API_PORT="$API_PORT"
 
-echo "==> starting postgres"
-docker compose up -d postgres >/dev/null
+echo "==> starting isolated postgres ($COMPOSE_PROJECT_NAME on :$POSTGRES_PORT)"
+POSTGRES_PORT="$POSTGRES_PORT" "${COMPOSE_CMD[@]}" up -d postgres >/dev/null
 
 echo "==> waiting for postgres"
-until docker compose exec -T postgres pg_isready -U baby_album -d baby_album >/dev/null 2>&1; do
+until POSTGRES_PORT="$POSTGRES_PORT" "${COMPOSE_CMD[@]}" exec -T postgres pg_isready -U baby_album -d baby_album >/dev/null 2>&1; do
   sleep 1
 done
 
@@ -82,7 +85,7 @@ start_process \
   "$API_PID_FILE" \
   "$RUN_DIR/e2e-api.log" \
   env \
-  DATABASE_URL="postgres://baby_album:baby_album@localhost:5432/baby_album?sslmode=disable" \
+  DATABASE_URL="postgres://baby_album:baby_album@localhost:$POSTGRES_PORT/baby_album?sslmode=disable" \
   CACHE_ROOT="$ROOT_DIR/tmp/cache" \
   API_ADDR=":$API_PORT" \
   ALLOWED_ORIGINS="http://$PUBLIC_HOST:$WEB_PORT,http://localhost:$WEB_PORT,http://127.0.0.1:$WEB_PORT" \
@@ -91,7 +94,9 @@ start_process \
 echo "==> building web"
 (
   cd "$ROOT_DIR/apps/web"
-  NEXT_PUBLIC_API_BASE_URL="http://$PUBLIC_HOST:$API_PORT" npm run build >"$RUN_DIR/e2e-web-build.log" 2>&1
+  NEXT_PUBLIC_API_BASE_URL="http://$PUBLIC_HOST:$API_PORT" \
+  INTERNAL_API_BASE_URL="http://127.0.0.1:$API_PORT" \
+  npm run build >"$RUN_DIR/e2e-web-build.log" 2>&1
 )
 
 echo "==> starting web"
@@ -101,6 +106,7 @@ start_process \
   "$RUN_DIR/e2e-web.log" \
   env \
   NEXT_PUBLIC_API_BASE_URL="http://$PUBLIC_HOST:$API_PORT" \
+  INTERNAL_API_BASE_URL="http://127.0.0.1:$API_PORT" \
   npm run start -- --hostname 0.0.0.0 --port "$WEB_PORT"
 
 echo "==> starting agent"
@@ -122,6 +128,7 @@ E2E stack is up.
 
 Web:  http://$PUBLIC_HOST:$WEB_PORT
 API:  http://$PUBLIC_HOST:$API_PORT
+Postgres: localhost:$POSTGRES_PORT (isolated compose project: $COMPOSE_PROJECT_NAME)
 
 Logs:
   tail -f $RUN_DIR/e2e-api.log

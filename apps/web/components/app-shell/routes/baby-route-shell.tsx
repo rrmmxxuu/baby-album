@@ -171,6 +171,7 @@ export function BabyRouteShell({ babyId, children }: BabyRouteShellProps) {
     <AuthenticatedShell
       activeNav={navKey}
       blocking={false}
+      bottomNavHidden={navKey === "feeding"}
       feedingHref={feedingHref}
       photosHref={photosHref}
       settingsHref={settingsHref}

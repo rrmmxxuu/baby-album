@@ -16,6 +16,7 @@ import (
 type PostgresStore struct{ db *sql.DB }
 
 const mediaAssetColumns = `id, family_id, entry_id, upload_batch_id, uploaded_by, uploaded_by_name, file_name, media_type, captured_at, uploaded_at, timeline_day, status, source, width, height, byte_size, preview_status, preview_blob_key, original_blob_key, content_sha256, processed_at, original_path, original_local_state, original_r2_state, original_r2_key, original_restore_state, original_last_accessed_at, original_evicted_at`
+const feedingEntryColumns = `id, family_id, baby_id, category, occurred_at, ended_at, day_key, note, created_by, created_by_name, created_at, updated_at, milk_mode, amount_ml, food_name, has_stool`
 
 func NewPostgresStore(databaseURL string) (*PostgresStore, error) {
 	db, err := sql.Open("pgx", databaseURL)
@@ -67,6 +68,11 @@ func (s *PostgresStore) migrate() error {
 		`create table if not exists storage_node_pairings (code text primary key, family_id text not null references families(id), created_by text not null references users(id), created_at timestamptz not null, expires_at timestamptz not null, used_at timestamptz)`,
 		`create table if not exists timeline_entries (id text primary key, family_id text not null references families(id), caption text not null default '', visibility text not null default 'members', time_mode text not null default 'captured_at', display_at timestamptz not null, timeline_day text not null, uploaded_by text not null default '', uploaded_by_name text not null default '', uploaded_at timestamptz not null, created_at timestamptz not null)`,
 		`create table if not exists timeline_comments (id text primary key, family_id text not null references families(id), entry_id text not null references timeline_entries(id), user_id text not null references users(id), display_name text not null, content text not null, created_at timestamptz not null)`,
+		`create table if not exists feeding_entries (id text primary key, family_id text not null references families(id), baby_id text not null references babies(id), category text not null, occurred_at timestamptz not null, ended_at timestamptz, day_key text not null, note text not null default '', created_by text not null references users(id), created_by_name text not null default '', created_at timestamptz not null, updated_at timestamptz not null, milk_mode text, amount_ml integer, food_name text not null default '', has_stool boolean)`,
+		`alter table feeding_entries alter column milk_mode drop not null`,
+		`alter table feeding_entries alter column milk_mode drop default`,
+		`update feeding_entries set milk_mode = null where trim(coalesce(milk_mode, '')) = ''`,
+		`create table if not exists feeding_entry_items (id text primary key, entry_id text not null references feeding_entries(id) on delete cascade, name text not null, dose text not null default '', sort_order integer not null default 0, created_at timestamptz not null)`,
 		`create table if not exists media_assets (id text primary key, family_id text not null references families(id), entry_id text not null default '', upload_batch_id text not null default '', uploaded_by text not null default '', uploaded_by_name text not null default '', file_name text not null, media_type text not null, captured_at timestamptz not null, uploaded_at timestamptz not null, timeline_day text not null, status text not null, source text not null, width integer not null default 0, height integer not null default 0, byte_size bigint not null default 0, preview_status text not null default 'pending', preview_blob_key text not null default '', original_blob_key text not null default '', content_sha256 text not null default '', processed_at timestamptz, original_path text not null default '', original_local_state text not null default 'pending', original_r2_state text not null default 'missing', original_r2_key text not null default '', original_restore_state text not null default 'idle', original_last_accessed_at timestamptz, original_evicted_at timestamptz)`,
 		`create table if not exists media_placements (media_id text not null references media_assets(id), family_id text not null references families(id), node_id text not null references storage_nodes(id), kind text not null default 'primary', status text not null default 'pending', local_path text not null default '', created_at timestamptz not null, updated_at timestamptz not null, last_verified_at timestamptz, primary key (media_id, node_id))`,
 		`create index if not exists idx_media_placements_family_node_status on media_placements (family_id, node_id, status)`,
@@ -107,6 +113,9 @@ func (s *PostgresStore) migrate() error {
 		`create index if not exists idx_family_invites_family on family_invites (family_id, created_at desc)`,
 		`create index if not exists idx_timeline_entries_family_display on timeline_entries (family_id, display_at desc, uploaded_at desc)`,
 		`create index if not exists idx_timeline_comments_entry_created on timeline_comments (entry_id, created_at asc, id asc)`,
+		`create index if not exists idx_feeding_entries_baby_day on feeding_entries (baby_id, day_key, occurred_at desc, created_at desc)`,
+		`create index if not exists idx_feeding_entries_family_day on feeding_entries (family_id, day_key, occurred_at desc)`,
+		`create index if not exists idx_feeding_entry_items_entry_sort on feeding_entry_items (entry_id, sort_order asc, created_at asc)`,
 		`create index if not exists idx_media_assets_family_captured on media_assets (family_id, captured_at desc)`,
 		`create index if not exists idx_media_assets_family_byte_size on media_assets (family_id, byte_size)`,
 		`create index if not exists idx_media_assets_family_sha256 on media_assets (family_id, content_sha256) where content_sha256 <> ''`,
@@ -630,6 +639,181 @@ func (s *PostgresStore) ResolveDuplicateMedia(userID string, input DuplicateMedi
 	return result, nil
 }
 
+func (s *PostgresStore) FeedingDay(userID string, input FeedingDayInput) (FeedingDay, error) {
+	baby, family, _, err := s.feedingContextForUser(input.BabyID, userID, domain.RoleMember)
+	if err != nil {
+		return FeedingDay{}, err
+	}
+	location := feedingLocation(family.Timezone)
+	dayKey := strings.TrimSpace(input.Day)
+	if dayKey == "" {
+		dayKey = feedingDayKey(time.Now().UTC(), location)
+	}
+	if !validFeedingDayKey(dayKey) {
+		return FeedingDay{}, ErrConflict
+	}
+
+	rows, err := s.db.Query(`select `+feedingEntryColumns+` from feeding_entries where family_id = $1 and baby_id = $2 and day_key = $3 order by occurred_at desc, created_at desc, id desc`, family.ID, baby.ID, dayKey)
+	if err != nil {
+		return FeedingDay{}, err
+	}
+	defer rows.Close()
+
+	entries := []domain.FeedingEntry{}
+	entryIndexes := make(map[string]int)
+	for rows.Next() {
+		entry, scanErr := scanFeedingEntry(rows)
+		if scanErr != nil {
+			return FeedingDay{}, scanErr
+		}
+		entry.Items = []domain.FeedingEntryItem{}
+		entryIndexes[entry.ID] = len(entries)
+		entries = append(entries, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return FeedingDay{}, err
+	}
+	if err := s.attachFeedingItems(entries, entryIndexes); err != nil {
+		return FeedingDay{}, err
+	}
+
+	return FeedingDay{
+		Day:     dayKey,
+		Summary: summarizeFeedingEntries(entries),
+		Entries: entries,
+	}, nil
+}
+
+func (s *PostgresStore) CreateFeedingEntry(userID string, input CreateFeedingEntryInput) (domain.FeedingEntry, error) {
+	baby, family, member, err := s.feedingContextForUser(input.BabyID, userID, domain.RoleMember)
+	if err != nil {
+		return domain.FeedingEntry{}, err
+	}
+	prepared, err := prepareFeedingEntry(family, input.Category, input.OccurredAt, input.EndedAt, input.Note, input.MilkMode, input.AmountML, input.FoodName, input.HasStool, input.Items)
+	if err != nil {
+		return domain.FeedingEntry{}, err
+	}
+	now := time.Now().UTC()
+	createdByName := strings.TrimSpace(member.Relation)
+	if createdByName == "" {
+		createdByName = member.DisplayName
+	}
+	entry := domain.FeedingEntry{
+		ID:            newID("feed"),
+		FamilyID:      family.ID,
+		BabyID:        baby.ID,
+		Category:      input.Category,
+		OccurredAt:    prepared.OccurredAt,
+		EndedAt:       prepared.EndedAt,
+		DayKey:        prepared.DayKey,
+		Note:          prepared.Note,
+		CreatedBy:     userID,
+		CreatedByName: createdByName,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+		MilkMode:      prepared.MilkMode,
+		AmountML:      prepared.AmountML,
+		FoodName:      prepared.FoodName,
+		HasStool:      prepared.HasStool,
+		Items:         []domain.FeedingEntryItem{},
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return domain.FeedingEntry{}, err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`insert into feeding_entries (id, family_id, baby_id, category, occurred_at, ended_at, day_key, note, created_by, created_by_name, created_at, updated_at, milk_mode, amount_ml, food_name, has_stool) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`, entry.ID, entry.FamilyID, entry.BabyID, entry.Category, entry.OccurredAt, nullableTime(entry.EndedAt), entry.DayKey, entry.Note, entry.CreatedBy, entry.CreatedByName, entry.CreatedAt, entry.UpdatedAt, nullableFeedingMilkMode(entry.MilkMode), nullableInt(entry.AmountML), entry.FoodName, nullableBool(entry.HasStool)); err != nil {
+		return domain.FeedingEntry{}, err
+	}
+	items, err := insertFeedingEntryItemsTx(tx, entry.ID, prepared.Items, now)
+	if err != nil {
+		return domain.FeedingEntry{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return domain.FeedingEntry{}, err
+	}
+	entry.Items = items
+	return entry, nil
+}
+
+func (s *PostgresStore) UpdateFeedingEntry(userID string, input UpdateFeedingEntryInput) (domain.FeedingEntry, error) {
+	baby, family, _, err := s.feedingContextForUser(input.BabyID, userID, domain.RoleMember)
+	if err != nil {
+		return domain.FeedingEntry{}, err
+	}
+	entry, err := s.feedingEntryByID(family.ID, input.EntryID)
+	if err != nil {
+		return domain.FeedingEntry{}, err
+	}
+	if entry.BabyID != baby.ID {
+		return domain.FeedingEntry{}, ErrNotFound
+	}
+	prepared, err := prepareFeedingEntry(family, input.Category, input.OccurredAt, input.EndedAt, input.Note, input.MilkMode, input.AmountML, input.FoodName, input.HasStool, input.Items)
+	if err != nil {
+		return domain.FeedingEntry{}, err
+	}
+
+	now := time.Now().UTC()
+	entry.Category = input.Category
+	entry.OccurredAt = prepared.OccurredAt
+	entry.EndedAt = prepared.EndedAt
+	entry.DayKey = prepared.DayKey
+	entry.Note = prepared.Note
+	entry.UpdatedAt = now
+	entry.MilkMode = prepared.MilkMode
+	entry.AmountML = prepared.AmountML
+	entry.FoodName = prepared.FoodName
+	entry.HasStool = prepared.HasStool
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return domain.FeedingEntry{}, err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`update feeding_entries set category = $1, occurred_at = $2, ended_at = $3, day_key = $4, note = $5, updated_at = $6, milk_mode = $7, amount_ml = $8, food_name = $9, has_stool = $10 where id = $11 and family_id = $12`, entry.Category, entry.OccurredAt, nullableTime(entry.EndedAt), entry.DayKey, entry.Note, entry.UpdatedAt, nullableFeedingMilkMode(entry.MilkMode), nullableInt(entry.AmountML), entry.FoodName, nullableBool(entry.HasStool), entry.ID, entry.FamilyID); err != nil {
+		return domain.FeedingEntry{}, err
+	}
+	if _, err := tx.Exec(`delete from feeding_entry_items where entry_id = $1`, entry.ID); err != nil {
+		return domain.FeedingEntry{}, err
+	}
+	items, err := insertFeedingEntryItemsTx(tx, entry.ID, prepared.Items, now)
+	if err != nil {
+		return domain.FeedingEntry{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return domain.FeedingEntry{}, err
+	}
+	entry.Items = items
+	return entry, nil
+}
+
+func (s *PostgresStore) DeleteFeedingEntry(userID, babyID, entryID string) error {
+	baby, family, _, err := s.feedingContextForUser(babyID, userID, domain.RoleMember)
+	if err != nil {
+		return err
+	}
+	entry, err := s.feedingEntryByID(family.ID, entryID)
+	if err != nil {
+		return err
+	}
+	if entry.BabyID != baby.ID {
+		return ErrNotFound
+	}
+	result, err := s.db.Exec(`delete from feeding_entries where family_id = $1 and baby_id = $2 and id = $3`, family.ID, baby.ID, entryID)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (s *PostgresStore) CreateTimelineEntry(userID string, input CreateTimelineEntryInput) (domain.TimelineEntry, error) {
 	if err := s.authorize(input.AlbumID, userID, domain.RoleMember); err != nil {
 		return domain.TimelineEntry{}, err
@@ -661,6 +845,144 @@ func (s *PostgresStore) CreateTimelineEntry(userID string, input CreateTimelineE
 		return domain.TimelineEntry{}, err
 	}
 	return entry, nil
+}
+
+type preparedFeedingEntry struct {
+	OccurredAt time.Time
+	EndedAt    *time.Time
+	DayKey     string
+	Note       string
+	MilkMode   domain.FeedingMilkMode
+	AmountML   *int
+	FoodName   string
+	HasStool   *bool
+	Items      []FeedingEntryItemInput
+}
+
+func prepareFeedingEntry(family domain.Family, category domain.FeedingCategory, occurredAt time.Time, endedAt *time.Time, note string, milkMode domain.FeedingMilkMode, amountML *int, foodName string, hasStool *bool, items []FeedingEntryItemInput) (preparedFeedingEntry, error) {
+	if !validFeedingCategory(category) || occurredAt.IsZero() {
+		return preparedFeedingEntry{}, ErrConflict
+	}
+
+	location := feedingLocation(family.Timezone)
+	now := time.Now().In(location)
+	occurredLocal := occurredAt.In(location)
+	if occurredLocal.After(now.Add(5 * time.Minute)) {
+		return preparedFeedingEntry{}, ErrConflict
+	}
+
+	result := preparedFeedingEntry{
+		OccurredAt: occurredAt.UTC(),
+		DayKey:     feedingDayKey(occurredAt.UTC(), location),
+		Note:       strings.TrimSpace(note),
+		FoodName:   strings.TrimSpace(foodName),
+	}
+
+	if endedAt != nil {
+		normalizedEndedAt := endedAt.UTC()
+		if !normalizedEndedAt.After(result.OccurredAt) || normalizedEndedAt.In(location).After(now.Add(5*time.Minute)) {
+			return preparedFeedingEntry{}, ErrConflict
+		}
+		result.EndedAt = &normalizedEndedAt
+	}
+
+	if amountML != nil {
+		if *amountML <= 0 {
+			return preparedFeedingEntry{}, ErrConflict
+		}
+		value := *amountML
+		result.AmountML = &value
+	}
+
+	if hasStool != nil {
+		value := *hasStool
+		result.HasStool = &value
+	}
+
+	normalizedItems := make([]FeedingEntryItemInput, 0, len(items))
+	for _, item := range items {
+		name := strings.TrimSpace(item.Name)
+		dose := strings.TrimSpace(item.Dose)
+		if name == "" {
+			continue
+		}
+		normalizedItems = append(normalizedItems, FeedingEntryItemInput{Name: name, Dose: dose})
+	}
+
+	switch category {
+	case domain.FeedingMilk:
+		result.FoodName = ""
+		result.HasStool = nil
+		result.Items = nil
+		if !validFeedingMilkMode(milkMode) {
+			return preparedFeedingEntry{}, ErrConflict
+		}
+		result.MilkMode = milkMode
+		switch milkMode {
+		case domain.FeedingBreast:
+			result.AmountML = nil
+		case domain.FeedingBottle, domain.FeedingFormula:
+			if result.AmountML == nil {
+				return preparedFeedingEntry{}, ErrConflict
+			}
+			result.EndedAt = nil
+		}
+	case domain.FeedingSolid:
+		result.MilkMode = ""
+		result.AmountML = nil
+		result.HasStool = nil
+		result.Items = nil
+		result.EndedAt = nil
+		if result.FoodName == "" {
+			return preparedFeedingEntry{}, ErrConflict
+		}
+	case domain.FeedingDiaper:
+		result.MilkMode = ""
+		result.AmountML = nil
+		result.FoodName = ""
+		result.Items = nil
+		result.EndedAt = nil
+		if result.HasStool == nil {
+			return preparedFeedingEntry{}, ErrConflict
+		}
+	case domain.FeedingSleep:
+		result.MilkMode = ""
+		result.AmountML = nil
+		result.FoodName = ""
+		result.HasStool = nil
+		result.Items = nil
+	case domain.FeedingSupplement, domain.FeedingMedicine:
+		result.MilkMode = ""
+		result.AmountML = nil
+		result.FoodName = ""
+		result.HasStool = nil
+		result.EndedAt = nil
+		if len(normalizedItems) == 0 {
+			return preparedFeedingEntry{}, ErrConflict
+		}
+		result.Items = normalizedItems
+	}
+
+	return result, nil
+}
+
+func insertFeedingEntryItemsTx(tx *sql.Tx, entryID string, items []FeedingEntryItemInput, createdAt time.Time) ([]domain.FeedingEntryItem, error) {
+	result := make([]domain.FeedingEntryItem, 0, len(items))
+	for index, item := range items {
+		entryItem := domain.FeedingEntryItem{
+			ID:        newID("fitem"),
+			EntryID:   entryID,
+			Name:      item.Name,
+			Dose:      item.Dose,
+			SortOrder: index,
+			CreatedAt: createdAt,
+		}
+		if _, err := tx.Exec(`insert into feeding_entry_items (id, entry_id, name, dose, sort_order, created_at) values ($1,$2,$3,$4,$5,$6)`, entryItem.ID, entryItem.EntryID, entryItem.Name, entryItem.Dose, entryItem.SortOrder, entryItem.CreatedAt); err != nil {
+			return nil, err
+		}
+		result = append(result, entryItem)
+	}
+	return result, nil
 }
 
 func (s *PostgresStore) CreateTimelineComment(userID string, input CreateTimelineCommentInput) (domain.TimelineComment, error) {
@@ -1944,6 +2266,55 @@ func nullableString(value string) any {
 	return value
 }
 
+func nullableTime(value *time.Time) any {
+	if value == nil {
+		return nil
+	}
+	return value.UTC()
+}
+
+func nullableInt(value *int) any {
+	if value == nil {
+		return nil
+	}
+	return *value
+}
+
+func nullableBool(value *bool) any {
+	if value == nil {
+		return nil
+	}
+	return *value
+}
+
+func nullableFeedingMilkMode(value domain.FeedingMilkMode) any {
+	if strings.TrimSpace(string(value)) == "" {
+		return nil
+	}
+	return string(value)
+}
+
+func feedingLocation(timezone string) *time.Location {
+	normalized := strings.TrimSpace(timezone)
+	if normalized == "" {
+		return time.UTC
+	}
+	location, err := time.LoadLocation(normalized)
+	if err != nil {
+		return time.UTC
+	}
+	return location
+}
+
+func validFeedingDayKey(value string) bool {
+	_, err := time.Parse("2006-01-02", strings.TrimSpace(value))
+	return err == nil
+}
+
+func feedingDayKey(value time.Time, location *time.Location) string {
+	return value.In(location).Format("2006-01-02")
+}
+
 func (s *PostgresStore) primaryNodeIDForFamilyTx(tx *sql.Tx, familyID string) (string, error) {
 	var nodeID string
 	err := tx.QueryRow(`select node_id from storage_node_bindings where family_id = $1 and mode = 'primary' and status = 'active' order by updated_at desc, created_at desc limit 1`, familyID).Scan(&nodeID)
@@ -2063,6 +2434,118 @@ func (s *PostgresStore) authorizeTimelineEntryEdit(userID string, entry domain.T
 		return nil
 	}
 	return ErrForbidden
+}
+
+func (s *PostgresStore) feedingContextForUser(babyID, userID string, minRole domain.Role) (domain.BabyProfile, domain.Family, domain.AlbumMember, error) {
+	baby, err := s.BabyByPublicID(strings.TrimSpace(babyID))
+	if err != nil {
+		return domain.BabyProfile{}, domain.Family{}, domain.AlbumMember{}, err
+	}
+	member, err := s.memberForUser(baby.FamilyID, userID)
+	if err != nil {
+		return domain.BabyProfile{}, domain.Family{}, domain.AlbumMember{}, err
+	}
+	if roleRank(member.Role) < roleRank(minRole) {
+		return domain.BabyProfile{}, domain.Family{}, domain.AlbumMember{}, ErrForbidden
+	}
+	family, err := s.familyByID(baby.FamilyID)
+	if err != nil {
+		return domain.BabyProfile{}, domain.Family{}, domain.AlbumMember{}, err
+	}
+	return baby, family, member, nil
+}
+
+func (s *PostgresStore) feedingEntryByID(familyID, entryID string) (domain.FeedingEntry, error) {
+	row := s.db.QueryRow(`select `+feedingEntryColumns+` from feeding_entries where family_id = $1 and id = $2`, familyID, entryID)
+	entry, err := scanFeedingEntry(row)
+	if err == sql.ErrNoRows {
+		return domain.FeedingEntry{}, ErrNotFound
+	}
+	if err != nil {
+		return domain.FeedingEntry{}, err
+	}
+	entry.Items = []domain.FeedingEntryItem{}
+	return entry, nil
+}
+
+func (s *PostgresStore) attachFeedingItems(entries []domain.FeedingEntry, entryIndexes map[string]int) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	queryArgs := make([]any, 0, len(entries))
+	placeholders := make([]string, 0, len(entries))
+	for index, entry := range entries {
+		placeholders = append(placeholders, fmt.Sprintf("$%d", index+1))
+		queryArgs = append(queryArgs, entry.ID)
+	}
+	rows, err := s.db.Query(
+		fmt.Sprintf(
+			`select id, entry_id, name, dose, sort_order, created_at from feeding_entry_items where entry_id in (%s) order by sort_order asc, created_at asc, id asc`,
+			strings.Join(placeholders, ","),
+		),
+		queryArgs...,
+	)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		item, scanErr := scanFeedingEntryItem(rows)
+		if scanErr != nil {
+			return scanErr
+		}
+		index, ok := entryIndexes[item.EntryID]
+		if !ok {
+			continue
+		}
+		entries[index].Items = append(entries[index].Items, item)
+	}
+	return rows.Err()
+}
+
+func summarizeFeedingEntries(entries []domain.FeedingEntry) FeedingSummary {
+	summary := FeedingSummary{}
+	for _, entry := range entries {
+		switch entry.Category {
+		case domain.FeedingMilk:
+			switch entry.MilkMode {
+			case domain.FeedingBreast:
+				if entry.EndedAt != nil && entry.EndedAt.After(entry.OccurredAt) {
+					summary.Milk.Count += 1
+					summary.Milk.BreastCount += 1
+					summary.Milk.BreastMinutes += int(entry.EndedAt.Sub(entry.OccurredAt).Minutes())
+				}
+			case domain.FeedingBottle:
+				summary.Milk.Count += 1
+				summary.Milk.BottleCount += 1
+			case domain.FeedingFormula:
+				summary.Milk.Count += 1
+				summary.Milk.FormulaCount += 1
+			}
+			if entry.AmountML != nil {
+				summary.Milk.TotalML += *entry.AmountML
+			}
+		case domain.FeedingDiaper:
+			summary.Diaper.Count += 1
+			if entry.HasStool != nil && *entry.HasStool {
+				summary.Diaper.StoolCount += 1
+			}
+		case domain.FeedingSolid:
+			summary.Solid.Count += 1
+		case domain.FeedingSupplement:
+			summary.Supplement.Count += 1
+			summary.Supplement.ItemCount += len(entry.Items)
+		case domain.FeedingMedicine:
+			summary.Medicine.Count += 1
+			summary.Medicine.ItemCount += len(entry.Items)
+		case domain.FeedingSleep:
+			summary.Sleep.Count += 1
+			if entry.EndedAt != nil && entry.EndedAt.After(entry.OccurredAt) {
+				summary.Sleep.TotalMinutes += int(entry.EndedAt.Sub(entry.OccurredAt).Minutes())
+			}
+		}
+	}
+	return summary
 }
 
 func (s *PostgresStore) storageNodePairingByCode(code string) (domain.StorageNodePairing, error) {
@@ -2347,6 +2830,45 @@ func scanTimelineComment(row scanner) (domain.TimelineComment, error) {
 	var item domain.TimelineComment
 	if err := row.Scan(&item.ID, &item.FamilyID, &item.EntryID, &item.UserID, &item.DisplayName, &item.Content, &item.CreatedAt); err != nil {
 		return domain.TimelineComment{}, err
+	}
+	return item, nil
+}
+
+func scanFeedingEntry(row scanner) (domain.FeedingEntry, error) {
+	var (
+		item     domain.FeedingEntry
+		category string
+		endedAt  sql.NullTime
+		milkMode sql.NullString
+		amountML sql.NullInt64
+		hasStool sql.NullBool
+	)
+	if err := row.Scan(&item.ID, &item.FamilyID, &item.BabyID, &category, &item.OccurredAt, &endedAt, &item.DayKey, &item.Note, &item.CreatedBy, &item.CreatedByName, &item.CreatedAt, &item.UpdatedAt, &milkMode, &amountML, &item.FoodName, &hasStool); err != nil {
+		return domain.FeedingEntry{}, err
+	}
+	item.Category = domain.FeedingCategory(category)
+	if endedAt.Valid {
+		value := endedAt.Time
+		item.EndedAt = &value
+	}
+	if milkMode.Valid {
+		item.MilkMode = domain.FeedingMilkMode(milkMode.String)
+	}
+	if amountML.Valid {
+		value := int(amountML.Int64)
+		item.AmountML = &value
+	}
+	if hasStool.Valid {
+		value := hasStool.Bool
+		item.HasStool = &value
+	}
+	return item, nil
+}
+
+func scanFeedingEntryItem(row scanner) (domain.FeedingEntryItem, error) {
+	var item domain.FeedingEntryItem
+	if err := row.Scan(&item.ID, &item.EntryID, &item.Name, &item.Dose, &item.SortOrder, &item.CreatedAt); err != nil {
+		return domain.FeedingEntryItem{}, err
 	}
 	return item, nil
 }

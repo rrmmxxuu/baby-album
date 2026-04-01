@@ -24,8 +24,6 @@ function isProtectedPathname(pathname: string) {
 }
 
 export function useAppSession(queryInviteCode: string, initialAuthenticated = false) {
-  const PASSIVE_REFRESH_MIN_INTERVAL_MS = 10_000;
-  const PASSIVE_REFRESH_POLL_INTERVAL_MS = 30_000;
   const router = useRouter();
   const pathname = usePathname();
   const [origin, setOrigin] = useState("");
@@ -56,7 +54,6 @@ export function useAppSession(queryInviteCode: string, initialAuthenticated = fa
   const bootstrappedRef = useRef(false);
   const recoveryKeyRef = useRef("");
   const feedbackIdRef = useRef(0);
-  const lastPassiveRefreshAtRef = useRef(0);
 
   const clearFeedback = useCallback(() => {
     setFeedback(null);
@@ -218,41 +215,6 @@ export function useAppSession(queryInviteCode: string, initialAuthenticated = fa
   }, [appState, bootPhase, hydrated, isAuthenticated, refreshApp, selectedAlbumId]);
 
   useEffect(() => {
-    if (!hydrated || !isAuthenticated || bootPhase !== "done") {
-      return;
-    }
-
-    function refreshIfNeeded() {
-      const now = Date.now();
-      if (now - lastPassiveRefreshAtRef.current < PASSIVE_REFRESH_MIN_INTERVAL_MS) {
-        return;
-      }
-      lastPassiveRefreshAtRef.current = now;
-      void refreshApp(selectedAlbumId || undefined, { silent: true });
-    }
-
-    function handleVisibilityChange() {
-      if (document.visibilityState === "visible") {
-        refreshIfNeeded();
-      }
-    }
-
-    const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") {
-        refreshIfNeeded();
-      }
-    }, PASSIVE_REFRESH_POLL_INTERVAL_MS);
-
-    window.addEventListener("focus", refreshIfNeeded);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener("focus", refreshIfNeeded);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, [bootPhase, hydrated, isAuthenticated, refreshApp, selectedAlbumId]);
-
-  useEffect(() => {
     if (!hydrated || isAuthenticated || !isProtectedPathname(pathname)) {
       return;
     }
@@ -305,7 +267,7 @@ export function useAppSession(queryInviteCode: string, initialAuthenticated = fa
     }
   }
 
-  async function handleLogout() {
+  const handleLogout = useCallback(async () => {
     clearSession();
     try {
       if (isAuthenticated) {
@@ -314,7 +276,7 @@ export function useAppSession(queryInviteCode: string, initialAuthenticated = fa
     } catch {
       // Keep local logout deterministic even if the API call fails.
     }
-  }
+  }, [clearSession, isAuthenticated]);
 
   async function handleCreateAlbum(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();

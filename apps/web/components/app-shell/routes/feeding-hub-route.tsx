@@ -39,7 +39,7 @@ export function FeedingHubRoute() {
     >
       {feedingBabies.length > 1 ? (
         <article className="panelStack settingsDetailPage settingsScene settingsSceneForward">
-          <SettingsHeader eyebrow="喂养记录" onBack={() => router.push(buildPhotosHubPath())} title="选择宝宝" />
+          <SettingsHeader eyebrow="喂养记录" title="选择宝宝" />
           <div className="stackList">
             {feedingBabies.map((item) => (
               <SettingsListButton

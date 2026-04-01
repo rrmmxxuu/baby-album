@@ -61,8 +61,19 @@ export function buildBabyPhotosPath(babyId: string, options?: { lightboxEntryId?
   return (queryString ? `${basePath}?${queryString}` : basePath) as Route;
 }
 
-export function buildBabyFeedingPath(babyId: string) {
-  return `/babies/${encodeURIComponent(babyId)}/feeding` as Route;
+export function buildBabyFeedingPath(babyId: string, options?: { day?: string | null; composer?: "milk" | "solid" | "diaper" | "sleep" | "supplement" | "medicine" | null; editEntryId?: string | null }) {
+  const basePath = `/babies/${encodeURIComponent(babyId)}/feeding`;
+  const query = new URLSearchParams();
+  if (options?.day) {
+    query.set("day", options.day);
+  }
+  if (options?.editEntryId) {
+    query.set("edit", options.editEntryId);
+  } else if (options?.composer) {
+    query.set("composer", options.composer);
+  }
+  const queryString = query.toString();
+  return (queryString ? `${basePath}?${queryString}` : basePath) as Route;
 }
 
 export function buildBabyManagePath(babyId: string) {

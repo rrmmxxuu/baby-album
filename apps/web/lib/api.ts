@@ -1,4 +1,18 @@
-import type { AlbumInvite, AppStatePayload, Role, SessionAuthPayload, StorageNodePairing, TimelineComment, TimelineEntry, TimelinePagePayload, TimelineTimeMode, TimelineVisibility } from "./types";
+import type {
+  AlbumInvite,
+  AppStatePayload,
+  FeedingDayPayload,
+  FeedingEntry,
+  FeedingEntryUpsertInput,
+  Role,
+  SessionAuthPayload,
+  StorageNodePairing,
+  TimelineComment,
+  TimelineEntry,
+  TimelinePagePayload,
+  TimelineTimeMode,
+  TimelineVisibility
+} from "./types";
 
 const apiBaseUrl = "/api/proxy";
 const sessionApiBaseUrl = "/api/session";
@@ -105,6 +119,43 @@ export async function loadTimelinePage(albumId: string, input?: { cursor?: strin
     cache: "no-store"
   });
   return parseResponse<TimelinePagePayload>(response);
+}
+
+export async function loadFeedingDay(babyId: string, day: string): Promise<FeedingDayPayload> {
+  const query = new URLSearchParams();
+  if (day) {
+    query.set("day", day);
+  }
+  const suffix = query.toString();
+  const response = await fetch(`${apiBaseUrl}/api/v1/babies/${encodeURIComponent(babyId)}/feeding${suffix ? `?${suffix}` : ""}`, {
+    cache: "no-store"
+  });
+  return parseResponse<FeedingDayPayload>(response);
+}
+
+export async function createFeedingEntry(babyId: string, input: FeedingEntryUpsertInput): Promise<FeedingEntry> {
+  const response = await fetch(`${apiBaseUrl}/api/v1/babies/${encodeURIComponent(babyId)}/feeding-entries`, {
+    method: "POST",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(input)
+  });
+  return parseResponse<FeedingEntry>(response);
+}
+
+export async function updateFeedingEntry(babyId: string, entryId: string, input: FeedingEntryUpsertInput): Promise<FeedingEntry> {
+  const response = await fetch(`${apiBaseUrl}/api/v1/babies/${encodeURIComponent(babyId)}/feeding-entries/${encodeURIComponent(entryId)}`, {
+    method: "POST",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(input)
+  });
+  return parseResponse<FeedingEntry>(response);
+}
+
+export async function deleteFeedingEntry(babyId: string, entryId: string): Promise<void> {
+  const response = await fetch(`${apiBaseUrl}/api/v1/babies/${encodeURIComponent(babyId)}/feeding-entries/${encodeURIComponent(entryId)}`, {
+    method: "DELETE"
+  });
+  await parseResponse<{ deleted: boolean }>(response);
 }
 
 export async function registerUser(input: { displayName: string; email: string; password: string }): Promise<SessionAuthPayload> {

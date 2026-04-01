@@ -42,6 +42,82 @@ type TimelinePage struct {
 	HasMore    bool                   `json:"hasMore"`
 }
 
+type FeedingCountSummary struct {
+	Count     int `json:"count"`
+	ItemCount int `json:"itemCount,omitempty"`
+}
+
+type FeedingMilkSummary struct {
+	Count         int `json:"count"`
+	BreastCount   int `json:"breastCount"`
+	BottleCount   int `json:"bottleCount"`
+	FormulaCount  int `json:"formulaCount"`
+	TotalML       int `json:"totalMl"`
+	BreastMinutes int `json:"breastMinutes"`
+}
+
+type FeedingDiaperSummary struct {
+	Count      int `json:"count"`
+	StoolCount int `json:"stoolCount"`
+}
+
+type FeedingSleepSummary struct {
+	Count        int `json:"count"`
+	TotalMinutes int `json:"totalMinutes"`
+}
+
+type FeedingSummary struct {
+	Milk       FeedingMilkSummary   `json:"milk"`
+	Diaper     FeedingDiaperSummary `json:"diaper"`
+	Solid      FeedingCountSummary  `json:"solid"`
+	Supplement FeedingCountSummary  `json:"supplement"`
+	Medicine   FeedingCountSummary  `json:"medicine"`
+	Sleep      FeedingSleepSummary  `json:"sleep"`
+}
+
+type FeedingDayInput struct {
+	BabyID string
+	Day    string
+}
+
+type FeedingDay struct {
+	Day     string                `json:"day"`
+	Summary FeedingSummary        `json:"summary"`
+	Entries []domain.FeedingEntry `json:"entries"`
+}
+
+type FeedingEntryItemInput struct {
+	Name string
+	Dose string
+}
+
+type CreateFeedingEntryInput struct {
+	BabyID     string
+	Category   domain.FeedingCategory
+	OccurredAt time.Time
+	EndedAt    *time.Time
+	Note       string
+	MilkMode   domain.FeedingMilkMode
+	AmountML   *int
+	FoodName   string
+	HasStool   *bool
+	Items      []FeedingEntryItemInput
+}
+
+type UpdateFeedingEntryInput struct {
+	BabyID     string
+	EntryID    string
+	Category   domain.FeedingCategory
+	OccurredAt time.Time
+	EndedAt    *time.Time
+	Note       string
+	MilkMode   domain.FeedingMilkMode
+	AmountML   *int
+	FoodName   string
+	HasStool   *bool
+	Items      []FeedingEntryItemInput
+}
+
 type UploadSessionInput struct {
 	AlbumID       string
 	EntryID       string
@@ -274,14 +350,18 @@ type Repository interface {
 	RevokeSession(token string) error
 	AppState(userID, albumID string) (AppState, error)
 	AlbumWorkspace(albumID, userID string) (AlbumWorkspace, error)
+	FeedingDay(userID string, input FeedingDayInput) (FeedingDay, error)
 	TimelinePage(albumID, userID string, input TimelinePageInput) (TimelinePage, error)
 	Members(albumID, userID string) ([]domain.AlbumMember, error)
 	MediaByID(albumID, userID, mediaID string) (domain.MediaAsset, error)
 	ProbeDuplicateMedia(userID string, input DuplicateMediaProbeInput) (DuplicateMediaProbeResult, error)
 	ResolveDuplicateMedia(userID string, input DuplicateMediaResolveInput) (DuplicateMediaResolveResult, error)
+	CreateFeedingEntry(userID string, input CreateFeedingEntryInput) (domain.FeedingEntry, error)
 	CreateTimelineEntry(userID string, input CreateTimelineEntryInput) (domain.TimelineEntry, error)
 	CreateTimelineComment(userID string, input CreateTimelineCommentInput) (domain.TimelineComment, error)
+	UpdateFeedingEntry(userID string, input UpdateFeedingEntryInput) (domain.FeedingEntry, error)
 	UpdateTimelineEntry(userID string, input UpdateTimelineEntryInput) (domain.TimelineEntry, error)
+	DeleteFeedingEntry(userID, babyID, entryID string) error
 	DeleteTimelineEntry(userID, albumID, entryID string) (DeleteCleanup, error)
 	DeleteTimelineEntryMedia(userID, albumID, entryID, mediaID string) (DeleteCleanup, error)
 	CreateAlbum(userID string, input CreateAlbumInput) (domain.Album, error)
@@ -536,6 +616,24 @@ func validTimelineVisibility(value domain.TimelineEntryVisibility) bool {
 func validTimelineTimeMode(value domain.TimelineEntryTimeMode) bool {
 	switch value {
 	case domain.EntryTimeCaptured, domain.EntryTimeUploaded, domain.EntryTimeManual:
+		return true
+	default:
+		return false
+	}
+}
+
+func validFeedingCategory(value domain.FeedingCategory) bool {
+	switch value {
+	case domain.FeedingMilk, domain.FeedingSolid, domain.FeedingDiaper, domain.FeedingSleep, domain.FeedingSupplement, domain.FeedingMedicine:
+		return true
+	default:
+		return false
+	}
+}
+
+func validFeedingMilkMode(value domain.FeedingMilkMode) bool {
+	switch value {
+	case domain.FeedingBreast, domain.FeedingBottle, domain.FeedingFormula:
 		return true
 	default:
 		return false

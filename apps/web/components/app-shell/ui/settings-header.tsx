@@ -1,6 +1,6 @@
 interface SettingsHeaderProps {
   eyebrow: string;
-  onBack: () => void;
+  onBack?: () => void;
   title: string;
   actionLabel?: string;
   onAction?: () => void;
@@ -9,7 +9,11 @@ interface SettingsHeaderProps {
 export function SettingsHeader({ eyebrow, onBack, title, actionLabel, onAction }: SettingsHeaderProps) {
   return (
     <header className="settingsNavBar">
-      <button className="draftTopAction settingsNavBack" onClick={onBack} type="button">返回</button>
+      {onBack ? (
+        <button className="draftTopAction settingsNavBack" onClick={onBack} type="button">返回</button>
+      ) : (
+        <span className="settingsNavSpacer" />
+      )}
       <div className="settingsNavTitle">
         <p className="eyebrow">{eyebrow}</p>
         <h2>{title}</h2>

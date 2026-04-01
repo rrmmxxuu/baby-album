@@ -1,6 +1,6 @@
 import type { MediaAsset, TimelineEntry } from "../../../lib/types";
 
-export type TabKey = "photos" | "settings";
+export type TabKey = "photos" | "feeding" | "settings";
 export type AuthMode = "login" | "register";
 export type SettingsScreen = "menu" | "account" | "babies" | "addBaby" | "babyDetail" | "memberDetail" | "storage";
 export type NavDirection = "forward" | "back";

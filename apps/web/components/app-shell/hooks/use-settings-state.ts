@@ -9,7 +9,6 @@ import type { NavDirection, SettingsScreen, TabKey } from "../model/types";
 
 interface UseSettingsStateOptions {
   activeTab: TabKey;
-  appState: AppStatePayload | null;
   activeAlbum: AlbumWorkspace | null;
   currentUser: User | null;
   refreshApp: (targetAlbumId?: string, options?: { silent?: boolean }) => Promise<AppStatePayload | null>;
@@ -19,7 +18,7 @@ interface UseSettingsStateOptions {
   showError: (title: string, message: string) => void;
 }
 
-export function useSettingsState({ activeTab, appState, activeAlbum, currentUser, refreshApp, clearFeedback, showSuccess, showWarning, showError }: UseSettingsStateOptions) {
+export function useSettingsState({ activeTab, activeAlbum, currentUser, refreshApp, clearFeedback, showSuccess, showWarning, showError }: UseSettingsStateOptions) {
   const [settingsScreen, setSettingsScreen] = useState<SettingsScreen>("menu");
   const [settingsNavDirection, setSettingsNavDirection] = useState<NavDirection>("forward");
   const [settingsMemberId, setSettingsMemberId] = useState("");
@@ -33,17 +32,17 @@ export function useSettingsState({ activeTab, appState, activeAlbum, currentUser
   const [myRelationDraft, setMyRelationDraft] = useState("");
 
   useEffect(() => {
-    const members = appState?.activeAlbum?.members ?? [];
+    const members = activeAlbum?.members ?? [];
     const drafts: Record<string, Role> = {};
     for (const member of members) {
       drafts[member.userId] = member.role;
     }
     setRoleDrafts(drafts);
-    setBabyProfileName(appState?.activeAlbum?.baby?.name ?? "");
-    setBabyProfileBirthDate(appState?.activeAlbum?.baby?.birthDate ? toDateInputValue(appState.activeAlbum.baby.birthDate) : "");
-    setMyRelationDraft(appState?.activeAlbum?.membership.relation ?? "");
+    setBabyProfileName(activeAlbum?.baby?.name ?? "");
+    setBabyProfileBirthDate(activeAlbum?.baby?.birthDate ? toDateInputValue(activeAlbum.baby.birthDate) : "");
+    setMyRelationDraft(activeAlbum?.membership.relation ?? "");
     setBabyAvatarFile(null);
-  }, [appState]);
+  }, [activeAlbum]);
 
   useEffect(() => {
     if (activeTab !== "settings") {

@@ -23,7 +23,7 @@ export function useTimelineFeed({ activeTab, activeAlbum, refreshApp, showError 
   const [timelineLoadingMore, setTimelineLoadingMore] = useState(false);
   const [timelineRefreshing, setTimelineRefreshing] = useState(false);
 
-  const tabScrollPositionsRef = useRef<Record<TabKey, number>>({ photos: 0, settings: 0 });
+  const tabScrollPositionsRef = useRef<Record<TabKey, number>>({ photos: 0, feeding: 0, settings: 0 });
   const timelineRequestRef = useRef(0);
   const timelineAlbumRef = useRef("");
   const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);

@@ -35,7 +35,7 @@ export async function login(page: Page, input: { email: string; password: string
   await loginForm.getByLabel("密码").fill(input.password);
   await loginForm.getByRole("button", { name: /^登录$/ }).click();
   await page.waitForLoadState("networkidle");
-  await expect(page).toHaveURL(/\/album\/.+\/photos(?:\?.*)?$/, { timeout: 20_000 });
+  await expect(page).toHaveURL(/\/babies\/.+\/photos(?:\?.*)?$/, { timeout: 20_000 });
 }
 
 export async function createAlbum(page: Page, input: { babyName: string; relation: string; birthDate?: string }) {
@@ -48,7 +48,7 @@ export async function createAlbum(page: Page, input: { babyName: string; relatio
   }
   await setRelation(albumCard, input.relation);
   await albumCard.getByRole("button", { name: "创建宝宝相册" }).click();
-  await expect(page).toHaveURL(/\/album\/.+\/photos/);
+  await expect(page).toHaveURL(/\/babies\/.+\/photos/);
 }
 
 export async function openSettings(page: Page) {
@@ -58,13 +58,7 @@ export async function openSettings(page: Page) {
 }
 
 export async function logout(page: Page) {
-  const albumMatch = page.url().match(/\/album\/([^/]+)/);
-  if (albumMatch) {
-    await page.goto(`/album/${albumMatch[1]}/settings`, { waitUntil: "networkidle" });
-    await waitForBootReady(page);
-  } else {
-    await openSettings(page);
-  }
+  await openSettings(page);
   await page.getByRole("button", { name: /退出登录/ }).click();
   await waitForBootReady(page);
   await expect(page).toHaveURL(/^https?:\/\/[^/]+\/(?:auth)?(?:\?.*)?$/);

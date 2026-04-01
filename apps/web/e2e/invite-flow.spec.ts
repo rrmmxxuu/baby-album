@@ -6,11 +6,13 @@ test("generates an invite code and joins an existing album", async ({ page }) =>
     email: "owner@example.com",
     password: "demo12345"
   });
-  await expect(page).toHaveURL(/\/album\/family-demo\/photos/);
+  await expect(page).toHaveURL(/\/babies\/baby-demo\/photos/);
 
   await openSettings(page);
   await page.getByRole("button", { name: /宝宝管理/ }).click();
+  await expect(page).toHaveURL(/\/settings\/babies$/);
   await page.getByRole("button", { name: /Little Qin/ }).click();
+  await expect(page).toHaveURL(/\/babies\/baby-demo\/manage$/);
   await page.getByRole("button", { name: "生成邀请码" }).click();
 
   const inviteCode = (await latestInviteCode(page.locator(".inviteLink")).textContent())?.trim() ?? "";
@@ -30,6 +32,6 @@ test("generates an invite code and joins an existing album", async ({ page }) =>
   await setRelation(joinCard, "舅舅");
   await joinCard.getByRole("button", { name: "加入已有相册" }).click();
 
-  await expect(page).toHaveURL(/\/album\/family-demo\/photos/);
+  await expect(page).toHaveURL(/\/babies\/baby-demo\/photos/);
   await expect(page.getByRole("link", { name: "设置" })).toBeVisible();
 });

@@ -1,66 +1,49 @@
 import { describe, expect, it } from "vitest";
-import { buildAlbumPath, buildAlbumsPath, buildAuthPath, buildPhotosPath, parseSettingsScreen, resolveAlbumRedirect, resolveAlbumsRedirect } from "./routes";
+import {
+  buildAuthPath,
+  buildBabyFeedingPath,
+  buildBabyManageMemberPath,
+  buildBabyManagePath,
+  buildBabyManageStoragePath,
+  buildBabyPath,
+  buildBabyPhotosPath,
+  buildFeedingHubPath,
+  buildPhotosHubPath,
+  buildSettingsAccountPath,
+  buildSettingsBabiesNewPath,
+  buildSettingsBabiesPath,
+  buildSettingsPath,
+  buildWelcomePath
+} from "./routes";
 
 describe("route helpers", () => {
-  it("builds auth and albums paths with optional invite codes", () => {
+  it("builds auth paths with optional invite codes", () => {
     expect(buildAuthPath()).toBe("/auth");
     expect(buildAuthPath("ABCD1234")).toBe("/auth?invite=ABCD1234");
-    expect(buildAlbumsPath("ABCD1234")).toBe("/albums?invite=ABCD1234");
   });
 
-  it("builds album tab paths and preserves settings screen when needed", () => {
-    expect(buildAlbumPath("album-1", "photos")).toBe("/album/album-1/photos");
-    expect(buildAlbumPath("album-1", "settings")).toBe("/album/album-1/settings");
-    expect(buildAlbumPath("album-1", "settings", { screen: "storage" })).toBe("/album/album-1/settings?screen=storage");
-    expect(buildAlbumPath("album-1", "settings", { screen: "memberDetail", memberId: "user-1" })).toBe("/album/album-1/settings?screen=memberDetail&memberId=user-1");
+  it("builds global hub routes", () => {
+    expect(buildWelcomePath()).toBe("/welcome");
+    expect(buildPhotosHubPath()).toBe("/photos");
+    expect(buildFeedingHubPath()).toBe("/feeding");
+    expect(buildSettingsPath()).toBe("/settings");
+    expect(buildSettingsAccountPath()).toBe("/settings/account");
+    expect(buildSettingsBabiesPath()).toBe("/settings/babies");
+    expect(buildSettingsBabiesNewPath()).toBe("/settings/babies/new");
   });
 
-  it("builds photos paths for lightbox and composer states", () => {
-    expect(buildPhotosPath("album-1")).toBe("/album/album-1/photos");
-    expect(buildPhotosPath("album-1", { lightboxEntryId: "entry-1", mediaId: "media-2" })).toBe("/album/album-1/photos?lightbox=entry-1&media=media-2");
-    expect(buildPhotosPath("album-1", { composer: "new" })).toBe("/album/album-1/photos?composer=new");
-    expect(buildPhotosPath("album-1", { editEntryId: "entry-9" })).toBe("/album/album-1/photos?edit=entry-9");
+  it("builds baby-scoped routes", () => {
+    expect(buildBabyPath("baby-1")).toBe("/babies/baby-1");
+    expect(buildBabyFeedingPath("baby-1")).toBe("/babies/baby-1/feeding");
+    expect(buildBabyManagePath("baby-1")).toBe("/babies/baby-1/manage");
+    expect(buildBabyManageStoragePath("baby-1")).toBe("/babies/baby-1/manage/storage");
+    expect(buildBabyManageMemberPath("baby-1", "user-1")).toBe("/babies/baby-1/manage/members/user-1");
   });
 
-  it("only accepts routable settings screens", () => {
-    expect(parseSettingsScreen("storage")).toBe("storage");
-    expect(parseSettingsScreen("babyDetail")).toBe("babyDetail");
-    expect(parseSettingsScreen("memberDetail")).toBe("memberDetail");
-    expect(parseSettingsScreen(null)).toBeNull();
-  });
-
-  it("redirects the albums screen into the active album when available", () => {
-    expect(resolveAlbumsRedirect({
-      hydrated: true,
-      activeAlbumId: "album-2"
-    })).toBe("/album/album-2/photos");
-  });
-
-  it("resolves protected album redirects consistently", () => {
-    expect(resolveAlbumRedirect({
-      bootPhaseDone: true,
-      inviteCode: "ABCD1234",
-      activeTab: "settings",
-      requestedAlbumId: "album-1",
-      loading: false,
-      albumRefreshing: false
-    })).toBe("/albums?invite=ABCD1234");
-
-    expect(resolveAlbumRedirect({
-      bootPhaseDone: true,
-      activeTab: "photos",
-      requestedAlbumId: "album-1",
-      activeAlbumId: "album-2",
-      loading: false,
-      albumRefreshing: false
-    })).toBe("/album/album-2/photos");
-
-    expect(resolveAlbumRedirect({
-      bootPhaseDone: true,
-      activeTab: "photos",
-      requestedAlbumId: "album-1",
-      loading: false,
-      albumRefreshing: false
-    })).toBe("/albums");
+  it("builds baby photo routes for lightbox and composer states", () => {
+    expect(buildBabyPhotosPath("baby-1")).toBe("/babies/baby-1/photos");
+    expect(buildBabyPhotosPath("baby-1", { lightboxEntryId: "entry-1", mediaId: "media-2" })).toBe("/babies/baby-1/photos?lightbox=entry-1&media=media-2");
+    expect(buildBabyPhotosPath("baby-1", { composer: "new" })).toBe("/babies/baby-1/photos?composer=new");
+    expect(buildBabyPhotosPath("baby-1", { editEntryId: "entry-9" })).toBe("/babies/baby-1/photos?edit=entry-9");
   });
 });

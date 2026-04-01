@@ -24,6 +24,9 @@ export function PwaBoot() {
     }
 
     void navigator.serviceWorker.register("/sw.js").then((registration) => {
+      if (!registration) {
+        return;
+      }
       markWaiting(registration);
       registration.addEventListener("updatefound", () => {
         const installingWorker = registration.installing;

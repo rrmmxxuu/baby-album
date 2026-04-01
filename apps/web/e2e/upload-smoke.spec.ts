@@ -8,7 +8,7 @@ test("uploads a small photo batch from the draft sheet", async ({ page }) => {
     password: "demo12345"
   });
 
-  await expect(page).toHaveURL(/\/album\/family-demo\/photos/);
+  await expect(page).toHaveURL(/\/babies\/baby-demo\/photos/);
   await page.getByRole("button", { name: "+" }).click();
   await expect(page.getByText("选择照片或视频")).toBeVisible();
 
@@ -24,4 +24,3 @@ test("uploads a small photo batch from the draft sheet", async ({ page }) => {
   await expect(page.locator(".draftSheetOverlay")).toHaveCount(0, { timeout: 20_000 });
   await expect(page.getByText(caption)).toBeVisible({ timeout: 20_000 });
 });
-

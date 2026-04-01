@@ -1,9 +1,14 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { albumsPathWithInvite, authPathWithInvite, clearSessionCookies, hasValidSession, SESSION_COOKIE_NAME, SESSION_EXP_COOKIE_NAME } from "./lib/session";
+import { authPathWithInvite, clearSessionCookies, hasValidSession, SESSION_COOKIE_NAME, SESSION_EXP_COOKIE_NAME } from "./lib/session";
 
 function isProtectedPath(pathname: string) {
-  return pathname === "/albums" || pathname.startsWith("/album/");
+  return pathname === "/welcome"
+    || pathname === "/photos"
+    || pathname === "/feeding"
+    || pathname === "/settings"
+    || pathname.startsWith("/settings/")
+    || pathname.startsWith("/babies/");
 }
 
 function isPublicAuthPath(pathname: string) {
@@ -33,12 +38,12 @@ export function middleware(request: NextRequest) {
   }
 
   if (isPublicAuthPath(pathname)) {
-    return NextResponse.redirect(new URL(albumsPathWithInvite(inviteCode), request.url));
+    return NextResponse.redirect(new URL("/photos", request.url));
   }
 
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/", "/auth", "/albums", "/album/:path*"]
+  matcher: ["/", "/auth", "/welcome", "/photos", "/feeding", "/settings/:path*", "/babies/:path*"]
 };

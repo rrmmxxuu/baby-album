@@ -19,9 +19,9 @@ export function SettingsBabiesScene({ className, albumOptions, onBack, onAdd, on
       <div className="stackList">
         {albumOptions.map((item) => (
           <SettingsListButton
-            key={item.album.id}
+            key={item.baby?.id ?? item.album.id}
             leading={<BabyAvatar albumId={item.album.id} baby={item.baby ?? null} className="settingsCardAvatar" />}
-            onClick={() => onOpenAlbumSettings(item.album.id)}
+            onClick={() => onOpenAlbumSettings(item.baby?.id ?? item.album.id)}
             primary={item.baby?.name ?? item.album.name}
             secondary={memberRelationLabel(item.membership)}
           />

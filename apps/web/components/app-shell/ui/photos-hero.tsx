@@ -15,6 +15,7 @@ export function PhotosHero({ activeAlbum, activeBaby, albumOptions, timelineCoun
   const birthSummary = activeBaby?.birthDate
     ? `${formatDate(activeBaby.birthDate)} · ${formatDetailedBabyAge(activeBaby.birthDate)}`
     : "还没有填写出生日期";
+  const currentSelectionValue = activeBaby?.id ?? activeAlbum.baby?.id ?? activeAlbum.album.id;
 
   return (
     <article className="momentsHero panel">
@@ -27,9 +28,9 @@ export function PhotosHero({ activeAlbum, activeBaby, albumOptions, timelineCoun
         </div>
         <div className="momentsHeroAside">
           <p className="momentsHeroMeta">{timelineLoading && timelineCount === 0 ? "正在加载" : `${timelineCount} 条内容`}</p>
-          <select className="heroAlbumSelect" value={activeAlbum.album.id} onChange={(event) => onAlbumChange(event.target.value)}>
+          <select className="heroAlbumSelect" value={currentSelectionValue} onChange={(event) => onAlbumChange(event.target.value)}>
             {albumOptions.map((item) => (
-              <option key={item.album.id} value={item.album.id}>
+              <option key={item.baby?.id ?? item.album.id} value={item.baby?.id ?? item.album.id}>
                 {item.baby?.name ?? item.album.name}
               </option>
             ))}

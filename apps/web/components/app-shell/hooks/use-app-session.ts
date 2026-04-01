@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { acceptInvite, ApiError, createAlbum, loadAppState, loginUser, logoutUser, registerUser, uploadBabyAvatar } from "../../../lib/api";
 import type { AppStatePayload } from "../../../lib/types";
-import { ALBUM_STORAGE_KEY, BOOT_SPLASH_EXIT_MS, BOOT_SPLASH_MIN_MS } from "../model/constants";
+import { ALBUM_STORAGE_KEY, BOOT_SPLASH_EXIT_MS, BOOT_SPLASH_MIN_MS, LAST_VIEWED_PHOTO_BABY_STORAGE_KEY } from "../model/constants";
 import { buildFeedback, errorMessageFromUnknown } from "../model/feedback";
-import { buildAlbumPath, buildAlbumsPath, buildAuthPath } from "../model/routes";
+import { buildAuthPath, buildBabyPhotosPath, buildPhotosHubPath, buildWelcomePath } from "../model/routes";
 import type { AuthMode } from "../model/types";
 
 interface RefreshOptions {
@@ -14,10 +14,20 @@ interface RefreshOptions {
   authenticated?: boolean;
 }
 
+function isProtectedPathname(pathname: string) {
+  return pathname === "/welcome"
+    || pathname === "/photos"
+    || pathname === "/feeding"
+    || pathname === "/settings"
+    || pathname.startsWith("/settings/")
+    || pathname.startsWith("/babies/");
+}
+
 export function useAppSession(queryInviteCode: string, initialAuthenticated = false) {
   const PASSIVE_REFRESH_MIN_INTERVAL_MS = 10_000;
   const PASSIVE_REFRESH_POLL_INTERVAL_MS = 30_000;
   const router = useRouter();
+  const pathname = usePathname();
   const [origin, setOrigin] = useState("");
   const [hydrated, setHydrated] = useState(false);
   const [bootPhase, setBootPhase] = useState<"loading" | "exiting" | "done">("loading");
@@ -67,8 +77,14 @@ export function useAppSession(queryInviteCode: string, initialAuthenticated = fa
     setFeedback(buildFeedback(feedbackIdRef.current, "error", title, message));
   }, []);
 
+  const resolvePostAuthPath = useCallback((next: AppStatePayload | null) => {
+    const hasJoinedBaby = (next?.albums ?? []).some((item) => Boolean(item.baby));
+    return hasJoinedBaby ? buildPhotosHubPath() : buildWelcomePath();
+  }, []);
+
   const clearSession = useCallback((showNotice = true) => {
     window.localStorage.removeItem(ALBUM_STORAGE_KEY);
+    window.localStorage.removeItem(LAST_VIEWED_PHOTO_BABY_STORAGE_KEY);
     setIsAuthenticated(false);
     setSelectedAlbumId("");
     setAppState(null);
@@ -123,6 +139,7 @@ export function useAppSession(queryInviteCode: string, initialAuthenticated = fa
       setSelectedAlbumId(window.localStorage.getItem(ALBUM_STORAGE_KEY) ?? "");
     } else {
       window.localStorage.removeItem(ALBUM_STORAGE_KEY);
+      window.localStorage.removeItem(LAST_VIEWED_PHOTO_BABY_STORAGE_KEY);
       setSelectedAlbumId("");
     }
     setInviteCodeInput(queryInviteCode);
@@ -182,7 +199,7 @@ export function useAppSession(queryInviteCode: string, initialAuthenticated = fa
     return () => {
       cancelled = true;
     };
-  }, [bootPhase, hydrated, isAuthenticated, refreshApp, selectedAlbumId]);
+  }, [hydrated]);
 
   useEffect(() => {
     if (!hydrated || !isAuthenticated || appState || bootPhase !== "done") {
@@ -235,6 +252,20 @@ export function useAppSession(queryInviteCode: string, initialAuthenticated = fa
     };
   }, [bootPhase, hydrated, isAuthenticated, refreshApp, selectedAlbumId]);
 
+  useEffect(() => {
+    if (!hydrated || isAuthenticated || !isProtectedPathname(pathname)) {
+      return;
+    }
+    setIsAuthenticated(true);
+  }, [hydrated, isAuthenticated, pathname]);
+
+  useEffect(() => {
+    if (!hydrated || bootPhase !== "done" || !isProtectedPathname(pathname) || appState || loading) {
+      return;
+    }
+    void refreshApp(selectedAlbumId || undefined, { silent: true, authenticated: true });
+  }, [appState, bootPhase, hydrated, loading, pathname, refreshApp, selectedAlbumId]);
+
   function saveSession() {
     setIsAuthenticated(true);
   }
@@ -250,7 +281,7 @@ export function useAppSession(queryInviteCode: string, initialAuthenticated = fa
       setRegisterPassword("");
       showSuccess("注册成功", `欢迎，${auth.user.displayName}。请继续加入已有相册，或创建第一个宝宝相册。`);
       const next = await refreshApp(undefined, { authenticated: true });
-      router.replace(next?.activeAlbumId ? buildAlbumPath(next.activeAlbumId, "photos") : buildAlbumsPath(queryInviteCode));
+      router.replace(resolvePostAuthPath(next));
     } catch (err) {
       showError("注册失败", errorMessageFromUnknown(err, "注册失败。"));
     }
@@ -266,7 +297,7 @@ export function useAppSession(queryInviteCode: string, initialAuthenticated = fa
       setLoginPassword("");
       showSuccess("登录成功", `欢迎回来，${auth.user.displayName}。`);
       const next = await refreshApp(undefined, { authenticated: true });
-      router.replace(next?.activeAlbumId ? buildAlbumPath(next.activeAlbumId, "photos") : buildAlbumsPath(queryInviteCode));
+      router.replace(resolvePostAuthPath(next));
     } catch (err) {
       showError("登录失败", errorMessageFromUnknown(err, "登录失败。", {
         unauthorizedMessage: "邮箱或密码不正确，或账号还不存在。"
@@ -310,9 +341,9 @@ export function useAppSession(queryInviteCode: string, initialAuthenticated = fa
         birthDate: babyBirthDate ? new Date(`${babyBirthDate}T00:00:00Z`).toISOString() : undefined,
         relation
       });
+      const createdState = await loadAppState(album.id);
+      const createdBaby = createdState.activeAlbum?.baby ?? createdState.albums.find((item) => item.album.id === album.id)?.baby ?? null;
       if (createBabyAvatarFile) {
-        const next = await loadAppState(album.id);
-        const createdBaby = next.activeAlbum?.baby;
         if (createdBaby) {
           await uploadBabyAvatar(album.id, createdBaby.id, createBabyAvatarFile);
         }
@@ -323,9 +354,12 @@ export function useAppSession(queryInviteCode: string, initialAuthenticated = fa
       setCreateBabyAvatarFile(null);
       setSelectedAlbumId(album.id);
       window.localStorage.setItem(ALBUM_STORAGE_KEY, album.id);
+      if (createdBaby) {
+        window.localStorage.setItem(LAST_VIEWED_PHOTO_BABY_STORAGE_KEY, createdBaby.id);
+      }
       showSuccess("创建成功", "宝宝相册已创建。");
       await refreshApp(album.id);
-      router.replace(buildAlbumPath(album.id, "photos"));
+      router.replace(createdBaby ? buildBabyPhotosPath(createdBaby.id) : buildPhotosHubPath());
     } catch (err) {
       showError("创建失败", errorMessageFromUnknown(err, "创建宝宝相册失败。"));
     }
@@ -352,8 +386,12 @@ export function useAppSession(queryInviteCode: string, initialAuthenticated = fa
       window.localStorage.setItem(ALBUM_STORAGE_KEY, accepted.albumId);
       setInviteRelation("");
       showSuccess("加入成功", "你已加入这个宝宝相册。");
-      await refreshApp(accepted.albumId);
-      router.replace(buildAlbumPath(accepted.albumId, "photos"));
+      const next = await refreshApp(accepted.albumId);
+      const acceptedBaby = next?.activeAlbum?.baby ?? next?.albums.find((item) => item.album.id === accepted.albumId)?.baby ?? null;
+      if (acceptedBaby) {
+        window.localStorage.setItem(LAST_VIEWED_PHOTO_BABY_STORAGE_KEY, acceptedBaby.id);
+      }
+      router.replace(acceptedBaby ? buildBabyPhotosPath(acceptedBaby.id) : buildPhotosHubPath());
     } catch (err) {
       showError("加入失败", errorMessageFromUnknown(err, "加入相册失败。"));
     }

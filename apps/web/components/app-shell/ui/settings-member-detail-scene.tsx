@@ -11,13 +11,15 @@ interface SettingsMemberDetailSceneProps {
   albumMembers: AlbumMember[];
   settings: SettingsState;
   onBack: () => void;
+  memberId?: string;
 }
 
-export function SettingsMemberDetailScene({ className, activeAlbum, currentUser, albumMembers, settings, onBack }: SettingsMemberDetailSceneProps) {
+export function SettingsMemberDetailScene({ className, activeAlbum, currentUser, albumMembers, settings, onBack, memberId }: SettingsMemberDetailSceneProps) {
+  const activeMemberId = memberId ?? settings.settingsMemberId;
   return (
     <article className={className}>
-      <SettingsHeader eyebrow="成员详情" onBack={onBack} title={albumMembers.find((member) => member.userId === settings.settingsMemberId)?.displayName ?? "成员"} />
-      {albumMembers.filter((member) => member.userId === settings.settingsMemberId).map((member) => (
+      <SettingsHeader eyebrow="成员详情" onBack={onBack} title={albumMembers.find((member) => member.userId === activeMemberId)?.displayName ?? "成员"} />
+      {albumMembers.filter((member) => member.userId === activeMemberId).map((member) => (
         <SettingsSection key={member.userId} title="成员信息">
           <p><strong>{member.displayName}</strong></p>
           <p className="helperText">与宝宝的关系：{memberRelationLabel(member)}</p>

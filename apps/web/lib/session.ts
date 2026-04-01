@@ -70,11 +70,3 @@ export function authPathWithInvite(inviteCode?: string | null) {
   const query = new URLSearchParams({ invite: inviteCode });
   return `/auth?${query.toString()}`;
 }
-
-export function albumsPathWithInvite(inviteCode?: string | null) {
-  if (!inviteCode) {
-    return "/albums";
-  }
-  const query = new URLSearchParams({ invite: inviteCode });
-  return `/albums?${query.toString()}`;
-}

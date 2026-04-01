@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { createAlbum, register, uniqueEmail } from "./helpers";
 
-test("restores an authenticated session from / back to the active album", async ({ page }) => {
+test("restores an authenticated session from / back to the last viewed photos baby", async ({ page }) => {
   const password = "demo12345";
   await register(page, {
     displayName: "Root Redirect Parent",
@@ -16,5 +16,5 @@ test("restores an authenticated session from / back to the active album", async 
   });
 
   await page.goto("/", { waitUntil: "networkidle" });
-  await expect(page).toHaveURL(/\/album\/.+\/photos(?:\?.*)?$/, { timeout: 20_000 });
+  await expect(page).toHaveURL(/\/babies\/.+\/photos(?:\?.*)?$/, { timeout: 20_000 });
 });

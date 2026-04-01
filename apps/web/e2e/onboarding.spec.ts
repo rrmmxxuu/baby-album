@@ -17,7 +17,7 @@ test("registers, creates an album, enters settings, and logs out", async ({ page
 
   await openSettings(page);
   await expect(page).toHaveURL(/\/settings$/);
-  await expect(page.getByRole("heading", { name: "管理账号、宝宝和储存节点" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "管理账号和宝宝空间" })).toBeVisible();
 
   await logout(page);
 });

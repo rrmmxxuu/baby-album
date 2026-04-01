@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { createAlbum, register, uniqueEmail } from "./helpers";
 
-test("redirects protected album routes to auth when session cookies are gone", async ({ context, page }) => {
+test("redirects protected baby routes to auth when session cookies are gone", async ({ context, page }) => {
   const password = "demo12345";
   await register(page, {
     displayName: "Protected Route Parent",

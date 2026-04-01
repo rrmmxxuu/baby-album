@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 interface SettingsListButtonProps {
   className?: string;
-  leading: ReactNode;
+  leading?: ReactNode;
   primary: ReactNode;
   secondary: ReactNode;
   trailing?: ReactNode;
@@ -11,8 +11,8 @@ interface SettingsListButtonProps {
 
 export function SettingsListButton({ className, leading, primary, secondary, trailing, onClick }: SettingsListButtonProps) {
   return (
-    <button className={className ? `settingsCardButton surfaceCard surfaceCardAction ${className}` : "settingsCardButton surfaceCard surfaceCardAction"} onClick={() => void onClick()} type="button">
-      {leading}
+    <button className={className ? `settingsCardButton surfaceCard surfaceCardAction${leading ? "" : " settingsCardButtonNoLeading"} ${className}` : `settingsCardButton surfaceCard surfaceCardAction${leading ? "" : " settingsCardButtonNoLeading"}`} onClick={() => void onClick()} type="button">
+      {leading ? leading : null}
       <span className="settingsCardBody">
         <span className="settingsMenuPrimary">{primary}</span>
         <span className="settingsMenuMeta">{secondary}</span>

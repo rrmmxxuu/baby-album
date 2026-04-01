@@ -11,18 +11,22 @@ interface AppPageFrameProps {
   activeAlbum?: AlbumWorkspace | null;
   blocking?: boolean;
   showTopBar?: boolean;
+  authenticated?: boolean;
+  hasBottomNav?: boolean;
 }
 
-export function AppPageFrame({ children, session, currentUser, activeAlbum, blocking, showTopBar }: AppPageFrameProps) {
+export function AppPageFrame({ children, session, currentUser, activeAlbum, blocking, showTopBar, authenticated, hasBottomNav }: AppPageFrameProps) {
   const showBootSplash = session.bootPhase !== "done" || blocking;
+  const showAuthenticatedLayout = session.isAuthenticated && (authenticated || Boolean(activeAlbum));
+  const reserveBottomNavSpace = hasBottomNav ?? showAuthenticatedLayout;
 
   return (
-    <main className={`appShell${session.isAuthenticated && activeAlbum ? " appShellAuthenticated" : ""}${showBootSplash ? " appShellBooting" : ""}`}>
+    <main className={`appShell${showAuthenticatedLayout ? " appShellAuthenticated" : ""}${showBootSplash ? " appShellBooting" : ""}`}>
       {showBootSplash ? <BootSplash phase={session.bootPhase === "exiting" && !blocking ? "exiting" : "loading"} /> : null}
       {showTopBar ? <TopBar currentUser={currentUser} /> : null}
       <AppFeedbackToasts
         feedback={session.feedback}
-        offsetForBottomNav={Boolean(session.isAuthenticated && activeAlbum)}
+        offsetForBottomNav={reserveBottomNavSpace}
         onClearFeedback={session.clearFeedback}
       />
       {children}

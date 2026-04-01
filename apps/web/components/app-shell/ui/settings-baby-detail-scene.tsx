@@ -20,13 +20,16 @@ interface SettingsBabyDetailSceneProps {
   transferCandidates: AlbumMember[];
   canManageBabyProfile: boolean;
   canManageInvites: boolean;
+  canManageStorage: boolean;
+  storageStatusSummary: string;
   session: AppSessionState;
   settings: SettingsState;
   onBack: () => void;
   onOpenMemberDetail: (memberId: string) => void;
+  onOpenStorage: () => void;
 }
 
-export function SettingsBabyDetailScene({ className, activeAlbum, activeBaby, currentUser, albumMembers, albumInvites, transferCandidates, canManageBabyProfile, canManageInvites, session, settings, onBack, onOpenMemberDetail }: SettingsBabyDetailSceneProps) {
+export function SettingsBabyDetailScene({ className, activeAlbum, activeBaby, currentUser, albumMembers, albumInvites, transferCandidates, canManageBabyProfile, canManageInvites, canManageStorage, storageStatusSummary, session, settings, onBack, onOpenMemberDetail, onOpenStorage }: SettingsBabyDetailSceneProps) {
   return (
     <article className={className}>
       <SettingsHeader eyebrow="宝宝管理" onBack={onBack} title={activeBaby?.name ?? activeAlbum.album.name} />
@@ -77,6 +80,15 @@ export function SettingsBabyDetailScene({ className, activeAlbum, activeBaby, cu
             </div>
           </>
         ) : <p className="helperText">只有管理员或 owner 可以生成邀请码。</p>}
+      </SettingsSection>
+      <SettingsSection title="储存节点">
+        <div className="stackList">
+          <SettingsListButton
+            onClick={onOpenStorage}
+            primary="储存节点管理"
+            secondary={canManageStorage ? storageStatusSummary : `${storageStatusSummary}。你可以查看状态，但只有 owner 可以生成配对码。`}
+          />
+        </div>
       </SettingsSection>
       <SettingsSection title="删除宝宝">
         {activeAlbum.membership.role === "owner" ? (

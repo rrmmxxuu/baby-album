@@ -14,6 +14,7 @@ describe("app-shell format helpers", () => {
   it("formats relation and role labels", () => {
     expect(memberRelationLabel({ relation: "妈妈" })).toBe("妈妈");
     expect(memberRelationLabel({ relation: "" })).toBe("未设置关系");
+    expect(roleLabel("owner")).toBe("创建者");
     expect(roleLabel("admin")).toBe("管理员");
   });
 

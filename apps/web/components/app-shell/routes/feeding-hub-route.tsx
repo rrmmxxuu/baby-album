@@ -59,7 +59,7 @@ export function FeedingHubRoute() {
           <article className="panel panelStack">
             <p className="eyebrow">喂养记录</p>
             <h2>暂无可记录的宝宝</h2>
-            <p className="helperText">只有拥有“可上传”及以上权限的宝宝才会出现在喂养列表中。</p>
+            <p className="helperText">只有拥有“成员”及以上权限的宝宝才会出现在喂养列表中。</p>
           </article>
         </section>
       ) : null}

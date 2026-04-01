@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useBabyRouteContext } from "../baby-route-context";
 import { buildBabyManageMemberPath, buildBabyManageStoragePath, buildSettingsBabiesPath } from "../model/routes";
@@ -8,6 +9,11 @@ import { SettingsBabyDetailScene } from "../ui/settings-baby-detail-scene";
 export function BabyManageRoute() {
   const router = useRouter();
   const { babyId, workspace, currentUser, session, settings, appView } = useBabyRouteContext();
+  const refreshApp = session.refreshApp;
+
+  useEffect(() => {
+    void refreshApp(workspace.album.id, { silent: true, authenticated: true });
+  }, [refreshApp, workspace.album.id]);
 
   return (
     <SettingsBabyDetailScene

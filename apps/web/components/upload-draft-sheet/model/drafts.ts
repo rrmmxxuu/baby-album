@@ -154,7 +154,7 @@ export function draftDisplayAt(draft: UploadDraft) {
 }
 
 export function visibilityLabel(value: TimelineVisibility) {
-  return value === "managers" ? "仅管理员和所有者" : "相册成员可见";
+  return value === "managers" ? "仅管理员和创建者" : "相册成员可见";
 }
 
 export function timeModeLabel(value: TimelineTimeMode) {

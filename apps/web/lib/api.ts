@@ -1,7 +1,9 @@
 import type {
   AlbumInvite,
   AppStatePayload,
+  BreastFeedingTimerSession,
   FeedingDayPayload,
+  FeedingTimerActionInput,
   FeedingEntry,
   FeedingEntryUpsertInput,
   Role,
@@ -26,6 +28,16 @@ export class ApiError extends Error {
     this.name = "ApiError";
     this.status = status;
     this.requestId = requestId;
+  }
+}
+
+export class FeedingTimerConflictError extends ApiError {
+  session: BreastFeedingTimerSession | null;
+
+  constructor(message: string, status: number, session: BreastFeedingTimerSession | null, requestId = "") {
+    super(message, status, requestId);
+    this.name = "FeedingTimerConflictError";
+    this.session = session;
   }
 }
 
@@ -133,6 +145,58 @@ export async function loadFeedingDay(babyId: string, day: string): Promise<Feedi
   return parseResponse<FeedingDayPayload>(response);
 }
 
+async function parseFeedingTimerStateResponse(response: Response) {
+  const requestId = response.headers.get("X-Request-ID") ?? "";
+  const raw = await response.text();
+  let payload: { session?: BreastFeedingTimerSession | null; error?: string } = { session: null, error: "" };
+  if (raw) {
+    try {
+      payload = JSON.parse(raw) as { session?: BreastFeedingTimerSession | null; error?: string };
+    } catch {
+      payload = { session: null, error: raw };
+    }
+  }
+  if (response.status === 409) {
+    throw new FeedingTimerConflictError(payload.error ?? "conflict", response.status, payload.session ?? null, requestId);
+  }
+  if (!response.ok) {
+    throw new ApiError(payload.error ?? `Request failed with status ${response.status}`, response.status, requestId);
+  }
+  return payload.session ?? null;
+}
+
+export async function loadFeedingTimer(babyId: string): Promise<BreastFeedingTimerSession | null> {
+  const response = await fetch(`${apiBaseUrl}/api/v1/babies/${encodeURIComponent(babyId)}/feeding-timer`, {
+    cache: "no-store"
+  });
+  return parseFeedingTimerStateResponse(response);
+}
+
+export async function applyFeedingTimerAction(babyId: string, input: FeedingTimerActionInput): Promise<BreastFeedingTimerSession | null> {
+  const response = await fetch(`${apiBaseUrl}/api/v1/babies/${encodeURIComponent(babyId)}/feeding-timer/actions`, {
+    method: "POST",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(input)
+  });
+  return parseFeedingTimerStateResponse(response);
+}
+
+export async function finishFeedingTimer(babyId: string, input: { expectedVersion: number; note: string }): Promise<FeedingEntry> {
+  const response = await fetch(`${apiBaseUrl}/api/v1/babies/${encodeURIComponent(babyId)}/feeding-timer/finish`, {
+    method: "POST",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(input)
+  });
+  if (response.status === 409) {
+    await parseFeedingTimerStateResponse(response);
+  }
+  return parseResponse<FeedingEntry>(response);
+}
+
+export function feedingTimerStreamUrl(babyId: string) {
+  return `${apiBaseUrl}/api/v1/babies/${encodeURIComponent(babyId)}/feeding-timer/stream`;
+}
+
 export async function createFeedingEntry(babyId: string, input: FeedingEntryUpsertInput): Promise<FeedingEntry> {
   const response = await fetch(`${apiBaseUrl}/api/v1/babies/${encodeURIComponent(babyId)}/feeding-entries`, {
     method: "POST",
@@ -221,6 +285,13 @@ export async function updateMemberRelation(albumId: string, memberUserId: string
     body: JSON.stringify({ relation })
   });
   return parseResponse<{ userId: string; relation?: string }>(response);
+}
+
+export async function removeMember(albumId: string, memberUserId: string): Promise<void> {
+  const response = await fetch(`${apiBaseUrl}/api/v1/albums/${encodeURIComponent(albumId)}/members/${encodeURIComponent(memberUserId)}`, {
+    method: "DELETE"
+  });
+  await parseResponse<{ removed: boolean }>(response);
 }
 
 export async function createInvite(albumId: string): Promise<AlbumInvite> {

@@ -16,27 +16,31 @@ type feedingItemPayload struct {
 }
 
 type feedingEntryPayload struct {
-	Category   string               `json:"category"`
-	OccurredAt string               `json:"occurredAt"`
-	EndedAt    *string              `json:"endedAt"`
-	Note       string               `json:"note"`
-	MilkMode   string               `json:"milkMode"`
-	AmountML   *int                 `json:"amountMl"`
-	FoodName   string               `json:"foodName"`
-	HasStool   *bool                `json:"hasStool"`
-	Items      []feedingItemPayload `json:"items"`
+	Category           string               `json:"category"`
+	OccurredAt         string               `json:"occurredAt"`
+	EndedAt            *string              `json:"endedAt"`
+	Note               string               `json:"note"`
+	MilkMode           string               `json:"milkMode"`
+	AmountML           *int                 `json:"amountMl"`
+	BreastLeftSeconds  *int                 `json:"breastLeftSeconds"`
+	BreastRightSeconds *int                 `json:"breastRightSeconds"`
+	FoodName           string               `json:"foodName"`
+	HasStool           *bool                `json:"hasStool"`
+	Items              []feedingItemPayload `json:"items"`
 }
 
 type decodedFeedingEntryPayload struct {
-	Category   domain.FeedingCategory
-	OccurredAt time.Time
-	EndedAt    *time.Time
-	Note       string
-	MilkMode   domain.FeedingMilkMode
-	AmountML   *int
-	FoodName   string
-	HasStool   *bool
-	Items      []store.FeedingEntryItemInput
+	Category           domain.FeedingCategory
+	OccurredAt         time.Time
+	EndedAt            *time.Time
+	Note               string
+	MilkMode           domain.FeedingMilkMode
+	AmountML           *int
+	BreastLeftSeconds  *int
+	BreastRightSeconds *int
+	FoodName           string
+	HasStool           *bool
+	Items              []store.FeedingEntryItemInput
 }
 
 func (s *Server) handleBabyFeedingDay(w http.ResponseWriter, r *http.Request, babyID string) {
@@ -76,16 +80,18 @@ func (s *Server) handleBabyFeedingEntries(w http.ResponseWriter, r *http.Request
 		return
 	}
 	entry, err := s.store.CreateFeedingEntry(userID, store.CreateFeedingEntryInput{
-		BabyID:     babyID,
-		Category:   input.Category,
-		OccurredAt: input.OccurredAt,
-		EndedAt:    input.EndedAt,
-		Note:       input.Note,
-		MilkMode:   input.MilkMode,
-		AmountML:   input.AmountML,
-		FoodName:   input.FoodName,
-		HasStool:   input.HasStool,
-		Items:      input.Items,
+		BabyID:             babyID,
+		Category:           input.Category,
+		OccurredAt:         input.OccurredAt,
+		EndedAt:            input.EndedAt,
+		Note:               input.Note,
+		MilkMode:           input.MilkMode,
+		AmountML:           input.AmountML,
+		BreastLeftSeconds:  input.BreastLeftSeconds,
+		BreastRightSeconds: input.BreastRightSeconds,
+		FoodName:           input.FoodName,
+		HasStool:           input.HasStool,
+		Items:              input.Items,
 	})
 	if err != nil {
 		writeStoreError(w, err)
@@ -108,17 +114,19 @@ func (s *Server) handleBabyFeedingEntryActions(w http.ResponseWriter, r *http.Re
 			return
 		}
 		entry, updateErr := s.store.UpdateFeedingEntry(userID, store.UpdateFeedingEntryInput{
-			BabyID:     babyID,
-			EntryID:    entryID,
-			Category:   input.Category,
-			OccurredAt: input.OccurredAt,
-			EndedAt:    input.EndedAt,
-			Note:       input.Note,
-			MilkMode:   input.MilkMode,
-			AmountML:   input.AmountML,
-			FoodName:   input.FoodName,
-			HasStool:   input.HasStool,
-			Items:      input.Items,
+			BabyID:             babyID,
+			EntryID:            entryID,
+			Category:           input.Category,
+			OccurredAt:         input.OccurredAt,
+			EndedAt:            input.EndedAt,
+			Note:               input.Note,
+			MilkMode:           input.MilkMode,
+			AmountML:           input.AmountML,
+			BreastLeftSeconds:  input.BreastLeftSeconds,
+			BreastRightSeconds: input.BreastRightSeconds,
+			FoodName:           input.FoodName,
+			HasStool:           input.HasStool,
+			Items:              input.Items,
 		})
 		if updateErr != nil {
 			writeStoreError(w, updateErr)
@@ -157,15 +165,17 @@ func decodeFeedingEntryPayload(r *http.Request) (decodedFeedingEntryPayload, err
 		})
 	}
 	return decodedFeedingEntryPayload{
-		Category:   domain.FeedingCategory(strings.TrimSpace(payload.Category)),
-		OccurredAt: occurredAt,
-		EndedAt:    endedAt,
-		Note:       payload.Note,
-		MilkMode:   domain.FeedingMilkMode(strings.TrimSpace(payload.MilkMode)),
-		AmountML:   payload.AmountML,
-		FoodName:   payload.FoodName,
-		HasStool:   payload.HasStool,
-		Items:      items,
+		Category:           domain.FeedingCategory(strings.TrimSpace(payload.Category)),
+		OccurredAt:         occurredAt,
+		EndedAt:            endedAt,
+		Note:               payload.Note,
+		MilkMode:           domain.FeedingMilkMode(strings.TrimSpace(payload.MilkMode)),
+		AmountML:           payload.AmountML,
+		BreastLeftSeconds:  payload.BreastLeftSeconds,
+		BreastRightSeconds: payload.BreastRightSeconds,
+		FoodName:           payload.FoodName,
+		HasStool:           payload.HasStool,
+		Items:              items,
 	}, nil
 }
 

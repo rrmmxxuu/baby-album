@@ -45,6 +45,10 @@ func (s *stubRepository) FeedingDay(userID string, input store.FeedingDayInput) 
 	return store.FeedingDay{}, nil
 }
 
+func (s *stubRepository) FeedingTimer(userID, babyID string) (*domain.BreastFeedingTimerSession, error) {
+	return nil, nil
+}
+
 func (s *stubRepository) TimelinePage(albumID, userID string, input store.TimelinePageInput) (store.TimelinePage, error) {
 	return store.TimelinePage{}, nil
 }
@@ -66,6 +70,14 @@ func (s *stubRepository) ResolveDuplicateMedia(userID string, input store.Duplic
 }
 
 func (s *stubRepository) CreateFeedingEntry(userID string, input store.CreateFeedingEntryInput) (domain.FeedingEntry, error) {
+	return domain.FeedingEntry{}, nil
+}
+
+func (s *stubRepository) ApplyFeedingTimerAction(userID string, input store.FeedingTimerActionInput) (*domain.BreastFeedingTimerSession, error) {
+	return nil, nil
+}
+
+func (s *stubRepository) FinishFeedingTimer(userID string, input store.FinishFeedingTimerInput) (domain.FeedingEntry, error) {
 	return domain.FeedingEntry{}, nil
 }
 
@@ -127,6 +139,10 @@ func (s *stubRepository) UpdateMemberRole(userID string, input store.UpdateAlbum
 
 func (s *stubRepository) UpdateMemberRelation(userID string, input store.UpdateAlbumMemberRelationInput) (domain.AlbumMember, error) {
 	return domain.AlbumMember{}, nil
+}
+
+func (s *stubRepository) RemoveMember(userID string, input store.RemoveAlbumMemberInput) error {
+	return nil
 }
 
 func (s *stubRepository) CreateInvite(userID string, input store.CreateAlbumInviteInput) (domain.AlbumInvite, error) {

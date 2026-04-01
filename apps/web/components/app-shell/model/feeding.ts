@@ -1,9 +1,11 @@
 import type {
+  BreastFeedingTimerSession,
   FeedingCategory,
   FeedingDayPayload,
   FeedingEntry,
   FeedingEntryItem,
   FeedingMilkMode,
+  FeedingTimerSide,
   FeedingSummary
 } from "../../../lib/types";
 
@@ -17,6 +19,13 @@ export interface FeedingSummaryCard {
   label: string;
   value: string;
   detail: string;
+}
+
+export interface FeedingTimerSnapshot {
+  activeSide?: FeedingTimerSide;
+  leftElapsedSeconds: number;
+  rightElapsedSeconds: number;
+  totalElapsedSeconds: number;
 }
 
 function emptyFeedingSummary(): FeedingSummary {
@@ -205,6 +214,55 @@ export function formatFeedingDuration(totalMinutes: number) {
   return minutes > 0 ? `${hours}小时${minutes}分钟` : `${hours}小时`;
 }
 
+export function formatFeedingDurationFromSeconds(totalSeconds: number) {
+  if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) {
+    return formatFeedingDuration(0);
+  }
+  const minutes = Math.max(1, Math.round(totalSeconds / 60));
+  return formatFeedingDuration(minutes);
+}
+
+export function formatFeedingClock(totalSeconds: number) {
+  const safeSeconds = Math.max(0, Math.floor(totalSeconds));
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  const seconds = safeSeconds % 60;
+  if (hours > 0) {
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+export function feedingTimerSnapshot(session: BreastFeedingTimerSession, now = new Date()): FeedingTimerSnapshot {
+  let leftElapsedSeconds = session.leftElapsedSeconds;
+  let rightElapsedSeconds = session.rightElapsedSeconds;
+  if (session.status === "running" && session.activeSide && session.activeSegmentStartedAt) {
+    const elapsedSeconds = Math.max(1, Math.round((now.getTime() - new Date(session.activeSegmentStartedAt).getTime()) / 1000));
+    if (session.activeSide === "left") {
+      leftElapsedSeconds += elapsedSeconds;
+    } else {
+      rightElapsedSeconds += elapsedSeconds;
+    }
+  }
+  return {
+    activeSide: session.activeSide,
+    leftElapsedSeconds,
+    rightElapsedSeconds,
+    totalElapsedSeconds: leftElapsedSeconds + rightElapsedSeconds
+  };
+}
+
+export function activeBreastTimerDetail(session: BreastFeedingTimerSession, now = new Date()) {
+  const snapshot = feedingTimerSnapshot(session, now);
+  if (session.status === "paused") {
+    return `左侧${formatFeedingDurationFromSeconds(snapshot.leftElapsedSeconds)} · 右侧${formatFeedingDurationFromSeconds(snapshot.rightElapsedSeconds)} · 已暂停`;
+  }
+  if (snapshot.activeSide === "left") {
+    return `左侧喂奶中 · 右侧${formatFeedingDurationFromSeconds(snapshot.rightElapsedSeconds)}`;
+  }
+  return `左侧${formatFeedingDurationFromSeconds(snapshot.leftElapsedSeconds)} · 右侧喂奶中`;
+}
+
 export function formatFeedingAgeForDayKey(birthDate: string, dayKey: string) {
   const birthKey = extractIsoDayKey(birthDate);
   const birth = dayParts(birthKey);
@@ -330,6 +388,9 @@ export function feedingEntryHeadline(entry: FeedingEntry) {
 export function feedingEntryDetail(entry: FeedingEntry) {
   switch (entry.category) {
     case "milk":
+      if (entry.milkMode === "breast" && (entry.breastLeftSeconds || entry.breastRightSeconds)) {
+        return `左侧${formatFeedingDurationFromSeconds(entry.breastLeftSeconds ?? 0)} · 右侧${formatFeedingDurationFromSeconds(entry.breastRightSeconds ?? 0)}`;
+      }
       if (entry.milkMode === "breast" && entry.endedAt) {
         const minutes = Math.max(1, Math.round((new Date(entry.endedAt).getTime() - new Date(entry.occurredAt).getTime()) / 60000));
         return formatFeedingDuration(minutes);

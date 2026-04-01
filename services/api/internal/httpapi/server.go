@@ -36,6 +36,7 @@ type Server struct {
 	publicBaseURL   string
 	signingSecret   []byte
 	cacheController *mediaCacheController
+	timerHub        *feedingTimerHub
 	mux             *http.ServeMux
 }
 
@@ -58,6 +59,7 @@ func NewServerWithOptions(repo store.Repository, blobStorage *blob.Storage, opti
 		allowedOrigins: normalizeOrigins(options.AllowedOrigins),
 		publicBaseURL:  strings.TrimRight(strings.TrimSpace(options.PublicBaseURL), "/"),
 		signingSecret:  []byte(strings.TrimSpace(options.MediaURLSigningSecret)),
+		timerHub:       newFeedingTimerHub(),
 		mux:            http.NewServeMux(),
 	}
 	if len(s.signingSecret) == 0 {

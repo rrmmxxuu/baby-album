@@ -16,7 +16,8 @@ import (
 type PostgresStore struct{ db *sql.DB }
 
 const mediaAssetColumns = `id, family_id, entry_id, upload_batch_id, uploaded_by, uploaded_by_name, file_name, media_type, captured_at, uploaded_at, timeline_day, status, source, width, height, byte_size, preview_status, preview_blob_key, original_blob_key, content_sha256, processed_at, original_path, original_local_state, original_r2_state, original_r2_key, original_restore_state, original_last_accessed_at, original_evicted_at`
-const feedingEntryColumns = `id, family_id, baby_id, category, occurred_at, ended_at, day_key, note, created_by, created_by_name, created_at, updated_at, milk_mode, amount_ml, food_name, has_stool`
+const feedingEntryColumns = `id, family_id, baby_id, category, occurred_at, ended_at, day_key, note, created_by, created_by_name, created_at, updated_at, milk_mode, amount_ml, breast_left_seconds, breast_right_seconds, food_name, has_stool`
+const feedingTimerSessionColumns = `id, family_id, baby_id, day_key, started_at, status, active_side, active_segment_started_at, left_elapsed_seconds, right_elapsed_seconds, version, updated_by, updated_by_name, updated_at, created_at`
 
 func NewPostgresStore(databaseURL string) (*PostgresStore, error) {
 	db, err := sql.Open("pgx", databaseURL)
@@ -71,8 +72,13 @@ func (s *PostgresStore) migrate() error {
 		`create table if not exists feeding_entries (id text primary key, family_id text not null references families(id), baby_id text not null references babies(id), category text not null, occurred_at timestamptz not null, ended_at timestamptz, day_key text not null, note text not null default '', created_by text not null references users(id), created_by_name text not null default '', created_at timestamptz not null, updated_at timestamptz not null, milk_mode text, amount_ml integer, food_name text not null default '', has_stool boolean)`,
 		`alter table feeding_entries alter column milk_mode drop not null`,
 		`alter table feeding_entries alter column milk_mode drop default`,
+		`alter table feeding_entries add column if not exists breast_left_seconds integer`,
+		`alter table feeding_entries add column if not exists breast_right_seconds integer`,
 		`update feeding_entries set milk_mode = null where trim(coalesce(milk_mode, '')) = ''`,
+		`update feeding_entries set breast_left_seconds = null where breast_left_seconds is not null and breast_left_seconds < 0`,
+		`update feeding_entries set breast_right_seconds = null where breast_right_seconds is not null and breast_right_seconds < 0`,
 		`create table if not exists feeding_entry_items (id text primary key, entry_id text not null references feeding_entries(id) on delete cascade, name text not null, dose text not null default '', sort_order integer not null default 0, created_at timestamptz not null)`,
+		`create table if not exists feeding_timer_sessions (id text primary key, family_id text not null references families(id), baby_id text not null references babies(id), day_key text not null, started_at timestamptz not null, status text not null, active_side text, active_segment_started_at timestamptz, left_elapsed_seconds integer not null default 0, right_elapsed_seconds integer not null default 0, version integer not null default 1, updated_by text not null references users(id), updated_by_name text not null default '', updated_at timestamptz not null, created_at timestamptz not null)`,
 		`create table if not exists media_assets (id text primary key, family_id text not null references families(id), entry_id text not null default '', upload_batch_id text not null default '', uploaded_by text not null default '', uploaded_by_name text not null default '', file_name text not null, media_type text not null, captured_at timestamptz not null, uploaded_at timestamptz not null, timeline_day text not null, status text not null, source text not null, width integer not null default 0, height integer not null default 0, byte_size bigint not null default 0, preview_status text not null default 'pending', preview_blob_key text not null default '', original_blob_key text not null default '', content_sha256 text not null default '', processed_at timestamptz, original_path text not null default '', original_local_state text not null default 'pending', original_r2_state text not null default 'missing', original_r2_key text not null default '', original_restore_state text not null default 'idle', original_last_accessed_at timestamptz, original_evicted_at timestamptz)`,
 		`create table if not exists media_placements (media_id text not null references media_assets(id), family_id text not null references families(id), node_id text not null references storage_nodes(id), kind text not null default 'primary', status text not null default 'pending', local_path text not null default '', created_at timestamptz not null, updated_at timestamptz not null, last_verified_at timestamptz, primary key (media_id, node_id))`,
 		`create index if not exists idx_media_placements_family_node_status on media_placements (family_id, node_id, status)`,
@@ -116,6 +122,8 @@ func (s *PostgresStore) migrate() error {
 		`create index if not exists idx_feeding_entries_baby_day on feeding_entries (baby_id, day_key, occurred_at desc, created_at desc)`,
 		`create index if not exists idx_feeding_entries_family_day on feeding_entries (family_id, day_key, occurred_at desc)`,
 		`create index if not exists idx_feeding_entry_items_entry_sort on feeding_entry_items (entry_id, sort_order asc, created_at asc)`,
+		`create unique index if not exists idx_feeding_timer_sessions_baby on feeding_timer_sessions (baby_id)`,
+		`create index if not exists idx_feeding_timer_sessions_family_updated on feeding_timer_sessions (family_id, updated_at desc)`,
 		`create index if not exists idx_media_assets_family_captured on media_assets (family_id, captured_at desc)`,
 		`create index if not exists idx_media_assets_family_byte_size on media_assets (family_id, byte_size)`,
 		`create index if not exists idx_media_assets_family_sha256 on media_assets (family_id, content_sha256) where content_sha256 <> ''`,
@@ -676,12 +684,234 @@ func (s *PostgresStore) FeedingDay(userID string, input FeedingDayInput) (Feedin
 	if err := s.attachFeedingItems(entries, entryIndexes); err != nil {
 		return FeedingDay{}, err
 	}
+	activeTimer, err := s.feedingTimerByBaby(family.ID, baby.ID)
+	if err != nil {
+		return FeedingDay{}, err
+	}
 
 	return FeedingDay{
-		Day:     dayKey,
-		Summary: summarizeFeedingEntries(entries),
-		Entries: entries,
+		Day:               dayKey,
+		Summary:           summarizeFeedingEntries(entries),
+		Entries:           entries,
+		ActiveBreastTimer: activeTimer,
 	}, nil
+}
+
+func (s *PostgresStore) FeedingTimer(userID, babyID string) (*domain.BreastFeedingTimerSession, error) {
+	baby, family, _, err := s.feedingContextForUser(babyID, userID, domain.RoleMember)
+	if err != nil {
+		return nil, err
+	}
+	return s.feedingTimerByBaby(family.ID, baby.ID)
+}
+
+func (s *PostgresStore) ApplyFeedingTimerAction(userID string, input FeedingTimerActionInput) (*domain.BreastFeedingTimerSession, error) {
+	baby, family, member, err := s.feedingContextForUser(input.BabyID, userID, domain.RoleMember)
+	if err != nil {
+		return nil, err
+	}
+	if !validFeedingTimerAction(input.Action) {
+		return nil, ErrConflict
+	}
+	if input.Action == FeedingTimerActionStart || input.Action == FeedingTimerActionSwitch || input.Action == FeedingTimerActionResume {
+		if !validFeedingTimerSide(input.Side) {
+			return nil, ErrConflict
+		}
+	}
+	updatedByName := strings.TrimSpace(member.Relation)
+	if updatedByName == "" {
+		updatedByName = member.DisplayName
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	if err := s.lockBabyForFeedingTimerTx(tx, family.ID, baby.ID); err != nil {
+		return nil, err
+	}
+	current, err := s.feedingTimerByBabyTx(tx, family.ID, baby.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	if current == nil {
+		if input.ExpectedVersion != 0 {
+			return nil, &FeedingTimerConflictError{}
+		}
+		if input.Action != FeedingTimerActionStart {
+			return nil, &FeedingTimerConflictError{}
+		}
+		now := time.Now().UTC()
+		session := &domain.BreastFeedingTimerSession{
+			ID:                     newID("ftimer"),
+			FamilyID:               family.ID,
+			BabyID:                 baby.ID,
+			DayKey:                 feedingDayKey(now, feedingLocation(family.Timezone)),
+			StartedAt:              now,
+			Status:                 domain.FeedingTimerRunning,
+			ActiveSide:             input.Side,
+			ActiveSegmentStartedAt: &now,
+			LeftElapsedSeconds:     0,
+			RightElapsedSeconds:    0,
+			Version:                1,
+			UpdatedBy:              userID,
+			UpdatedByName:          updatedByName,
+			UpdatedAt:              now,
+			CreatedAt:              now,
+		}
+		if err := s.insertFeedingTimerSessionTx(tx, *session); err != nil {
+			return nil, err
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		return session, nil
+	}
+
+	if input.ExpectedVersion != current.Version {
+		return nil, &FeedingTimerConflictError{Session: current}
+	}
+
+	now := time.Now().UTC()
+	next := *current
+	next.UpdatedBy = userID
+	next.UpdatedByName = updatedByName
+	next.UpdatedAt = now
+
+	switch input.Action {
+	case FeedingTimerActionStart, FeedingTimerActionResume:
+		if current.Status == domain.FeedingTimerRunning {
+			if current.ActiveSide == input.Side {
+				if err := tx.Commit(); err != nil {
+					return nil, err
+				}
+				return current, nil
+			}
+			return nil, &FeedingTimerConflictError{Session: current}
+		}
+		next.Status = domain.FeedingTimerRunning
+		next.ActiveSide = input.Side
+		next.ActiveSegmentStartedAt = &now
+	case FeedingTimerActionPause:
+		if current.Status == domain.FeedingTimerPaused {
+			if err := tx.Commit(); err != nil {
+				return nil, err
+			}
+			return current, nil
+		}
+		accumulateFeedingTimerSegment(&next, now)
+		next.Status = domain.FeedingTimerPaused
+		next.ActiveSide = ""
+		next.ActiveSegmentStartedAt = nil
+	case FeedingTimerActionSwitch:
+		if current.Status != domain.FeedingTimerRunning {
+			return nil, &FeedingTimerConflictError{Session: current}
+		}
+		if current.ActiveSide == input.Side {
+			if err := tx.Commit(); err != nil {
+				return nil, err
+			}
+			return current, nil
+		}
+		accumulateFeedingTimerSegment(&next, now)
+		next.Status = domain.FeedingTimerRunning
+		next.ActiveSide = input.Side
+		next.ActiveSegmentStartedAt = &now
+	case FeedingTimerActionCancel:
+		if _, err := tx.Exec(`delete from feeding_timer_sessions where id = $1 and family_id = $2`, current.ID, current.FamilyID); err != nil {
+			return nil, err
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		return nil, nil
+	default:
+		return nil, ErrConflict
+	}
+
+	next.Version += 1
+	if _, err := tx.Exec(`update feeding_timer_sessions set status = $1, active_side = $2, active_segment_started_at = $3, left_elapsed_seconds = $4, right_elapsed_seconds = $5, version = $6, updated_by = $7, updated_by_name = $8, updated_at = $9 where id = $10 and family_id = $11`, next.Status, nullableFeedingTimerSide(next.ActiveSide), nullableTime(next.ActiveSegmentStartedAt), next.LeftElapsedSeconds, next.RightElapsedSeconds, next.Version, next.UpdatedBy, next.UpdatedByName, next.UpdatedAt, next.ID, next.FamilyID); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &next, nil
+}
+
+func (s *PostgresStore) FinishFeedingTimer(userID string, input FinishFeedingTimerInput) (domain.FeedingEntry, error) {
+	baby, family, member, err := s.feedingContextForUser(input.BabyID, userID, domain.RoleMember)
+	if err != nil {
+		return domain.FeedingEntry{}, err
+	}
+	createdByName := strings.TrimSpace(member.Relation)
+	if createdByName == "" {
+		createdByName = member.DisplayName
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return domain.FeedingEntry{}, err
+	}
+	defer tx.Rollback()
+	if err := s.lockBabyForFeedingTimerTx(tx, family.ID, baby.ID); err != nil {
+		return domain.FeedingEntry{}, err
+	}
+	current, err := s.feedingTimerByBabyTx(tx, family.ID, baby.ID)
+	if err != nil {
+		return domain.FeedingEntry{}, err
+	}
+	if current == nil {
+		return domain.FeedingEntry{}, &FeedingTimerConflictError{}
+	}
+	if input.ExpectedVersion != current.Version {
+		return domain.FeedingEntry{}, &FeedingTimerConflictError{Session: current}
+	}
+
+	now := time.Now().UTC()
+	finalSession := *current
+	finalSession.UpdatedAt = now
+	if finalSession.Status == domain.FeedingTimerRunning {
+		accumulateFeedingTimerSegment(&finalSession, now)
+	}
+	totalSeconds := finalSession.LeftElapsedSeconds + finalSession.RightElapsedSeconds
+	if totalSeconds <= 0 {
+		return domain.FeedingEntry{}, ErrConflict
+	}
+	endedAt := finalSession.StartedAt.Add(time.Duration(totalSeconds) * time.Second)
+	leftSeconds := finalSession.LeftElapsedSeconds
+	rightSeconds := finalSession.RightElapsedSeconds
+	entry := domain.FeedingEntry{
+		ID:                 newID("feed"),
+		FamilyID:           family.ID,
+		BabyID:             baby.ID,
+		Category:           domain.FeedingMilk,
+		OccurredAt:         finalSession.StartedAt,
+		EndedAt:            &endedAt,
+		DayKey:             finalSession.DayKey,
+		Note:               strings.TrimSpace(input.Note),
+		CreatedBy:          userID,
+		CreatedByName:      createdByName,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+		MilkMode:           domain.FeedingBreast,
+		BreastLeftSeconds:  &leftSeconds,
+		BreastRightSeconds: &rightSeconds,
+		Items:              []domain.FeedingEntryItem{},
+	}
+
+	if err := insertFeedingEntryTx(tx, entry); err != nil {
+		return domain.FeedingEntry{}, err
+	}
+	if _, err := tx.Exec(`delete from feeding_timer_sessions where id = $1 and family_id = $2`, current.ID, current.FamilyID); err != nil {
+		return domain.FeedingEntry{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return domain.FeedingEntry{}, err
+	}
+	return entry, nil
 }
 
 func (s *PostgresStore) CreateFeedingEntry(userID string, input CreateFeedingEntryInput) (domain.FeedingEntry, error) {
@@ -689,7 +919,7 @@ func (s *PostgresStore) CreateFeedingEntry(userID string, input CreateFeedingEnt
 	if err != nil {
 		return domain.FeedingEntry{}, err
 	}
-	prepared, err := prepareFeedingEntry(family, input.Category, input.OccurredAt, input.EndedAt, input.Note, input.MilkMode, input.AmountML, input.FoodName, input.HasStool, input.Items)
+	prepared, err := prepareFeedingEntry(family, input.Category, input.OccurredAt, input.EndedAt, input.Note, input.MilkMode, input.AmountML, input.BreastLeftSeconds, input.BreastRightSeconds, input.FoodName, input.HasStool, input.Items)
 	if err != nil {
 		return domain.FeedingEntry{}, err
 	}
@@ -699,23 +929,25 @@ func (s *PostgresStore) CreateFeedingEntry(userID string, input CreateFeedingEnt
 		createdByName = member.DisplayName
 	}
 	entry := domain.FeedingEntry{
-		ID:            newID("feed"),
-		FamilyID:      family.ID,
-		BabyID:        baby.ID,
-		Category:      input.Category,
-		OccurredAt:    prepared.OccurredAt,
-		EndedAt:       prepared.EndedAt,
-		DayKey:        prepared.DayKey,
-		Note:          prepared.Note,
-		CreatedBy:     userID,
-		CreatedByName: createdByName,
-		CreatedAt:     now,
-		UpdatedAt:     now,
-		MilkMode:      prepared.MilkMode,
-		AmountML:      prepared.AmountML,
-		FoodName:      prepared.FoodName,
-		HasStool:      prepared.HasStool,
-		Items:         []domain.FeedingEntryItem{},
+		ID:                 newID("feed"),
+		FamilyID:           family.ID,
+		BabyID:             baby.ID,
+		Category:           input.Category,
+		OccurredAt:         prepared.OccurredAt,
+		EndedAt:            prepared.EndedAt,
+		DayKey:             prepared.DayKey,
+		Note:               prepared.Note,
+		CreatedBy:          userID,
+		CreatedByName:      createdByName,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+		MilkMode:           prepared.MilkMode,
+		AmountML:           prepared.AmountML,
+		BreastLeftSeconds:  prepared.BreastLeftSeconds,
+		BreastRightSeconds: prepared.BreastRightSeconds,
+		FoodName:           prepared.FoodName,
+		HasStool:           prepared.HasStool,
+		Items:              []domain.FeedingEntryItem{},
 	}
 
 	tx, err := s.db.Begin()
@@ -723,7 +955,7 @@ func (s *PostgresStore) CreateFeedingEntry(userID string, input CreateFeedingEnt
 		return domain.FeedingEntry{}, err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`insert into feeding_entries (id, family_id, baby_id, category, occurred_at, ended_at, day_key, note, created_by, created_by_name, created_at, updated_at, milk_mode, amount_ml, food_name, has_stool) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`, entry.ID, entry.FamilyID, entry.BabyID, entry.Category, entry.OccurredAt, nullableTime(entry.EndedAt), entry.DayKey, entry.Note, entry.CreatedBy, entry.CreatedByName, entry.CreatedAt, entry.UpdatedAt, nullableFeedingMilkMode(entry.MilkMode), nullableInt(entry.AmountML), entry.FoodName, nullableBool(entry.HasStool)); err != nil {
+	if err := insertFeedingEntryTx(tx, entry); err != nil {
 		return domain.FeedingEntry{}, err
 	}
 	items, err := insertFeedingEntryItemsTx(tx, entry.ID, prepared.Items, now)
@@ -749,7 +981,7 @@ func (s *PostgresStore) UpdateFeedingEntry(userID string, input UpdateFeedingEnt
 	if entry.BabyID != baby.ID {
 		return domain.FeedingEntry{}, ErrNotFound
 	}
-	prepared, err := prepareFeedingEntry(family, input.Category, input.OccurredAt, input.EndedAt, input.Note, input.MilkMode, input.AmountML, input.FoodName, input.HasStool, input.Items)
+	prepared, err := prepareFeedingEntry(family, input.Category, input.OccurredAt, input.EndedAt, input.Note, input.MilkMode, input.AmountML, input.BreastLeftSeconds, input.BreastRightSeconds, input.FoodName, input.HasStool, input.Items)
 	if err != nil {
 		return domain.FeedingEntry{}, err
 	}
@@ -763,6 +995,8 @@ func (s *PostgresStore) UpdateFeedingEntry(userID string, input UpdateFeedingEnt
 	entry.UpdatedAt = now
 	entry.MilkMode = prepared.MilkMode
 	entry.AmountML = prepared.AmountML
+	entry.BreastLeftSeconds = prepared.BreastLeftSeconds
+	entry.BreastRightSeconds = prepared.BreastRightSeconds
 	entry.FoodName = prepared.FoodName
 	entry.HasStool = prepared.HasStool
 
@@ -771,7 +1005,7 @@ func (s *PostgresStore) UpdateFeedingEntry(userID string, input UpdateFeedingEnt
 		return domain.FeedingEntry{}, err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`update feeding_entries set category = $1, occurred_at = $2, ended_at = $3, day_key = $4, note = $5, updated_at = $6, milk_mode = $7, amount_ml = $8, food_name = $9, has_stool = $10 where id = $11 and family_id = $12`, entry.Category, entry.OccurredAt, nullableTime(entry.EndedAt), entry.DayKey, entry.Note, entry.UpdatedAt, nullableFeedingMilkMode(entry.MilkMode), nullableInt(entry.AmountML), entry.FoodName, nullableBool(entry.HasStool), entry.ID, entry.FamilyID); err != nil {
+	if _, err := tx.Exec(`update feeding_entries set category = $1, occurred_at = $2, ended_at = $3, day_key = $4, note = $5, updated_at = $6, milk_mode = $7, amount_ml = $8, breast_left_seconds = $9, breast_right_seconds = $10, food_name = $11, has_stool = $12 where id = $13 and family_id = $14`, entry.Category, entry.OccurredAt, nullableTime(entry.EndedAt), entry.DayKey, entry.Note, entry.UpdatedAt, nullableFeedingMilkMode(entry.MilkMode), nullableInt(entry.AmountML), nullableInt(entry.BreastLeftSeconds), nullableInt(entry.BreastRightSeconds), entry.FoodName, nullableBool(entry.HasStool), entry.ID, entry.FamilyID); err != nil {
 		return domain.FeedingEntry{}, err
 	}
 	if _, err := tx.Exec(`delete from feeding_entry_items where entry_id = $1`, entry.ID); err != nil {
@@ -848,18 +1082,20 @@ func (s *PostgresStore) CreateTimelineEntry(userID string, input CreateTimelineE
 }
 
 type preparedFeedingEntry struct {
-	OccurredAt time.Time
-	EndedAt    *time.Time
-	DayKey     string
-	Note       string
-	MilkMode   domain.FeedingMilkMode
-	AmountML   *int
-	FoodName   string
-	HasStool   *bool
-	Items      []FeedingEntryItemInput
+	OccurredAt         time.Time
+	EndedAt            *time.Time
+	DayKey             string
+	Note               string
+	MilkMode           domain.FeedingMilkMode
+	AmountML           *int
+	BreastLeftSeconds  *int
+	BreastRightSeconds *int
+	FoodName           string
+	HasStool           *bool
+	Items              []FeedingEntryItemInput
 }
 
-func prepareFeedingEntry(family domain.Family, category domain.FeedingCategory, occurredAt time.Time, endedAt *time.Time, note string, milkMode domain.FeedingMilkMode, amountML *int, foodName string, hasStool *bool, items []FeedingEntryItemInput) (preparedFeedingEntry, error) {
+func prepareFeedingEntry(family domain.Family, category domain.FeedingCategory, occurredAt time.Time, endedAt *time.Time, note string, milkMode domain.FeedingMilkMode, amountML *int, breastLeftSeconds *int, breastRightSeconds *int, foodName string, hasStool *bool, items []FeedingEntryItemInput) (preparedFeedingEntry, error) {
 	if !validFeedingCategory(category) || occurredAt.IsZero() {
 		return preparedFeedingEntry{}, ErrConflict
 	}
@@ -894,6 +1130,21 @@ func prepareFeedingEntry(family domain.Family, category domain.FeedingCategory, 
 		result.AmountML = &value
 	}
 
+	if breastLeftSeconds != nil {
+		if *breastLeftSeconds < 0 {
+			return preparedFeedingEntry{}, ErrConflict
+		}
+		value := *breastLeftSeconds
+		result.BreastLeftSeconds = &value
+	}
+	if breastRightSeconds != nil {
+		if *breastRightSeconds < 0 {
+			return preparedFeedingEntry{}, ErrConflict
+		}
+		value := *breastRightSeconds
+		result.BreastRightSeconds = &value
+	}
+
 	if hasStool != nil {
 		value := *hasStool
 		result.HasStool = &value
@@ -921,15 +1172,38 @@ func prepareFeedingEntry(family domain.Family, category domain.FeedingCategory, 
 		switch milkMode {
 		case domain.FeedingBreast:
 			result.AmountML = nil
+			if result.BreastLeftSeconds != nil || result.BreastRightSeconds != nil {
+				leftSeconds := 0
+				rightSeconds := 0
+				if result.BreastLeftSeconds != nil {
+					leftSeconds = *result.BreastLeftSeconds
+				}
+				if result.BreastRightSeconds != nil {
+					rightSeconds = *result.BreastRightSeconds
+				}
+				totalSeconds := leftSeconds + rightSeconds
+				if totalSeconds <= 0 {
+					return preparedFeedingEntry{}, ErrConflict
+				}
+				derivedEndedAt := result.OccurredAt.Add(time.Duration(totalSeconds) * time.Second)
+				if derivedEndedAt.In(location).After(now.Add(5 * time.Minute)) {
+					return preparedFeedingEntry{}, ErrConflict
+				}
+				result.EndedAt = &derivedEndedAt
+			}
 		case domain.FeedingBottle, domain.FeedingFormula:
 			if result.AmountML == nil {
 				return preparedFeedingEntry{}, ErrConflict
 			}
 			result.EndedAt = nil
+			result.BreastLeftSeconds = nil
+			result.BreastRightSeconds = nil
 		}
 	case domain.FeedingSolid:
 		result.MilkMode = ""
 		result.AmountML = nil
+		result.BreastLeftSeconds = nil
+		result.BreastRightSeconds = nil
 		result.HasStool = nil
 		result.Items = nil
 		result.EndedAt = nil
@@ -939,6 +1213,8 @@ func prepareFeedingEntry(family domain.Family, category domain.FeedingCategory, 
 	case domain.FeedingDiaper:
 		result.MilkMode = ""
 		result.AmountML = nil
+		result.BreastLeftSeconds = nil
+		result.BreastRightSeconds = nil
 		result.FoodName = ""
 		result.Items = nil
 		result.EndedAt = nil
@@ -948,12 +1224,16 @@ func prepareFeedingEntry(family domain.Family, category domain.FeedingCategory, 
 	case domain.FeedingSleep:
 		result.MilkMode = ""
 		result.AmountML = nil
+		result.BreastLeftSeconds = nil
+		result.BreastRightSeconds = nil
 		result.FoodName = ""
 		result.HasStool = nil
 		result.Items = nil
 	case domain.FeedingSupplement, domain.FeedingMedicine:
 		result.MilkMode = ""
 		result.AmountML = nil
+		result.BreastLeftSeconds = nil
+		result.BreastRightSeconds = nil
 		result.FoodName = ""
 		result.HasStool = nil
 		result.EndedAt = nil
@@ -983,6 +1263,91 @@ func insertFeedingEntryItemsTx(tx *sql.Tx, entryID string, items []FeedingEntryI
 		result = append(result, entryItem)
 	}
 	return result, nil
+}
+
+func insertFeedingEntryTx(tx *sql.Tx, entry domain.FeedingEntry) error {
+	_, err := tx.Exec(
+		`insert into feeding_entries (id, family_id, baby_id, category, occurred_at, ended_at, day_key, note, created_by, created_by_name, created_at, updated_at, milk_mode, amount_ml, breast_left_seconds, breast_right_seconds, food_name, has_stool) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+		entry.ID,
+		entry.FamilyID,
+		entry.BabyID,
+		entry.Category,
+		entry.OccurredAt,
+		nullableTime(entry.EndedAt),
+		entry.DayKey,
+		entry.Note,
+		entry.CreatedBy,
+		entry.CreatedByName,
+		entry.CreatedAt,
+		entry.UpdatedAt,
+		nullableFeedingMilkMode(entry.MilkMode),
+		nullableInt(entry.AmountML),
+		nullableInt(entry.BreastLeftSeconds),
+		nullableInt(entry.BreastRightSeconds),
+		entry.FoodName,
+		nullableBool(entry.HasStool),
+	)
+	return err
+}
+
+func (s *PostgresStore) lockBabyForFeedingTimerTx(tx *sql.Tx, familyID, babyID string) error {
+	var lockedID string
+	err := tx.QueryRow(`select id from babies where id = $1 and family_id = $2 for update`, babyID, familyID).Scan(&lockedID)
+	if err == sql.ErrNoRows {
+		return ErrNotFound
+	}
+	return err
+}
+
+func validFeedingTimerAction(action FeedingTimerAction) bool {
+	switch action {
+	case FeedingTimerActionStart, FeedingTimerActionPause, FeedingTimerActionSwitch, FeedingTimerActionResume, FeedingTimerActionCancel:
+		return true
+	default:
+		return false
+	}
+}
+
+func validFeedingTimerStatus(status domain.FeedingTimerStatus) bool {
+	return status == domain.FeedingTimerRunning || status == domain.FeedingTimerPaused
+}
+
+func validFeedingTimerSide(side domain.FeedingTimerSide) bool {
+	return side == domain.FeedingTimerLeft || side == domain.FeedingTimerRight
+}
+
+func nullableFeedingTimerSide(side domain.FeedingTimerSide) any {
+	if !validFeedingTimerSide(side) {
+		return nil
+	}
+	return string(side)
+}
+
+func durationToTimerSeconds(value time.Duration) int {
+	if value <= 0 {
+		return 0
+	}
+	seconds := int(value.Round(time.Second).Seconds())
+	if seconds <= 0 {
+		return 1
+	}
+	return seconds
+}
+
+func accumulateFeedingTimerSegment(session *domain.BreastFeedingTimerSession, now time.Time) {
+	if session == nil || session.ActiveSegmentStartedAt == nil || !validFeedingTimerSide(session.ActiveSide) {
+		return
+	}
+	elapsed := durationToTimerSeconds(now.Sub(*session.ActiveSegmentStartedAt))
+	if elapsed <= 0 {
+		return
+	}
+	switch session.ActiveSide {
+	case domain.FeedingTimerLeft:
+		session.LeftElapsedSeconds += elapsed
+	case domain.FeedingTimerRight:
+		session.RightElapsedSeconds += elapsed
+	}
 }
 
 func (s *PostgresStore) CreateTimelineComment(userID string, input CreateTimelineCommentInput) (domain.TimelineComment, error) {
@@ -1491,6 +1856,38 @@ func (s *PostgresStore) UpdateMemberRelation(userID string, input UpdateAlbumMem
 	}
 	member.Relation = relation
 	return member, nil
+}
+
+func (s *PostgresStore) RemoveMember(userID string, input RemoveAlbumMemberInput) error {
+	if strings.TrimSpace(input.MemberUserID) == "" || input.MemberUserID == userID {
+		return ErrForbidden
+	}
+	actor, err := s.memberForUser(input.AlbumID, userID)
+	if err != nil {
+		return err
+	}
+	if actor.Role != domain.RoleOwner {
+		return ErrForbidden
+	}
+	member, err := s.memberForUser(input.AlbumID, input.MemberUserID)
+	if err != nil {
+		return err
+	}
+	if member.Role == domain.RoleOwner {
+		return ErrForbidden
+	}
+	result, err := s.db.Exec(`delete from family_members where family_id = $1 and user_id = $2`, input.AlbumID, input.MemberUserID)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (s *PostgresStore) CreateInvite(userID string, input CreateAlbumInviteInput) (domain.AlbumInvite, error) {
@@ -2468,6 +2865,51 @@ func (s *PostgresStore) feedingEntryByID(familyID, entryID string) (domain.Feedi
 	return entry, nil
 }
 
+func (s *PostgresStore) feedingTimerByBaby(familyID, babyID string) (*domain.BreastFeedingTimerSession, error) {
+	row := s.db.QueryRow(`select `+feedingTimerSessionColumns+` from feeding_timer_sessions where family_id = $1 and baby_id = $2`, familyID, babyID)
+	session, err := scanFeedingTimerSession(row)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &session, nil
+}
+
+func (s *PostgresStore) feedingTimerByBabyTx(tx *sql.Tx, familyID, babyID string) (*domain.BreastFeedingTimerSession, error) {
+	row := tx.QueryRow(`select `+feedingTimerSessionColumns+` from feeding_timer_sessions where family_id = $1 and baby_id = $2`, familyID, babyID)
+	session, err := scanFeedingTimerSession(row)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &session, nil
+}
+
+func (s *PostgresStore) insertFeedingTimerSessionTx(tx *sql.Tx, session domain.BreastFeedingTimerSession) error {
+	_, err := tx.Exec(`insert into feeding_timer_sessions (id, family_id, baby_id, day_key, started_at, status, active_side, active_segment_started_at, left_elapsed_seconds, right_elapsed_seconds, version, updated_by, updated_by_name, updated_at, created_at) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+		session.ID,
+		session.FamilyID,
+		session.BabyID,
+		session.DayKey,
+		session.StartedAt,
+		session.Status,
+		nullableFeedingTimerSide(session.ActiveSide),
+		nullableTime(session.ActiveSegmentStartedAt),
+		session.LeftElapsedSeconds,
+		session.RightElapsedSeconds,
+		session.Version,
+		session.UpdatedBy,
+		session.UpdatedByName,
+		session.UpdatedAt,
+		session.CreatedAt,
+	)
+	return err
+}
+
 func (s *PostgresStore) attachFeedingItems(entries []domain.FeedingEntry, entryIndexes map[string]int) error {
 	if len(entries) == 0 {
 		return nil
@@ -2836,14 +3278,16 @@ func scanTimelineComment(row scanner) (domain.TimelineComment, error) {
 
 func scanFeedingEntry(row scanner) (domain.FeedingEntry, error) {
 	var (
-		item     domain.FeedingEntry
-		category string
-		endedAt  sql.NullTime
-		milkMode sql.NullString
-		amountML sql.NullInt64
-		hasStool sql.NullBool
+		item               domain.FeedingEntry
+		category           string
+		endedAt            sql.NullTime
+		milkMode           sql.NullString
+		amountML           sql.NullInt64
+		breastLeftSeconds  sql.NullInt64
+		breastRightSeconds sql.NullInt64
+		hasStool           sql.NullBool
 	)
-	if err := row.Scan(&item.ID, &item.FamilyID, &item.BabyID, &category, &item.OccurredAt, &endedAt, &item.DayKey, &item.Note, &item.CreatedBy, &item.CreatedByName, &item.CreatedAt, &item.UpdatedAt, &milkMode, &amountML, &item.FoodName, &hasStool); err != nil {
+	if err := row.Scan(&item.ID, &item.FamilyID, &item.BabyID, &category, &item.OccurredAt, &endedAt, &item.DayKey, &item.Note, &item.CreatedBy, &item.CreatedByName, &item.CreatedAt, &item.UpdatedAt, &milkMode, &amountML, &breastLeftSeconds, &breastRightSeconds, &item.FoodName, &hasStool); err != nil {
 		return domain.FeedingEntry{}, err
 	}
 	item.Category = domain.FeedingCategory(category)
@@ -2858,9 +3302,38 @@ func scanFeedingEntry(row scanner) (domain.FeedingEntry, error) {
 		value := int(amountML.Int64)
 		item.AmountML = &value
 	}
+	if breastLeftSeconds.Valid {
+		value := int(breastLeftSeconds.Int64)
+		item.BreastLeftSeconds = &value
+	}
+	if breastRightSeconds.Valid {
+		value := int(breastRightSeconds.Int64)
+		item.BreastRightSeconds = &value
+	}
 	if hasStool.Valid {
 		value := hasStool.Bool
 		item.HasStool = &value
+	}
+	return item, nil
+}
+
+func scanFeedingTimerSession(row scanner) (domain.BreastFeedingTimerSession, error) {
+	var (
+		item                   domain.BreastFeedingTimerSession
+		status                 string
+		activeSide             sql.NullString
+		activeSegmentStartedAt sql.NullTime
+	)
+	if err := row.Scan(&item.ID, &item.FamilyID, &item.BabyID, &item.DayKey, &item.StartedAt, &status, &activeSide, &activeSegmentStartedAt, &item.LeftElapsedSeconds, &item.RightElapsedSeconds, &item.Version, &item.UpdatedBy, &item.UpdatedByName, &item.UpdatedAt, &item.CreatedAt); err != nil {
+		return domain.BreastFeedingTimerSession{}, err
+	}
+	item.Status = domain.FeedingTimerStatus(status)
+	if activeSide.Valid {
+		item.ActiveSide = domain.FeedingTimerSide(activeSide.String)
+	}
+	if activeSegmentStartedAt.Valid {
+		value := activeSegmentStartedAt.Time
+		item.ActiveSegmentStartedAt = &value
 	}
 	return item, nil
 }

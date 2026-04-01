@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { joinedBabySummaries } from "../model/babies";
 import { buildBabyManagePath, buildFeedingHubPath, buildPhotosHubPath, buildSettingsBabiesNewPath, buildSettingsPath } from "../model/routes";
@@ -10,7 +11,12 @@ import { SettingsBabiesScene } from "../ui/settings-babies-scene";
 export function SettingsBabiesRoute() {
   const router = useRouter();
   const session = useAppSessionContext();
+  const refreshApp = session.refreshApp;
   const joinedBabies = joinedBabySummaries(session.appState?.albums ?? []);
+
+  useEffect(() => {
+    void refreshApp(undefined, { silent: true, authenticated: true });
+  }, [refreshApp]);
 
   return (
     <AuthenticatedShell

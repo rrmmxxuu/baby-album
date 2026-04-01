@@ -62,7 +62,15 @@
   transform: translate3d(0, 24px, 0) scale(0.985);
 }
 
-.draftSheetHeader,
+.draftSheetHeader {
+  display: grid;
+  grid-template-columns: minmax(72px, 1fr) auto minmax(72px, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  contain: paint;
+}
+
 .draftSheetFooter {
   display: flex;
   align-items: center;
@@ -81,8 +89,8 @@
 .draftSheetHeader h2 {
   margin: 0;
   font-size: 1.3rem;
-  flex: 1;
   text-align: center;
+  justify-self: center;
 }
 
 .draftTopAction,
@@ -100,6 +108,7 @@
   color: #007aff;
   box-shadow: none;
   font-weight: 500;
+  justify-self: start;
 }
 
 .draftTopPrimary {
@@ -113,6 +122,7 @@
   background: rgba(0, 122, 255, 0.12);
   color: #007aff;
   box-shadow: none;
+  justify-self: end;
 }
 
 .draftTopSpacer {

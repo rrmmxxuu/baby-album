@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -23,6 +24,8 @@ func TestPrepareFeedingEntry(t *testing.T) {
 			" note ",
 			domain.FeedingBreast,
 			&amount,
+			nil,
+			nil,
 			"米粉",
 			&hasStool,
 			[]FeedingEntryItemInput{{Name: "维生素D"}},
@@ -50,6 +53,8 @@ func TestPrepareFeedingEntry(t *testing.T) {
 			"",
 			domain.FeedingBreast,
 			nil,
+			nil,
+			nil,
 			"",
 			nil,
 			nil,
@@ -71,6 +76,8 @@ func TestPrepareFeedingEntry(t *testing.T) {
 			"",
 			domain.FeedingBottle,
 			&amount,
+			nil,
+			nil,
 			"米粉",
 			&hasStool,
 			[]FeedingEntryItemInput{{Name: "  维生素D  ", Dose: "1滴"}, {Name: " ", Dose: "x"}},
@@ -87,10 +94,55 @@ func TestPrepareFeedingEntry(t *testing.T) {
 	})
 
 	t.Run("diaper requires stool value", func(t *testing.T) {
-		if _, err := prepareFeedingEntry(family, domain.FeedingDiaper, now, nil, "", "", nil, "", nil, nil); err == nil {
+		if _, err := prepareFeedingEntry(family, domain.FeedingDiaper, now, nil, "", "", nil, nil, nil, "", nil, nil); err == nil {
 			t.Fatal("expected missing stool value to fail")
 		}
 	})
+
+	t.Run("milk breast derives endedAt from side seconds", func(t *testing.T) {
+		leftSeconds := 12 * 60
+		rightSeconds := 8 * 60
+		prepared, err := prepareFeedingEntry(
+			family,
+			domain.FeedingMilk,
+			now,
+			nil,
+			"",
+			domain.FeedingBreast,
+			nil,
+			&leftSeconds,
+			&rightSeconds,
+			"",
+			nil,
+			nil,
+		)
+		if err != nil {
+			t.Fatalf("prepareFeedingEntry returned error: %v", err)
+		}
+		if prepared.EndedAt == nil || !prepared.EndedAt.Equal(now.Add(20*time.Minute).UTC()) {
+			t.Fatalf("expected endedAt derived from side seconds, got %+v", prepared.EndedAt)
+		}
+	})
+}
+
+func TestAccumulateFeedingTimerSegment(t *testing.T) {
+	startedAt := time.Date(2026, 4, 1, 10, 0, 0, 0, time.UTC)
+	session := domain.BreastFeedingTimerSession{
+		ActiveSide:             domain.FeedingTimerLeft,
+		ActiveSegmentStartedAt: &startedAt,
+	}
+
+	accumulateFeedingTimerSegment(&session, startedAt.Add(1500*time.Millisecond))
+	if session.LeftElapsedSeconds != 2 {
+		t.Fatalf("expected rounded elapsed seconds 2, got %d", session.LeftElapsedSeconds)
+	}
+}
+
+func TestFeedingTimerConflictError(t *testing.T) {
+	err := &FeedingTimerConflictError{}
+	if !errors.Is(err, ErrConflict) {
+		t.Fatal("expected feeding timer conflict to unwrap to ErrConflict")
+	}
 }
 
 func TestNullableFeedingMilkMode(t *testing.T) {

@@ -94,6 +94,8 @@ func (s *Server) handleCollectionActions(w http.ResponseWriter, r *http.Request,
 		s.handleMemberRoleUpdate(w, r, userID, familyID, parts[2])
 	case len(parts) == 4 && parts[1] == "members" && parts[3] == "relation":
 		s.handleMemberRelationUpdate(w, r, userID, familyID, parts[2])
+	case len(parts) == 3 && parts[1] == "members":
+		s.handleMemberRemoval(w, r, userID, familyID, parts[2])
 	default:
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 	}
@@ -465,6 +467,21 @@ func (s *Server) handleMemberRelationUpdate(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	writeJSON(w, http.StatusOK, member)
+}
+
+func (s *Server) handleMemberRemoval(w http.ResponseWriter, r *http.Request, userID, familyID, memberUserID string) {
+	if r.Method != http.MethodDelete {
+		writeMethodNotAllowed(w)
+		return
+	}
+	if err := s.store.RemoveMember(userID, store.RemoveAlbumMemberInput{
+		AlbumID:      familyID,
+		MemberUserID: memberUserID,
+	}); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"removed": true})
 }
 
 func parseMultipartFile(w http.ResponseWriter, r *http.Request, maxUploadBytes int64) (multipartFile, *multipartHeader, bool) {

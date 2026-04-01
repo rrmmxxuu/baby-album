@@ -2,11 +2,12 @@
 
 import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ApiError, createFeedingEntry, deleteFeedingEntry, loadFeedingDay, updateFeedingEntry } from "../../../lib/api";
-import type { FeedingCategory, FeedingDayPayload, FeedingEntry, FeedingEntryItemInput, FeedingEntryUpsertInput, FeedingMilkMode } from "../../../lib/types";
+import { ApiError, applyFeedingTimerAction, createFeedingEntry, deleteFeedingEntry, feedingTimerStreamUrl, FeedingTimerConflictError, finishFeedingTimer, loadFeedingDay, loadFeedingTimer, updateFeedingEntry } from "../../../lib/api";
+import type { BreastFeedingTimerSession, FeedingCategory, FeedingDayPayload, FeedingEntry, FeedingEntryItemInput, FeedingEntryUpsertInput, FeedingMilkMode, FeedingTimerSide } from "../../../lib/types";
 import { useBabyRouteContext } from "../baby-route-context";
 import { canAccessFeeding, feedingBabySummaries } from "../model/babies";
 import {
+  activeBreastTimerDetail,
   buildFeedingSummary,
   buildFeedingDayStrip,
   buildFeedingSummaryCards,
@@ -15,7 +16,9 @@ import {
   FEEDING_DOSE_UNITS,
   feedingEntryDetail,
   feedingEntryHeadline,
+  feedingTimerSnapshot,
   feedingTodayDayKey,
+  formatFeedingClock,
   formatFeedingAgeForDayKey,
   formatFeedingDayNumber,
   formatFeedingRelative,
@@ -39,6 +42,9 @@ import { BabyAvatar } from "../ui/baby-avatar";
 import { PanelMessage } from "../../ui/panel-message";
 
 const LAST_FEEDING_MILK_MODE_STORAGE_PREFIX = "baby-album.lastFeedingMilkMode";
+const TIMER_RECONNECT_DELAY_MS = 2500;
+
+type BreastTimingMode = "automatic" | "manual";
 
 interface FeedingDraftItem {
   id: string;
@@ -51,6 +57,9 @@ interface FeedingDraftState {
   endedAt: string;
   note: string;
   milkMode: FeedingMilkMode;
+  breastTimingMode: BreastTimingMode;
+  breastLeftMinutes: string;
+  breastRightMinutes: string;
   amountMl: string;
   foodName: string;
   hasStool: "yes" | "no";
@@ -74,10 +83,12 @@ interface FeedingDateStripProps {
 }
 
 interface FeedingTimelineProps {
+  activeBreastTimer: BreastFeedingTimerSession | null;
   entries: FeedingEntry[];
   showRelativeTime: boolean;
   timeZone: string;
   onEdit: (entryId: string) => void;
+  onOpenActiveTimer: () => void;
 }
 
 interface FeedingActionDockProps {
@@ -88,19 +99,27 @@ interface FeedingActionDockProps {
 }
 
 interface FeedingEditorSheetProps {
+  activeBreastTimer: BreastFeedingTimerSession | null;
   category: FeedingCategory;
   deleting: boolean;
   draft: FeedingDraftState;
   editingEntry: FeedingEntry | null;
+  onCancelActiveTimer: () => void;
   onAddItem: () => void;
   onAddPreset: (name: string) => void;
   onChange: (patch: Partial<FeedingDraftState>) => void;
   onClose: () => void;
   onDelete: () => void;
+  onFinishActiveTimer: () => void;
+  onOpenActiveTimerDay: () => void;
+  onTimerPrimaryAction: (side: FeedingTimerSide) => void;
   onRemoveItem: (itemId: string) => void;
   onSave: () => void;
   onUpdateItem: (itemId: string, patch: Partial<FeedingDraftItem>) => void;
   saving: boolean;
+  timerBusy: boolean;
+  timerNow: Date;
+  timeZone: string;
 }
 
 interface FeedingDoseDialogProps {
@@ -172,13 +191,53 @@ function readStoredFeedingMilkMode(storageKey: string) {
   return isStoredFeedingMilkMode(storedMode) ? storedMode : "formula";
 }
 
+function hasBreastSideBreakdown(entry?: FeedingEntry | null) {
+  if (!entry || entry.category !== "milk" || entry.milkMode !== "breast") {
+    return false;
+  }
+  return typeof entry.breastLeftSeconds === "number" || typeof entry.breastRightSeconds === "number";
+}
+
+function latestRecordedMilkMode(entries: FeedingEntry[]) {
+  for (const entry of entries) {
+    if (entry.category === "milk" && entry.milkMode) {
+      return entry.milkMode;
+    }
+  }
+  return null;
+}
+
+function parseBreastMinutes(value: string) {
+  const parsed = Number.parseInt(value.trim(), 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function computeBreastEndedAt(occurredAt: string, leftMinutes: string, rightMinutes: string) {
+  const startedAt = new Date(occurredAt);
+  if (!Number.isFinite(startedAt.getTime())) {
+    return "";
+  }
+  const left = parseBreastMinutes(leftMinutes) ?? 0;
+  const right = parseBreastMinutes(rightMinutes) ?? 0;
+  const totalMinutes = left + right;
+  if (totalMinutes <= 0) {
+    return "";
+  }
+  return toDateTimeLocalValue(new Date(startedAt.getTime() + totalMinutes * 60000).toISOString());
+}
+
 function createInitialDraft(category: FeedingCategory, selectedDay: string, isToday: boolean, preferredMilkMode: FeedingMilkMode, entry?: FeedingEntry | null): FeedingDraftState {
   if (entry) {
+    const breastLeftMinutes = typeof entry.breastLeftSeconds === "number" ? `${Math.round(entry.breastLeftSeconds / 60)}` : "";
+    const breastRightMinutes = typeof entry.breastRightSeconds === "number" ? `${Math.round(entry.breastRightSeconds / 60)}` : "";
     return {
       occurredAt: toDateTimeLocalValue(entry.occurredAt),
       endedAt: defaultEndedAtForPendingEntry(category, entry),
       note: entry.note ?? "",
       milkMode: entry.milkMode ?? "formula",
+      breastTimingMode: "manual",
+      breastLeftMinutes,
+      breastRightMinutes,
       amountMl: entry.amountMl ? `${entry.amountMl}` : "",
       foodName: entry.foodName ?? "",
       hasStool: entry.hasStool ? "yes" : "no",
@@ -190,6 +249,9 @@ function createInitialDraft(category: FeedingCategory, selectedDay: string, isTo
     endedAt: category === "sleep" ? "" : "",
     note: "",
     milkMode: category === "milk" ? preferredMilkMode : "formula",
+    breastTimingMode: "automatic",
+    breastLeftMinutes: "",
+    breastRightMinutes: "",
     amountMl: "",
     foodName: "",
     hasStool: "no",
@@ -237,7 +299,7 @@ function formatDoseValue(amount: string, unit: string) {
   return `${normalizedAmount}${unit}`;
 }
 
-function buildEntryPayload(category: FeedingCategory, draft: FeedingDraftState): FeedingEntryUpsertInput {
+function buildEntryPayload(category: FeedingCategory, draft: FeedingDraftState, editingEntry?: FeedingEntry | null): FeedingEntryUpsertInput {
   const payload: FeedingEntryUpsertInput = {
     category,
     occurredAt: new Date(draft.occurredAt).toISOString(),
@@ -251,6 +313,16 @@ function buildEntryPayload(category: FeedingCategory, draft: FeedingDraftState):
   switch (category) {
     case "milk":
       payload.milkMode = draft.milkMode;
+      if (draft.milkMode === "breast" && hasBreastSideBreakdown(editingEntry)) {
+        const leftMinutes = parseBreastMinutes(draft.breastLeftMinutes) ?? 0;
+        const rightMinutes = parseBreastMinutes(draft.breastRightMinutes) ?? 0;
+        const totalSeconds = (leftMinutes + rightMinutes) * 60;
+        if (totalSeconds > 0) {
+          payload.breastLeftSeconds = leftMinutes * 60;
+          payload.breastRightSeconds = rightMinutes * 60;
+          payload.endedAt = new Date(new Date(draft.occurredAt).getTime() + totalSeconds * 1000).toISOString();
+        }
+      }
       if (draft.milkMode === "bottle" || draft.milkMode === "formula") {
         const amount = Number.parseInt(draft.amountMl, 10);
         if (Number.isFinite(amount)) {
@@ -280,14 +352,17 @@ function buildEntryPayload(category: FeedingCategory, draft: FeedingDraftState):
   return payload;
 }
 
-function canSubmitDraft(category: FeedingCategory, draft: FeedingDraftState) {
+function canSubmitDraft(category: FeedingCategory, draft: FeedingDraftState, editingEntry?: FeedingEntry | null) {
   if (!draft.occurredAt) {
     return false;
   }
   switch (category) {
     case "milk":
       if (draft.milkMode === "breast") {
-        return true;
+        if (hasBreastSideBreakdown(editingEntry)) {
+          return (parseBreastMinutes(draft.breastLeftMinutes) ?? 0) + (parseBreastMinutes(draft.breastRightMinutes) ?? 0) > 0;
+        }
+        return draft.breastTimingMode === "manual" ? Boolean(draft.endedAt) : false;
       }
       return Number.parseInt(draft.amountMl, 10) > 0;
     case "solid":
@@ -345,13 +420,37 @@ function FeedingDateStrip({ maxDay, minDay, selectedDay, todayDay, onSelect }: F
   );
 }
 
-function FeedingTimeline({ entries, showRelativeTime, timeZone, onEdit }: FeedingTimelineProps) {
-  if (entries.length === 0) {
+function ActiveBreastTimerTimelineCard({ onOpen, session, showRelativeTime, timeZone }: { onOpen: () => void; session: BreastFeedingTimerSession; showRelativeTime: boolean; timeZone: string; }) {
+  return (
+    <article className="feedingTimelineRow">
+      <div className="feedingTimelineTime">
+        <strong>{formatFeedingTime(session.startedAt, timeZone)}</strong>
+        {showRelativeTime ? <span>{formatFeedingRelative(session.startedAt)}</span> : null}
+      </div>
+
+      <button className="feedingEntryCard feedingEntryCardActiveTimer surfaceCard surfaceCardAction" onClick={onOpen} type="button">
+        <span className="feedingEntryBadge feedingEntryBadgeMilk">亲</span>
+        <span className="feedingEntryBody">
+          <span className="feedingEntryPrimaryRow">
+            <strong>亲喂计时中</strong>
+            <span>{activeBreastTimerDetail(session)}</span>
+          </span>
+          <span className="feedingEntryMeta">开始于 {formatFeedingTime(session.startedAt, timeZone)}</span>
+          <span className="feedingEntryMeta">最后操作：{session.updatedByName || session.updatedBy}</span>
+        </span>
+      </button>
+    </article>
+  );
+}
+
+function FeedingTimeline({ activeBreastTimer, entries, showRelativeTime, timeZone, onEdit, onOpenActiveTimer }: FeedingTimelineProps) {
+  if (entries.length === 0 && !activeBreastTimer) {
     return <PanelMessage message="这一天还没有喂养记录。" />;
   }
 
   return (
     <div className="feedingTimeline">
+      {activeBreastTimer ? <ActiveBreastTimerTimelineCard onOpen={onOpenActiveTimer} session={activeBreastTimer} showRelativeTime={showRelativeTime} timeZone={timeZone} /> : null}
       {entries.map((entry) => {
         const action = FEEDING_ACTIONS.find((item) => item.kind === entry.category);
         return (
@@ -472,25 +571,47 @@ function FeedingDoseDialog({ amount, onAmountChange, onClose, onSave, onUnitSele
 }
 
 function FeedingEditorSheet({
+  activeBreastTimer,
   category,
   deleting,
   draft,
   editingEntry,
+  onCancelActiveTimer,
   onAddItem,
   onAddPreset,
   onChange,
   onClose,
   onDelete,
+  onFinishActiveTimer,
+  onOpenActiveTimerDay,
+  onTimerPrimaryAction,
   onRemoveItem,
   onSave,
   onUpdateItem,
-  saving
+  saving,
+  timerBusy,
+  timerNow,
+  timeZone
 }: FeedingEditorSheetProps) {
   const presets = categoryPresets(category);
   const canDelete = Boolean(editingEntry);
   const [doseDialogItemId, setDoseDialogItemId] = useState("");
   const [doseAmount, setDoseAmount] = useState("");
   const [doseUnit, setDoseUnit] = useState("");
+  const activeTimerLocked = category === "milk" && !editingEntry && Boolean(activeBreastTimer);
+  const automaticBreastMode = category === "milk" && draft.milkMode === "breast" && !editingEntry && draft.breastTimingMode === "automatic";
+  const timedBreastEntryEditing = category === "milk" && draft.milkMode === "breast" && hasBreastSideBreakdown(editingEntry);
+  const timerSnapshot = activeBreastTimer ? feedingTimerSnapshot(activeBreastTimer, timerNow) : {
+    activeSide: undefined,
+    leftElapsedSeconds: 0,
+    rightElapsedSeconds: 0,
+    totalElapsedSeconds: 0
+  };
+  const headerPrimaryDisabled = automaticBreastMode ? !activeBreastTimer || timerBusy : saving;
+  const headerPrimaryLabel = automaticBreastMode
+    ? timerBusy ? "同步中" : activeBreastTimer ? "结束并保存" : "开始后保存"
+    : saving ? "保存中" : "保存";
+  const headerPrimaryAction = automaticBreastMode ? onFinishActiveTimer : onSave;
 
   useEffect(() => {
     setDoseDialogItemId("");
@@ -517,15 +638,34 @@ function FeedingEditorSheet({
     setDoseDialogItemId("");
   }
 
+  function updateBreastMinutes(side: "left" | "right", value: string) {
+    const nextPatch = side === "left"
+      ? { breastLeftMinutes: value }
+      : { breastRightMinutes: value };
+    const nextLeft = side === "left" ? value : draft.breastLeftMinutes;
+    const nextRight = side === "right" ? value : draft.breastRightMinutes;
+    onChange({
+      ...nextPatch,
+      endedAt: computeBreastEndedAt(draft.occurredAt, nextLeft, nextRight)
+    });
+  }
+
+  function updateBreastOccurredAt(value: string) {
+    onChange({
+      occurredAt: value,
+      endedAt: computeBreastEndedAt(value, draft.breastLeftMinutes, draft.breastRightMinutes)
+    });
+  }
+
   const itemFieldLabel = category === "supplement" ? "记录营养品" : "记录药品";
 
   return (
     <div className="draftSheetOverlay draftSheetOverlayOpen" role="presentation">
       <section aria-modal="true" className="draftSheet draftSheetOpen feedingSheet" role="dialog">
         <header className="draftSheetHeader">
-          <button className="draftTopAction" onClick={onClose} type="button">取消</button>
+          <button className="draftTopAction" onClick={onClose} type="button">返回</button>
           <h2>{editorTitle(category, canDelete)}</h2>
-          <button className="draftTopPrimary" disabled={saving} onClick={onSave} type="button">{saving ? "保存中" : "保存"}</button>
+          <button className="draftTopPrimary" disabled={headerPrimaryDisabled} onClick={headerPrimaryAction} type="button">{headerPrimaryLabel}</button>
         </header>
 
         <div className="draftPage feedingSheetBody">
@@ -533,27 +673,145 @@ function FeedingEditorSheet({
             {(category === "milk" || category === "solid" || category === "diaper" || category === "sleep" || category === "supplement" || category === "medicine") ? (
               <div className="feedingEditorFields">
                 {category === "milk" ? (
-                  <div className="feedingSegmentGroup">
-                    <span className="feedingFieldLabel">喂奶方式</span>
-                    <div aria-label="喂奶方式" className="segmentedControl feedingSegmentedControl feedingSegmentedControlThree" role="tablist">
-                      <button className={`segmentedControlButton${draft.milkMode === "breast" ? " segmentedControlButtonActive" : ""}`} onClick={() => onChange({ milkMode: "breast" })} type="button">亲喂</button>
-                      <button className={`segmentedControlButton${draft.milkMode === "bottle" ? " segmentedControlButtonActive" : ""}`} onClick={() => onChange({ milkMode: "bottle" })} type="button">瓶喂</button>
-                      <button className={`segmentedControlButton${draft.milkMode === "formula" ? " segmentedControlButtonActive" : ""}`} onClick={() => onChange({ milkMode: "formula" })} type="button">配方奶</button>
+                  <>
+                    <div className="feedingSegmentGroup">
+                      <span className="feedingFieldLabel">喂奶方式</span>
+                      <div aria-label="喂奶方式" className="segmentedControl feedingSegmentedControl feedingSegmentedControlThree" role="tablist">
+                        <button
+                          className={`segmentedControlButton${draft.milkMode === "breast" ? " segmentedControlButtonActive" : ""}`}
+                          disabled={activeTimerLocked}
+                          onClick={() => onChange({ milkMode: "breast" })}
+                          type="button"
+                        >
+                          亲喂
+                        </button>
+                        <button
+                          className={`segmentedControlButton${draft.milkMode === "bottle" ? " segmentedControlButtonActive" : ""}`}
+                          disabled={activeTimerLocked}
+                          onClick={() => onChange({ milkMode: "bottle" })}
+                          type="button"
+                        >
+                          瓶喂
+                        </button>
+                        <button
+                          className={`segmentedControlButton${draft.milkMode === "formula" ? " segmentedControlButtonActive" : ""}`}
+                          disabled={activeTimerLocked}
+                          onClick={() => onChange({ milkMode: "formula" })}
+                          type="button"
+                        >
+                          配方奶
+                        </button>
+                      </div>
                     </div>
+
+                    {draft.milkMode === "breast" && !editingEntry ? (
+                      <div className="feedingSegmentGroup">
+                        <span className="feedingFieldLabel">计时方式</span>
+                        <div aria-label="计时方式" className="segmentedControl feedingSegmentedControl" role="tablist">
+                          <button
+                            className={`segmentedControlButton${draft.breastTimingMode === "automatic" ? " segmentedControlButtonActive" : ""}`}
+                            onClick={() => onChange({ breastTimingMode: "automatic" })}
+                            type="button"
+                          >
+                            自动计时
+                          </button>
+                          <button
+                            className={`segmentedControlButton${draft.breastTimingMode === "manual" ? " segmentedControlButtonActive" : ""}`}
+                            disabled={Boolean(activeBreastTimer)}
+                            onClick={() => onChange({ breastTimingMode: "manual" })}
+                            type="button"
+                          >
+                            手动计时
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </>
+                ) : null}
+
+                {category === "milk" && draft.milkMode === "breast" && !editingEntry && draft.breastTimingMode === "automatic" ? (
+                  <div className="feedingTimerPanel">
+                    <div className="feedingTimerSummary">
+                      <span className="feedingTimerSummaryLabel">总时长</span>
+                      <strong>{formatFeedingClock(timerSnapshot.totalElapsedSeconds)}</strong>
+                      <p>{activeBreastTimer ? activeBreastTimer.status === "paused" ? "已暂停，可选择任意一侧继续" : "点击左右按钮开始 / 暂停 / 切边" : "点击任意一侧开始计时"}</p>
+                    </div>
+
+                    <div className="feedingTimerSideGrid">
+                      {(["left", "right"] as const).map((side) => {
+                        const running = activeBreastTimer?.status === "running" && activeBreastTimer.activeSide === side;
+                        const seconds = side === "left" ? timerSnapshot.leftElapsedSeconds : timerSnapshot.rightElapsedSeconds;
+                        const title = side === "left" ? "左侧" : "右侧";
+                        return (
+                          <button className={`feedingTimerSideButton${running ? " feedingTimerSideButtonActive" : ""}`} key={side} onClick={() => onTimerPrimaryAction(side)} type="button">
+                            <span className="feedingTimerSideLabel">{title}</span>
+                            <strong>{formatFeedingClock(seconds)}</strong>
+                            <span className="feedingTimerSideAction">{running ? "暂停" : activeBreastTimer ? "开始" : "开始"}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="feedingTimerMeta">
+                      <div className="feedingTimerMetaRow">
+                        <span className="feedingFieldLabel">开始时间</span>
+                        <span>{activeBreastTimer ? formatFeedingTime(activeBreastTimer.startedAt, timeZone) : "开始后自动记录"}</span>
+                      </div>
+                      {activeBreastTimer ? (
+                        <>
+                          <div className="feedingTimerMetaRow">
+                            <span className="feedingFieldLabel">当前状态</span>
+                            <span>{activeBreastTimerDetail(activeBreastTimer, timerNow)}</span>
+                          </div>
+                          <div className="feedingTimerMetaRow">
+                            <span className="feedingFieldLabel">最后操作</span>
+                            <span>{activeBreastTimer.updatedByName || activeBreastTimer.updatedBy}</span>
+                          </div>
+                        </>
+                      ) : null}
+                    </div>
+
+                    {activeBreastTimer && activeBreastTimer.dayKey !== draft.occurredAt.slice(0, 10) ? (
+                      <button className="secondaryButton feedingTimerMetaButton" onClick={onOpenActiveTimerDay} type="button">跳到进行中日期</button>
+                    ) : null}
                   </div>
-                ) : null}
+                ) : timedBreastEntryEditing ? (
+                  <>
+                    <label>
+                      开始时间
+                      <input onChange={(event) => updateBreastOccurredAt(event.target.value)} type="datetime-local" value={draft.occurredAt} />
+                    </label>
 
-                <label>
-                  记录时间
-                  <input onChange={(event) => onChange({ occurredAt: event.target.value })} type="datetime-local" value={draft.occurredAt} />
-                </label>
+                    <label>
+                      左侧（分钟）
+                      <input inputMode="numeric" onChange={(event) => updateBreastMinutes("left", event.target.value)} placeholder="例如 12" value={draft.breastLeftMinutes} />
+                    </label>
 
-                {category === "milk" && draft.milkMode === "breast" ? (
-                  <label>
-                    结束时间
-                    <input onChange={(event) => onChange({ endedAt: event.target.value })} type="datetime-local" value={draft.endedAt} />
-                  </label>
-                ) : null}
+                    <label>
+                      右侧（分钟）
+                      <input inputMode="numeric" onChange={(event) => updateBreastMinutes("right", event.target.value)} placeholder="例如 8" value={draft.breastRightMinutes} />
+                    </label>
+
+                    <label>
+                      结束时间
+                      <input disabled readOnly type="datetime-local" value={draft.endedAt} />
+                    </label>
+                  </>
+                ) : (
+                  <>
+                    <label>
+                      记录时间
+                      <input onChange={(event) => onChange({ occurredAt: event.target.value })} type="datetime-local" value={draft.occurredAt} />
+                    </label>
+
+                    {category === "milk" && draft.milkMode === "breast" ? (
+                      <label>
+                        结束时间
+                        <input onChange={(event) => onChange({ endedAt: event.target.value })} type="datetime-local" value={draft.endedAt} />
+                      </label>
+                    ) : null}
+                  </>
+                )}
 
                 {category === "sleep" ? (
                   <label>
@@ -637,9 +895,15 @@ function FeedingEditorSheet({
               </div>
             ) : null}
           </div>
+          {category === "milk" && draft.milkMode === "breast" && !editingEntry && draft.breastTimingMode === "automatic" ? (
+            <p className="helperText feedingEditorHint">开始计时后返回，计时将继续。</p>
+          ) : null}
         </div>
 
         <footer className="draftSheetFooter">
+          {automaticBreastMode && activeBreastTimer ? (
+            <button className="secondaryButton feedingDeleteButton" disabled={timerBusy} onClick={onCancelActiveTimer} type="button">{timerBusy ? "同步中" : "取消本次计时"}</button>
+          ) : null}
           {canDelete ? (
             <button className="secondaryButton feedingDeleteButton" disabled={deleting || saving} onClick={onDelete} type="button">{deleting ? "删除中" : "删除记录"}</button>
           ) : null}
@@ -688,9 +952,15 @@ export function BabyFeedingRoute() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [activeBreastTimer, setActiveBreastTimer] = useState<BreastFeedingTimerSession | null>(null);
+  const [timerBusy, setTimerBusy] = useState(false);
+  const [timerNow, setTimerNow] = useState(() => new Date());
   const [panelExpanded, setPanelExpanded] = useState(false);
   const [preferredMilkMode, setPreferredMilkMode] = useState<FeedingMilkMode>(() => readStoredFeedingMilkMode(milkModeStorageKey));
   const [draft, setDraft] = useState<FeedingDraftState>(() => createInitialDraft("milk", feedingTodayDayKey(timeZone), true, readStoredFeedingMilkMode(milkModeStorageKey)));
+  const timerReconnectRef = useRef<number | null>(null);
+  const timerSessionSeenRef = useRef(false);
+  const activeBreastTimerRef = useRef<BreastFeedingTimerSession | null>(null);
 
   const editingEntry = useMemo(
     () => payload.entries.find((entry) => entry.id === requestedEditEntryId) ?? null,
@@ -699,6 +969,11 @@ export function BabyFeedingRoute() {
   const editorCategory = editingEntry?.category ?? composerKind;
   const editorOpen = Boolean(editorCategory);
   const summaryCards = useMemo(() => buildFeedingSummaryCards(payload.summary), [payload.summary]);
+  const visibleActiveBreastTimer = activeBreastTimer && activeBreastTimer.dayKey === selectedDay ? activeBreastTimer : null;
+  const effectivePreferredMilkMode = useMemo(
+    () => latestRecordedMilkMode(payload.entries) ?? preferredMilkMode,
+    [payload.entries, preferredMilkMode]
+  );
 
   useEffect(() => {
     if (!canAccessFeeding(workspace.membership.role)) {
@@ -729,6 +1004,7 @@ export function BabyFeedingRoute() {
         if (cancelled) {
           return;
         }
+        setActiveBreastTimer(next.activeBreastTimer ?? null);
         setPayload(normalizeFeedingDayPayload(next));
       } catch (error) {
         if (cancelled) {
@@ -744,6 +1020,7 @@ export function BabyFeedingRoute() {
           return;
         }
         showError("加载失败", errorMessageFromUnknown(error, "喂养记录加载失败。"));
+        setActiveBreastTimer(null);
         setPayload({ ...EMPTY_DAY_PAYLOAD, day: selectedDay });
       } finally {
         if (!cancelled) {
@@ -763,11 +1040,27 @@ export function BabyFeedingRoute() {
   }, [milkModeStorageKey]);
 
   useEffect(() => {
+    activeBreastTimerRef.current = activeBreastTimer;
+  }, [activeBreastTimer]);
+
+  useEffect(() => {
     if (!editorCategory) {
       return;
     }
-    setDraft(createInitialDraft(editorCategory, selectedDay, isToday, preferredMilkMode, editingEntry));
-  }, [editingEntry, editorCategory, isToday, preferredMilkMode, selectedDay]);
+    setDraft(createInitialDraft(editorCategory, selectedDay, isToday, effectivePreferredMilkMode, editingEntry));
+  }, [editingEntry, editorCategory, effectivePreferredMilkMode, isToday, selectedDay]);
+
+  useEffect(() => {
+    if (editorCategory !== "milk" || editingEntry || !activeBreastTimer) {
+      return;
+    }
+    setDraft((current) => ({
+      ...current,
+      milkMode: "breast",
+      breastTimingMode: "automatic",
+      occurredAt: toDateTimeLocalValue(activeBreastTimer.startedAt)
+    }));
+  }, [activeBreastTimer, editingEntry, editorCategory]);
 
   useEffect(() => {
     if (!editorOpen) {
@@ -784,6 +1077,122 @@ export function BabyFeedingRoute() {
       router.replace(buildBabyFeedingPath(babyId, { day: selectedDay }), { scroll: false });
     });
   }, [babyId, editingEntry, loading, requestedEditEntryId, router, selectedDay]);
+
+  useEffect(() => {
+    if (!activeBreastTimer) {
+      return;
+    }
+    setTimerNow(new Date());
+    const interval = window.setInterval(() => {
+      setTimerNow(new Date());
+    }, 1000);
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [activeBreastTimer]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let stream: EventSource | null = null;
+
+    async function refreshCurrentDay() {
+      try {
+        const next = await loadFeedingDay(babyId, selectedDay);
+        if (!cancelled) {
+          setPayload(normalizeFeedingDayPayload(next));
+          setActiveBreastTimer(next.activeBreastTimer ?? null);
+        }
+      } catch {
+        // Ignore passive refresh failures.
+      }
+    }
+
+    async function refreshTimerState() {
+      try {
+        const next = await loadFeedingTimer(babyId);
+        if (!cancelled) {
+          setActiveBreastTimer(next);
+          setTimerNow(new Date());
+        }
+      } catch {
+        // Ignore passive timer refresh failures.
+      }
+    }
+
+    function scheduleReconnect() {
+      if (cancelled || timerReconnectRef.current !== null) {
+        return;
+      }
+      timerReconnectRef.current = window.setTimeout(() => {
+        timerReconnectRef.current = null;
+        if (!cancelled) {
+          void refreshTimerState().finally(connect);
+        }
+      }, TIMER_RECONNECT_DELAY_MS);
+    }
+
+    function connect() {
+      if (cancelled) {
+        return;
+      }
+      stream = new EventSource(feedingTimerStreamUrl(babyId));
+      stream.addEventListener("session", (event) => {
+        if (cancelled) {
+          return;
+        }
+        try {
+          const payload = JSON.parse((event as MessageEvent<string>).data) as { session?: BreastFeedingTimerSession | null };
+          const nextSession = payload.session ?? null;
+          const previousSession = activeBreastTimerRef.current;
+          setActiveBreastTimer(nextSession);
+          setTimerNow(new Date());
+          if (previousSession && !nextSession) {
+            void refreshCurrentDay();
+          }
+        } catch {
+          // Ignore malformed events.
+        }
+      });
+      stream.onerror = () => {
+        stream?.close();
+        stream = null;
+        scheduleReconnect();
+      };
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refreshTimerState();
+      }
+    };
+
+    connect();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      stream?.close();
+      if (timerReconnectRef.current !== null) {
+        window.clearTimeout(timerReconnectRef.current);
+        timerReconnectRef.current = null;
+      }
+    };
+  }, [babyId, selectedDay]);
+
+  useEffect(() => {
+    if (editorCategory === "milk" && !editingEntry && activeBreastTimer) {
+      timerSessionSeenRef.current = true;
+      return;
+    }
+    if (editorCategory === "milk" && !editingEntry && timerSessionSeenRef.current && !activeBreastTimer) {
+      timerSessionSeenRef.current = false;
+      navigate(selectedDay, { replace: true });
+      return;
+    }
+    if (!editorOpen) {
+      timerSessionSeenRef.current = false;
+    }
+  }, [activeBreastTimer, editingEntry, editorCategory, editorOpen, selectedDay]);
 
   function navigate(day: string, options?: { composer?: FeedingCategory | null; editEntryId?: string | null; replace?: boolean }) {
     const nextPath = buildBabyFeedingPath(babyId, {
@@ -811,16 +1220,27 @@ export function BabyFeedingRoute() {
   }
 
   function handleOpenComposer(kind: FeedingCategory) {
-    if (futureDay) {
+    if (futureDay && !(kind === "milk" && activeBreastTimer)) {
       showWarning("暂不可记录", "未来日期只支持查看，不能新增记录。");
       return;
     }
     setPanelExpanded(false);
+    if (kind === "milk" && activeBreastTimer) {
+      navigate(activeBreastTimer.dayKey, { composer: "milk" });
+      return;
+    }
     navigate(selectedDay, { composer: kind });
   }
 
   function handleCloseEditor() {
     navigate(selectedDay, { replace: true });
+  }
+
+  function handleOpenActiveTimer() {
+    if (!activeBreastTimer) {
+      return;
+    }
+    navigate(activeBreastTimer.dayKey, { composer: "milk" });
   }
 
   function handleEditEntry(entryId: string) {
@@ -874,18 +1294,112 @@ export function BabyFeedingRoute() {
     }
   }
 
+  async function handleTimerPrimaryAction(side: FeedingTimerSide) {
+    const expectedVersion = activeBreastTimer?.version ?? 0;
+    const action = !activeBreastTimer
+      ? "start"
+      : activeBreastTimer.status === "paused"
+        ? "resume"
+        : activeBreastTimer.activeSide === side
+          ? "pause"
+          : "switch";
+
+    setTimerBusy(true);
+    try {
+      const next = await applyFeedingTimerAction(babyId, { action, side, expectedVersion });
+      setActiveBreastTimer(next);
+      setTimerNow(new Date());
+      if (next) {
+        setDraft((current) => ({
+          ...current,
+          milkMode: "breast",
+          breastTimingMode: "automatic",
+          occurredAt: toDateTimeLocalValue(next.startedAt)
+        }));
+        if (next.dayKey !== selectedDay || editorCategory !== "milk") {
+          navigate(next.dayKey, { composer: "milk", replace: true });
+        }
+      }
+    } catch (error) {
+      if (error instanceof FeedingTimerConflictError) {
+        setActiveBreastTimer(error.session);
+        setTimerNow(new Date());
+        showWarning("状态已更新", "亲喂计时已被其他家人更新，页面已同步到最新状态。");
+        return;
+      }
+      showError("同步失败", errorMessageFromUnknown(error, "更新亲喂计时失败。"));
+    } finally {
+      setTimerBusy(false);
+    }
+  }
+
+  async function handleCancelActiveTimer() {
+    if (!activeBreastTimer) {
+      return;
+    }
+    setTimerBusy(true);
+    try {
+      await applyFeedingTimerAction(babyId, {
+        action: "cancel",
+        expectedVersion: activeBreastTimer.version
+      });
+      setActiveBreastTimer(null);
+      showSuccess("已取消计时", "本次亲喂计时已取消。");
+      navigate(selectedDay, { replace: true });
+    } catch (error) {
+      if (error instanceof FeedingTimerConflictError) {
+        setActiveBreastTimer(error.session);
+        showWarning("状态已更新", "计时状态已被其他家人更新。");
+        return;
+      }
+      showError("取消失败", errorMessageFromUnknown(error, "取消亲喂计时失败。"));
+    } finally {
+      setTimerBusy(false);
+    }
+  }
+
+  async function handleFinishActiveTimer() {
+    if (!activeBreastTimer) {
+      return;
+    }
+    setTimerBusy(true);
+    try {
+      const saved = await finishFeedingTimer(babyId, {
+        expectedVersion: activeBreastTimer.version,
+        note: draft.note
+      });
+      rememberMilkMode("breast");
+      const nextDay = saved.dayKey || activeBreastTimer.dayKey;
+      if (nextDay === selectedDay) {
+        updatePayloadEntries([saved, ...payload.entries]);
+      }
+      setActiveBreastTimer(null);
+      showSuccess("已保存记录", "亲喂记录已保存。");
+      navigate(nextDay, { replace: true });
+    } catch (error) {
+      if (error instanceof FeedingTimerConflictError) {
+        setActiveBreastTimer(error.session);
+        showWarning("状态已更新", "计时状态已被其他家人更新，页面已同步到最新状态。");
+        return;
+      }
+      showError("保存失败", errorMessageFromUnknown(error, "保存亲喂计时失败。"));
+    } finally {
+      setTimerBusy(false);
+    }
+  }
+
   async function handleSave() {
     if (!editorCategory) {
       return;
     }
-    if (!canSubmitDraft(editorCategory, draft)) {
+    if (!canSubmitDraft(editorCategory, draft, editingEntry)) {
       showWarning("请补充信息", "还有必填项没有填写完整。");
       return;
     }
 
     setSaving(true);
     try {
-      const input = buildEntryPayload(editorCategory, draft);
+      const input = buildEntryPayload(editorCategory, draft, editingEntry);
       const saved = editingEntry
         ? await updateFeedingEntry(babyId, editingEntry.id, input)
         : await createFeedingEntry(babyId, input);
@@ -931,7 +1445,7 @@ export function BabyFeedingRoute() {
       <section className={`pageStack feedingPage tabSection tabSectionActive${panelExpanded ? " feedingPageDockExpanded" : ""}`}>
         <header className="feedingTopBar">
           <button className="draftTopAction feedingTopBarBack" onClick={handleBack} type="button">返回</button>
-          <h1>喂养</h1>
+          <h1>喂养记录</h1>
           <span className="feedingTopBarSpacer" />
         </header>
 
@@ -960,13 +1474,22 @@ export function BabyFeedingRoute() {
           </article>
         ) : null}
 
-        {loading ? <PanelMessage message="正在加载喂养记录..." /> : <FeedingTimeline entries={payload.entries} onEdit={handleEditEntry} showRelativeTime={isToday} timeZone={timeZone} />}
+        {loading ? <PanelMessage message="正在加载喂养记录..." /> : (
+          <FeedingTimeline
+            activeBreastTimer={visibleActiveBreastTimer}
+            entries={payload.entries}
+            onEdit={handleEditEntry}
+            onOpenActiveTimer={handleOpenActiveTimer}
+            showRelativeTime={isToday}
+            timeZone={timeZone}
+          />
+        )}
       </section>
 
       {!editorOpen ? (
         <div className="feedingActionDockLayer">
           <FeedingActionDock
-            disabled={futureDay}
+            disabled={futureDay && !activeBreastTimer}
             expanded={panelExpanded}
             onSelect={handleOpenComposer}
             onToggle={() => setPanelExpanded((current) => !current)}
@@ -976,19 +1499,27 @@ export function BabyFeedingRoute() {
 
       {editorOpen && editorCategory ? (
         <FeedingEditorSheet
+          activeBreastTimer={activeBreastTimer}
           category={editorCategory}
           deleting={deleting}
           draft={draft}
           editingEntry={editingEntry}
+          onCancelActiveTimer={() => void handleCancelActiveTimer()}
           onAddItem={addDraftItem}
           onAddPreset={addPresetItem}
           onChange={updateDraft}
           onClose={handleCloseEditor}
           onDelete={() => void handleDelete()}
+          onFinishActiveTimer={() => void handleFinishActiveTimer()}
+          onOpenActiveTimerDay={handleOpenActiveTimer}
+          onTimerPrimaryAction={(side) => void handleTimerPrimaryAction(side)}
           onRemoveItem={removeDraftItem}
           onSave={() => void handleSave()}
           onUpdateItem={updateDraftItem}
           saving={saving}
+          timerBusy={timerBusy}
+          timerNow={timerNow}
+          timeZone={timeZone}
         />
       ) : null}
     </>

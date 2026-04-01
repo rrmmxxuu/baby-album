@@ -51,7 +51,7 @@ export function SettingsBabyDetailScene({ className, activeAlbum, activeBaby, cu
           </div>
           <label>宝宝姓名<input disabled={!canManageBabyProfile} value={settings.babyProfileName} onChange={(event) => settings.setBabyProfileName(event.target.value)} /></label>
           <DateField disabled={!canManageBabyProfile} label="出生日期" onChange={settings.setBabyProfileBirthDate} value={settings.babyProfileBirthDate} />
-          {canManageBabyProfile ? <button type="submit">保存宝宝信息</button> : <p className="helperText">只有管理员或 owner 可以修改宝宝信息。</p>}
+          {canManageBabyProfile ? <button type="submit">保存宝宝信息</button> : <p className="helperText">只有管理员或创建者可以修改宝宝信息。</p>}
         </form>
       ) : null}
       <SettingsSection title="管理亲友">
@@ -79,14 +79,14 @@ export function SettingsBabyDetailScene({ className, activeAlbum, activeBaby, cu
               {albumInvites.map((item) => <InviteCard invite={item} key={item.id} mode="code" origin={session.origin} />)}
             </div>
           </>
-        ) : <p className="helperText">只有管理员或 owner 可以生成邀请码。</p>}
+        ) : <p className="helperText">只有管理员或创建者可以生成邀请码。</p>}
       </SettingsSection>
       <SettingsSection title="储存节点">
         <div className="stackList">
           <SettingsListButton
             onClick={onOpenStorage}
             primary="储存节点管理"
-            secondary={canManageStorage ? storageStatusSummary : `${storageStatusSummary}。你可以查看状态，但只有 owner 可以生成配对码。`}
+            secondary={canManageStorage ? storageStatusSummary : `${storageStatusSummary}。你可以查看状态，但只有创建者可以生成配对码。`}
           />
         </div>
       </SettingsSection>
@@ -95,7 +95,7 @@ export function SettingsBabyDetailScene({ className, activeAlbum, activeBaby, cu
           transferCandidates.length > 0 ? (
             <>
               <label>
-                选择新的 owner
+                选择新的创建者
                 <select value={settings.ownerTransferTarget} onChange={(event) => settings.setOwnerTransferTarget(event.target.value)}>
                   <option value="">请选择成员</option>
                   {transferCandidates.map((member) => <option key={member.userId} value={member.userId}>{member.displayName} / {roleLabel(member.role)}</option>)}
@@ -103,7 +103,7 @@ export function SettingsBabyDetailScene({ className, activeAlbum, activeBaby, cu
               </label>
               <button onClick={() => void settings.handleLeaveAlbum()} type="button">转让并退出</button>
             </>
-          ) : <p className="helperText">当前没有其他成员，owner 暂时不能退出。</p>
+          ) : <p className="helperText">当前没有其他成员，创建者暂时不能退出。</p>
         ) : <button className="secondaryButton" onClick={() => void settings.handleLeaveAlbum()} type="button">退出当前宝宝</button>}
       </SettingsSection>
     </article>

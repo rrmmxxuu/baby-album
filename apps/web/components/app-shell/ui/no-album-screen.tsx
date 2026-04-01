@@ -18,7 +18,7 @@ export function NoAlbumScreen({ session }: NoAlbumScreenProps) {
       <article className="panelStack panel noAlbumCard">
         <SectionHeading eyebrow="创建相册" title="创建第一个宝宝相册" />
         <CreateAlbumForm session={session} submitLabel="创建宝宝相册" />
-        <p className="helperText">系统会自动为这个宝宝创建一个相册空间，并将你设为所有者。</p>
+        <p className="helperText">系统会自动为这个宝宝创建一个相册空间，并将你设为创建者。</p>
       </article>
     </section>
   );

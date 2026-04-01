@@ -17,7 +17,7 @@ export function StorageFlowSection({ storageNode, activeStoragePairing, canManag
     <StorageSection action={canManageStorage ? <button onClick={() => void onCreateStoragePairing()} type="button">{storagePairingActionLabel}</button> : null} subtitle={storageFlowTitle} title="使用流程">
       <div className="storageStepList">
         <StorageStepCard
-          description={canManageStorage ? `owner 生成 8 位短码，用于${storagePairingModeLabel}。` : "由相册 owner 生成 8 位短码后再继续。"}
+          description={canManageStorage ? `创建者生成 8 位短码，用于${storagePairingModeLabel}。` : "由相册创建者生成 8 位短码后再继续。"}
           index={1}
           state={activeStoragePairing ? "active" : storageNode ? "done" : "current"}
           title={storagePairingActionLabel}
@@ -35,7 +35,7 @@ export function StorageFlowSection({ storageNode, activeStoragePairing, canManag
           title={storageNode ? "等待媒体继续处理" : "开始上传媒体"}
         />
       </div>
-      {!canManageStorage ? <p className="helperText">你可以查看当前储存状态，但只有 owner 可以生成配对码或替换主节点。</p> : null}
+      {!canManageStorage ? <p className="helperText">你可以查看当前储存状态，但只有创建者可以生成配对码或替换主节点。</p> : null}
     </StorageSection>
   );
 }

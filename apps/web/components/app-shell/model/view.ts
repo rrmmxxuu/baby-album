@@ -35,7 +35,7 @@ function canManageRole(role?: Role) {
 export function buildAppShellViewModel({ activeAlbum, currentUser, settingsNavDirection, storagePairing }: BuildAppShellViewModelOptions): AppShellViewModel {
   const activeBaby = activeAlbum?.baby ?? activeAlbum?.babies?.[0] ?? null;
   const albumMembers = activeAlbum?.members ?? [];
-  const albumInvites = activeAlbum?.invites ?? [];
+  const albumInvites = (activeAlbum?.invites ?? []).filter((item) => item.status === "pending");
   const storageNode = activeAlbum?.storageNode ?? null;
   const canManageInvites = canManageRole(activeAlbum?.membership.role);
   const canManageBabyProfile = canManageRole(activeAlbum?.membership.role);
@@ -52,7 +52,7 @@ export function buildAppShellViewModel({ activeAlbum, currentUser, settingsNavDi
         : `${storageNode.name} 当前离线，恢复后会继续处理媒体`
       : canManageStorage
         ? "尚未接入储存设备，完成首次配对后即可上传和处理媒体"
-        : "尚未接入储存设备，请联系 owner 完成首次配对";
+        : "尚未接入储存设备，请联系创建者完成首次配对";
 
   return {
     activeBaby,

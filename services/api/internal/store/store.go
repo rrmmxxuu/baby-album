@@ -81,9 +81,10 @@ type FeedingDayInput struct {
 }
 
 type FeedingDay struct {
-	Day     string                `json:"day"`
-	Summary FeedingSummary        `json:"summary"`
-	Entries []domain.FeedingEntry `json:"entries"`
+	Day               string                            `json:"day"`
+	Summary           FeedingSummary                    `json:"summary"`
+	Entries           []domain.FeedingEntry             `json:"entries"`
+	ActiveBreastTimer *domain.BreastFeedingTimerSession `json:"activeBreastTimer,omitempty"`
 }
 
 type FeedingEntryItemInput struct {
@@ -92,30 +93,69 @@ type FeedingEntryItemInput struct {
 }
 
 type CreateFeedingEntryInput struct {
-	BabyID     string
-	Category   domain.FeedingCategory
-	OccurredAt time.Time
-	EndedAt    *time.Time
-	Note       string
-	MilkMode   domain.FeedingMilkMode
-	AmountML   *int
-	FoodName   string
-	HasStool   *bool
-	Items      []FeedingEntryItemInput
+	BabyID             string
+	Category           domain.FeedingCategory
+	OccurredAt         time.Time
+	EndedAt            *time.Time
+	Note               string
+	MilkMode           domain.FeedingMilkMode
+	AmountML           *int
+	BreastLeftSeconds  *int
+	BreastRightSeconds *int
+	FoodName           string
+	HasStool           *bool
+	Items              []FeedingEntryItemInput
 }
 
 type UpdateFeedingEntryInput struct {
-	BabyID     string
-	EntryID    string
-	Category   domain.FeedingCategory
-	OccurredAt time.Time
-	EndedAt    *time.Time
-	Note       string
-	MilkMode   domain.FeedingMilkMode
-	AmountML   *int
-	FoodName   string
-	HasStool   *bool
-	Items      []FeedingEntryItemInput
+	BabyID             string
+	EntryID            string
+	Category           domain.FeedingCategory
+	OccurredAt         time.Time
+	EndedAt            *time.Time
+	Note               string
+	MilkMode           domain.FeedingMilkMode
+	AmountML           *int
+	BreastLeftSeconds  *int
+	BreastRightSeconds *int
+	FoodName           string
+	HasStool           *bool
+	Items              []FeedingEntryItemInput
+}
+
+type FeedingTimerAction string
+
+const (
+	FeedingTimerActionStart  FeedingTimerAction = "start"
+	FeedingTimerActionPause  FeedingTimerAction = "pause"
+	FeedingTimerActionSwitch FeedingTimerAction = "switch"
+	FeedingTimerActionResume FeedingTimerAction = "resume"
+	FeedingTimerActionCancel FeedingTimerAction = "cancel"
+)
+
+type FeedingTimerActionInput struct {
+	BabyID          string
+	Action          FeedingTimerAction
+	Side            domain.FeedingTimerSide
+	ExpectedVersion int
+}
+
+type FinishFeedingTimerInput struct {
+	BabyID          string
+	ExpectedVersion int
+	Note            string
+}
+
+type FeedingTimerConflictError struct {
+	Session *domain.BreastFeedingTimerSession
+}
+
+func (e *FeedingTimerConflictError) Error() string {
+	return ErrConflict.Error()
+}
+
+func (e *FeedingTimerConflictError) Unwrap() error {
+	return ErrConflict
 }
 
 type UploadSessionInput struct {
@@ -304,6 +344,11 @@ type UpdateAlbumMemberRelationInput struct {
 	Relation     string
 }
 
+type RemoveAlbumMemberInput struct {
+	AlbumID      string
+	MemberUserID string
+}
+
 type CreateAlbumInviteInput struct {
 	AlbumID string
 }
@@ -351,12 +396,15 @@ type Repository interface {
 	AppState(userID, albumID string) (AppState, error)
 	AlbumWorkspace(albumID, userID string) (AlbumWorkspace, error)
 	FeedingDay(userID string, input FeedingDayInput) (FeedingDay, error)
+	FeedingTimer(userID, babyID string) (*domain.BreastFeedingTimerSession, error)
 	TimelinePage(albumID, userID string, input TimelinePageInput) (TimelinePage, error)
 	Members(albumID, userID string) ([]domain.AlbumMember, error)
 	MediaByID(albumID, userID, mediaID string) (domain.MediaAsset, error)
 	ProbeDuplicateMedia(userID string, input DuplicateMediaProbeInput) (DuplicateMediaProbeResult, error)
 	ResolveDuplicateMedia(userID string, input DuplicateMediaResolveInput) (DuplicateMediaResolveResult, error)
 	CreateFeedingEntry(userID string, input CreateFeedingEntryInput) (domain.FeedingEntry, error)
+	ApplyFeedingTimerAction(userID string, input FeedingTimerActionInput) (*domain.BreastFeedingTimerSession, error)
+	FinishFeedingTimer(userID string, input FinishFeedingTimerInput) (domain.FeedingEntry, error)
 	CreateTimelineEntry(userID string, input CreateTimelineEntryInput) (domain.TimelineEntry, error)
 	CreateTimelineComment(userID string, input CreateTimelineCommentInput) (domain.TimelineComment, error)
 	UpdateFeedingEntry(userID string, input UpdateFeedingEntryInput) (domain.FeedingEntry, error)
@@ -373,6 +421,7 @@ type Repository interface {
 	LeaveAlbum(userID string, input LeaveAlbumInput) error
 	UpdateMemberRole(userID string, input UpdateAlbumMemberRoleInput) (domain.AlbumMember, error)
 	UpdateMemberRelation(userID string, input UpdateAlbumMemberRelationInput) (domain.AlbumMember, error)
+	RemoveMember(userID string, input RemoveAlbumMemberInput) error
 	CreateInvite(userID string, input CreateAlbumInviteInput) (domain.AlbumInvite, error)
 	Invites(albumID, userID string) ([]domain.AlbumInvite, error)
 	InviteByCode(code string) (domain.AlbumInvite, error)

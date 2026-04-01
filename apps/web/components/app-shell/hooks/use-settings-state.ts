@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createInvite, createStorageNodePairing, leaveAlbum, updateBabyProfile, updateMemberRelation, updateMemberRole, uploadBabyAvatar } from "../../../lib/api";
+import { createInvite, createStorageNodePairing, leaveAlbum, removeMember, updateBabyProfile, updateMemberRelation, updateMemberRole, uploadBabyAvatar } from "../../../lib/api";
 import type { AlbumWorkspace, AppStatePayload, Role, User } from "../../../lib/types";
 import { errorMessageFromUnknown } from "../model/feedback";
 import { roleLabel, toDateInputValue } from "../model/format";
@@ -136,6 +136,22 @@ export function useSettingsState({ activeTab, activeAlbum, currentUser, refreshA
     }
   }
 
+  async function handleRemoveMember(memberUserId: string) {
+    if (!activeAlbum) {
+      return false;
+    }
+    clearFeedback();
+    try {
+      await removeMember(activeAlbum.album.id, memberUserId);
+      showSuccess("成员已移除", "该成员已从当前宝宝相册中移除。");
+      await refreshApp(activeAlbum.album.id);
+      return true;
+    } catch (err) {
+      showError("移除失败", errorMessageFromUnknown(err, "移除成员失败。"));
+      return false;
+    }
+  }
+
   async function handleUpdateMyRelation(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!activeAlbum || !currentUser) {
@@ -225,6 +241,7 @@ export function useSettingsState({ activeTab, activeAlbum, currentUser, refreshA
     handleUpdateBabyProfile,
     handleRoleUpdate,
     handleUpdateMyRelation,
+    handleRemoveMember,
     handleLeaveAlbum,
     handleCreateInvite,
     handleCreateStoragePairing

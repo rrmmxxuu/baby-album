@@ -18,7 +18,7 @@ export function DraftPublishSettings({ className, fieldClassName, manualDate, ti
         <span>谁可以看</span>
         <select value={visibility} onChange={(event) => onVisibilityChange(event.target.value as TimelineVisibility)}>
           <option value="members">所有家人</option>
-          <option value="managers">仅管理员和所有者</option>
+          <option value="managers">仅管理员和创建者</option>
         </select>
       </label>
 

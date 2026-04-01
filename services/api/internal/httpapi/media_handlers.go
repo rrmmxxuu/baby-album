@@ -305,8 +305,16 @@ func (s *Server) handleBabyAssets(w http.ResponseWriter, r *http.Request) {
 		s.handleBabyAvatarAsset(w, r, babyID)
 	case len(parts) == 2 && parts[1] == "feeding":
 		s.handleBabyFeedingDay(w, r, babyID)
+	case len(parts) == 2 && parts[1] == "feeding-timer":
+		s.handleBabyFeedingTimer(w, r, babyID)
 	case len(parts) == 2 && parts[1] == "feeding-entries":
 		s.handleBabyFeedingEntries(w, r, babyID)
+	case len(parts) == 3 && parts[1] == "feeding-timer" && parts[2] == "actions":
+		s.handleBabyFeedingTimerActions(w, r, babyID)
+	case len(parts) == 3 && parts[1] == "feeding-timer" && parts[2] == "finish":
+		s.handleBabyFeedingTimerFinish(w, r, babyID)
+	case len(parts) == 3 && parts[1] == "feeding-timer" && parts[2] == "stream":
+		s.handleBabyFeedingTimerStream(w, r, babyID)
 	case len(parts) == 3 && parts[1] == "feeding-entries":
 		s.handleBabyFeedingEntryActions(w, r, babyID, parts[2])
 	default:

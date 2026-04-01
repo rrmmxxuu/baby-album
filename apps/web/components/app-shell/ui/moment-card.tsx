@@ -37,7 +37,7 @@ export function MomentCard({ albumId, batch, canEdit, commentComposerOpen, comme
       <div className="momentCardFooter">
         <div className="momentMetaGroup">
           <p className="momentMeta">{batch.uploadedByName || "家人"} 上传于 {formatRelativeUploadTime(batch.uploadedAt)}</p>
-          {batch.visibility === "managers" ? <p className="momentMeta">仅管理员和所有者可见</p> : null}
+          {batch.visibility === "managers" ? <p className="momentMeta">仅管理员和创建者可见</p> : null}
         </div>
         <div className="momentActionGroup">
           <button className={`momentCommentButton${commentComposerOpen ? " momentCommentButtonActive" : ""}`} onClick={onCommentToggle} type="button">评论</button>

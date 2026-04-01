@@ -41,6 +41,15 @@ func (w *statusRecorder) Write(data []byte) (int, error) {
 	return w.ResponseWriter.Write(data)
 }
 
+func (w *statusRecorder) Flush() {
+	if !w.wroteHeader {
+		w.WriteHeader(http.StatusOK)
+	}
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
 func withRequestMetadata(r *http.Request) (*http.Request, *requestMetadata) {
 	meta := &requestMetadata{
 		requestID: newRequestID(),

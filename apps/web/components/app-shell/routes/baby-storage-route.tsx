@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useBabyRouteContext } from "../baby-route-context";
 import { buildBabyManagePath } from "../model/routes";
@@ -7,7 +8,12 @@ import { SettingsStorageScene } from "../ui/settings-storage-scene";
 
 export function BabyStorageRoute() {
   const router = useRouter();
-  const { babyId, workspace, appView, settings } = useBabyRouteContext();
+  const { babyId, workspace, appView, settings, session } = useBabyRouteContext();
+  const refreshApp = session.refreshApp;
+
+  useEffect(() => {
+    void refreshApp(workspace.album.id, { silent: true, authenticated: true });
+  }, [refreshApp, workspace.album.id]);
 
   return (
     <SettingsStorageScene

@@ -11,11 +11,20 @@ interface SettingsMemberDetailSceneProps {
   albumMembers: AlbumMember[];
   settings: SettingsState;
   onBack: () => void;
+  onRemoveMember: (memberId: string) => void;
   memberId?: string;
 }
 
-export function SettingsMemberDetailScene({ className, activeAlbum, currentUser, albumMembers, settings, onBack, memberId }: SettingsMemberDetailSceneProps) {
+export function SettingsMemberDetailScene({ className, activeAlbum, currentUser, albumMembers, settings, onBack, onRemoveMember, memberId }: SettingsMemberDetailSceneProps) {
   const activeMemberId = memberId ?? settings.settingsMemberId;
+
+  function handleRemove(memberUserId: string) {
+    if (typeof window !== "undefined" && !window.confirm("确认移除这个成员吗？被移除后对方将无法继续访问这个宝宝空间。")) {
+      return;
+    }
+    onRemoveMember(memberUserId);
+  }
+
   return (
     <article className={className}>
       <SettingsHeader eyebrow="成员详情" onBack={onBack} title={albumMembers.find((member) => member.userId === activeMemberId)?.displayName ?? "成员"} />
@@ -29,12 +38,13 @@ export function SettingsMemberDetailScene({ className, activeAlbum, currentUser,
             <div className="memberActions">
               <select value={settings.roleDrafts[member.userId] ?? member.role} onChange={(event) => settings.setRoleDraft(member.userId, event.target.value as Role)}>
                 <option value="viewer">仅查看</option>
-                <option value="member">可上传</option>
+                <option value="member">成员</option>
                 <option value="admin">管理员</option>
               </select>
               <button onClick={() => void settings.handleRoleUpdate(member.userId)} type="button">保存权限</button>
+              <button className="settingsMemberDangerAction" onClick={() => handleRemove(member.userId)} type="button">移除成员</button>
             </div>
-          ) : <p className="helperText">只有 owner 可以修改其他亲友权限。</p>}
+          ) : <p className="helperText">只有创建者可以修改其他亲友权限。</p>}
         </SettingsSection>
       ))}
     </article>

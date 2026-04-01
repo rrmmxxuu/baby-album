@@ -115,6 +115,8 @@ export interface TimelineEntry {
 
 export type FeedingCategory = "milk" | "solid" | "diaper" | "sleep" | "supplement" | "medicine";
 export type FeedingMilkMode = "breast" | "bottle" | "formula";
+export type FeedingTimerSide = "left" | "right";
+export type FeedingTimerStatus = "running" | "paused";
 
 export interface FeedingEntryItem {
   id: string;
@@ -140,9 +142,29 @@ export interface FeedingEntry {
   updatedAt: string;
   milkMode?: FeedingMilkMode;
   amountMl?: number;
+  breastLeftSeconds?: number;
+  breastRightSeconds?: number;
   foodName?: string;
   hasStool?: boolean;
   items: FeedingEntryItem[];
+}
+
+export interface BreastFeedingTimerSession {
+  id: string;
+  albumId: string;
+  babyId: string;
+  dayKey: string;
+  startedAt: string;
+  status: FeedingTimerStatus;
+  activeSide?: FeedingTimerSide;
+  activeSegmentStartedAt?: string;
+  leftElapsedSeconds: number;
+  rightElapsedSeconds: number;
+  version: number;
+  updatedBy: string;
+  updatedByName?: string;
+  updatedAt: string;
+  createdAt: string;
 }
 
 export interface FeedingCountSummary {
@@ -182,6 +204,7 @@ export interface FeedingDayPayload {
   day: string;
   summary: FeedingSummary;
   entries: FeedingEntry[];
+  activeBreastTimer?: BreastFeedingTimerSession | null;
 }
 
 export interface FeedingEntryItemInput {
@@ -196,9 +219,17 @@ export interface FeedingEntryUpsertInput {
   note: string;
   milkMode?: FeedingMilkMode;
   amountMl?: number;
+  breastLeftSeconds?: number;
+  breastRightSeconds?: number;
   foodName?: string;
   hasStool?: boolean;
   items?: FeedingEntryItemInput[];
+}
+
+export interface FeedingTimerActionInput {
+  action: "start" | "pause" | "switch" | "resume" | "cancel";
+  side?: FeedingTimerSide;
+  expectedVersion: number;
 }
 
 export interface User {

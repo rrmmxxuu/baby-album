@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { joinedBabySummaries } from "../model/babies";
 import { babyAvatarText } from "../model/format";
@@ -11,8 +12,13 @@ import { SettingsMenuItem } from "../../ui/settings-menu-item";
 export function SettingsHomeRoute() {
   const router = useRouter();
   const session = useAppSessionContext();
+  const refreshApp = session.refreshApp;
   const currentUser = session.appState?.currentUser ?? null;
   const joinedBabies = joinedBabySummaries(session.appState?.albums ?? []);
+
+  useEffect(() => {
+    void refreshApp(undefined, { silent: true, authenticated: true });
+  }, [refreshApp]);
 
   function handleLogout() {
     void session.handleLogout();

@@ -22,7 +22,7 @@ export function WelcomeRoute() {
 
   return (
     <AuthenticatedShell
-      activeNav="settings"
+      activeNav={joinedBabies.length > 0 ? "settings" : undefined}
       feedingHref={buildFeedingHubPath()}
       photosHref={buildPhotosHubPath()}
       settingsHref={buildSettingsPath()}

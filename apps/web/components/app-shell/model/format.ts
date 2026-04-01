@@ -8,7 +8,7 @@ export function memberRelationLabel(member?: Pick<AlbumMember, "relation"> | nul
 export function roleLabel(role: Role) {
   switch (role) {
     case "owner":
-      return "所有者";
+      return "创建者";
     case "admin":
       return "管理员";
     case "member":

@@ -185,6 +185,20 @@ const (
 	FeedingFormula FeedingMilkMode = "formula"
 )
 
+type FeedingTimerStatus string
+
+const (
+	FeedingTimerRunning FeedingTimerStatus = "running"
+	FeedingTimerPaused  FeedingTimerStatus = "paused"
+)
+
+type FeedingTimerSide string
+
+const (
+	FeedingTimerLeft  FeedingTimerSide = "left"
+	FeedingTimerRight FeedingTimerSide = "right"
+)
+
 type FeedingEntryItem struct {
 	ID        string    `json:"id"`
 	EntryID   string    `json:"entryId"`
@@ -195,23 +209,43 @@ type FeedingEntryItem struct {
 }
 
 type FeedingEntry struct {
-	ID            string             `json:"id"`
-	FamilyID      string             `json:"albumId"`
-	BabyID        string             `json:"babyId"`
-	Category      FeedingCategory    `json:"category"`
-	OccurredAt    time.Time          `json:"occurredAt"`
-	EndedAt       *time.Time         `json:"endedAt,omitempty"`
-	DayKey        string             `json:"dayKey"`
-	Note          string             `json:"note"`
-	CreatedBy     string             `json:"createdBy"`
-	CreatedByName string             `json:"createdByName,omitempty"`
-	CreatedAt     time.Time          `json:"createdAt"`
-	UpdatedAt     time.Time          `json:"updatedAt"`
-	MilkMode      FeedingMilkMode    `json:"milkMode,omitempty"`
-	AmountML      *int               `json:"amountMl,omitempty"`
-	FoodName      string             `json:"foodName,omitempty"`
-	HasStool      *bool              `json:"hasStool,omitempty"`
-	Items         []FeedingEntryItem `json:"items"`
+	ID                 string             `json:"id"`
+	FamilyID           string             `json:"albumId"`
+	BabyID             string             `json:"babyId"`
+	Category           FeedingCategory    `json:"category"`
+	OccurredAt         time.Time          `json:"occurredAt"`
+	EndedAt            *time.Time         `json:"endedAt,omitempty"`
+	DayKey             string             `json:"dayKey"`
+	Note               string             `json:"note"`
+	CreatedBy          string             `json:"createdBy"`
+	CreatedByName      string             `json:"createdByName,omitempty"`
+	CreatedAt          time.Time          `json:"createdAt"`
+	UpdatedAt          time.Time          `json:"updatedAt"`
+	MilkMode           FeedingMilkMode    `json:"milkMode,omitempty"`
+	AmountML           *int               `json:"amountMl,omitempty"`
+	BreastLeftSeconds  *int               `json:"breastLeftSeconds,omitempty"`
+	BreastRightSeconds *int               `json:"breastRightSeconds,omitempty"`
+	FoodName           string             `json:"foodName,omitempty"`
+	HasStool           *bool              `json:"hasStool,omitempty"`
+	Items              []FeedingEntryItem `json:"items"`
+}
+
+type BreastFeedingTimerSession struct {
+	ID                     string             `json:"id"`
+	FamilyID               string             `json:"albumId"`
+	BabyID                 string             `json:"babyId"`
+	DayKey                 string             `json:"dayKey"`
+	StartedAt              time.Time          `json:"startedAt"`
+	Status                 FeedingTimerStatus `json:"status"`
+	ActiveSide             FeedingTimerSide   `json:"activeSide,omitempty"`
+	ActiveSegmentStartedAt *time.Time         `json:"activeSegmentStartedAt,omitempty"`
+	LeftElapsedSeconds     int                `json:"leftElapsedSeconds"`
+	RightElapsedSeconds    int                `json:"rightElapsedSeconds"`
+	Version                int                `json:"version"`
+	UpdatedBy              string             `json:"updatedBy"`
+	UpdatedByName          string             `json:"updatedByName,omitempty"`
+	UpdatedAt              time.Time          `json:"updatedAt"`
+	CreatedAt              time.Time          `json:"createdAt"`
 }
 
 type MediaAsset struct {

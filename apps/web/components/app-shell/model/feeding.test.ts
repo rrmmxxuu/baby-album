@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  activeBreastTimerDetail,
   buildFeedingDayStrip,
   buildFeedingSummary,
   buildFeedingSummaryCards,
@@ -7,7 +8,9 @@ import {
   extractFeedingDayKey,
   feedingEntryDetail,
   feedingEntryHeadline,
+  feedingTimerSnapshot,
   feedingTodayDayKey,
+  formatFeedingClock,
   formatFeedingAgeForDayKey,
   formatFeedingDuration,
   formatFeedingRelative,
@@ -36,6 +39,7 @@ describe("feeding helpers", () => {
   it("formats age and durations", () => {
     expect(formatFeedingAgeForDayKey("2026-03-01T00:00:00.000Z", "2026-04-01")).toBe("1个月0天");
     expect(formatFeedingDuration(95)).toBe("1小时35分钟");
+    expect(formatFeedingClock(65)).toBe("01:05");
   });
 
   it("formats relative time", () => {
@@ -198,5 +202,60 @@ describe("feeding helpers", () => {
     expect(summary.milk.breastCount).toBe(0);
     expect(summary.supplement.count).toBe(1);
     expect(summary.supplement.itemCount).toBe(1);
+  });
+
+  it("formats saved breast side detail and active timer projections", () => {
+    expect(feedingEntryDetail({
+      id: "milk-2",
+      albumId: "album-1",
+      babyId: "baby-1",
+      category: "milk",
+      milkMode: "breast",
+      breastLeftSeconds: 720,
+      breastRightSeconds: 480,
+      occurredAt: "2026-04-01T01:00:00.000Z",
+      endedAt: "2026-04-01T01:20:00.000Z",
+      dayKey: "2026-04-01",
+      note: "",
+      createdBy: "u1",
+      createdAt: "2026-04-01T01:20:00.000Z",
+      updatedAt: "2026-04-01T01:20:00.000Z",
+      items: []
+    })).toBe("左侧12分钟 · 右侧8分钟");
+
+    const runningSnapshot = feedingTimerSnapshot({
+      id: "timer-1",
+      albumId: "album-1",
+      babyId: "baby-1",
+      dayKey: "2026-04-01",
+      startedAt: "2026-04-01T01:00:00.000Z",
+      status: "running",
+      activeSide: "right",
+      activeSegmentStartedAt: "2026-04-01T01:10:00.000Z",
+      leftElapsedSeconds: 600,
+      rightElapsedSeconds: 120,
+      version: 3,
+      updatedBy: "u1",
+      updatedByName: "妈妈",
+      updatedAt: "2026-04-01T01:12:00.000Z",
+      createdAt: "2026-04-01T01:00:00.000Z"
+    }, new Date("2026-04-01T01:12:00.000Z"));
+    expect(runningSnapshot.leftElapsedSeconds).toBe(600);
+    expect(runningSnapshot.rightElapsedSeconds).toBe(240);
+    expect(activeBreastTimerDetail({
+      id: "timer-1",
+      albumId: "album-1",
+      babyId: "baby-1",
+      dayKey: "2026-04-01",
+      startedAt: "2026-04-01T01:00:00.000Z",
+      status: "paused",
+      leftElapsedSeconds: 720,
+      rightElapsedSeconds: 480,
+      version: 4,
+      updatedBy: "u1",
+      updatedByName: "妈妈",
+      updatedAt: "2026-04-01T01:20:00.000Z",
+      createdAt: "2026-04-01T01:00:00.000Z"
+    })).toBe("左侧12分钟 · 右侧8分钟 · 已暂停");
   });
 });

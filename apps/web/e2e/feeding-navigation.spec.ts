@@ -28,6 +28,7 @@ test("can create a feeding record from the day timeline", async ({ page }) => {
   await page.getByRole("button", { name: "记喂奶" }).click();
   await expect(page.getByRole("heading", { name: "记喂奶" })).toBeVisible();
   await expect(page.getByRole("button", { name: "记喂奶" })).toBeHidden();
+  await page.locator(".feedingSegmentedControlThree").getByRole("button", { name: "配方奶", exact: true }).click();
   await page.getByLabel("奶量（ml）").fill("90");
   await page.getByLabel("备注").fill(note);
   await page.getByRole("button", { name: "保存" }).click();

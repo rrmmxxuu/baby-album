@@ -30,13 +30,17 @@ export function SettingsMemberDetailScene({ className, activeAlbum, currentUser,
       <SettingsHeader eyebrow="成员详情" onBack={onBack} title={albumMembers.find((member) => member.userId === activeMemberId)?.displayName ?? "成员"} />
       {albumMembers.filter((member) => member.userId === activeMemberId).map((member) => (
         <SettingsSection key={member.userId} title="成员信息">
+          {(() => {
+            const currentRole = settings.optimisticRoleOverrides[member.userId] ?? member.role;
+            return (
+              <>
           <p><strong>{member.displayName}</strong></p>
           <p className="helperText">与宝宝的关系：{memberRelationLabel(member)}</p>
           <p className="helperText">用户 ID：{member.userId}</p>
-          <p className="helperText">当前权限：{roleLabel(member.role)}</p>
-          {Boolean(activeAlbum.membership.role === "owner" && currentUser && member.userId !== currentUser.id && member.role !== "owner") ? (
+          <p className="helperText">当前权限：{roleLabel(currentRole)}</p>
+          {Boolean(activeAlbum.membership.role === "owner" && currentUser && member.userId !== currentUser.id && currentRole !== "owner") ? (
             <div className="memberActions">
-              <select value={settings.roleDrafts[member.userId] ?? member.role} onChange={(event) => settings.setRoleDraft(member.userId, event.target.value as Role)}>
+              <select value={settings.roleDrafts[member.userId] ?? currentRole} onChange={(event) => settings.setRoleDraft(member.userId, event.target.value as Role)}>
                 <option value="viewer">仅查看</option>
                 <option value="member">成员</option>
                 <option value="admin">管理员</option>
@@ -45,6 +49,9 @@ export function SettingsMemberDetailScene({ className, activeAlbum, currentUser,
               <button className="settingsMemberDangerAction" onClick={() => handleRemove(member.userId)} type="button">移除成员</button>
             </div>
           ) : <p className="helperText">只有创建者可以修改其他亲友权限。</p>}
+              </>
+            );
+          })()}
         </SettingsSection>
       ))}
     </article>

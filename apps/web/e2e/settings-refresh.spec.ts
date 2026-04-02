@@ -6,7 +6,7 @@ test("refreshes baby manage data when re-entering settings screens", async ({ br
   const joinerContext = await browser.newContext();
   const ownerPage = await ownerContext.newPage();
   const joinerPage = await joinerContext.newPage();
-  const joinerName = "Refresh Joiner";
+  const joinerName = `Refresh Joiner ${Date.now().toString().slice(-6)}`;
   const visibleMemberButton = () => ownerPage.locator("button.settingsMemberCard:visible").filter({ hasText: joinerName });
 
   try {

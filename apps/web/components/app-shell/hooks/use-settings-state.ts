@@ -25,6 +25,7 @@ export function useSettingsState({ activeTab, activeAlbum, currentUser, refreshA
   const [storagePairing, setStoragePairing] = useState<Awaited<ReturnType<typeof createStorageNodePairing>> | null>(null);
   const [storagePairingBaseNodeId, setStoragePairingBaseNodeId] = useState("");
   const [roleDrafts, setRoleDrafts] = useState<Record<string, Role>>({});
+  const [optimisticRoleOverrides, setOptimisticRoleOverrides] = useState<Record<string, Role>>({});
   const [ownerTransferTarget, setOwnerTransferTarget] = useState("");
   const [babyProfileName, setBabyProfileName] = useState("");
   const [babyProfileBirthDate, setBabyProfileBirthDate] = useState("");
@@ -38,6 +39,7 @@ export function useSettingsState({ activeTab, activeAlbum, currentUser, refreshA
       drafts[member.userId] = member.role;
     }
     setRoleDrafts(drafts);
+    setOptimisticRoleOverrides({});
     setBabyProfileName(activeAlbum?.baby?.name ?? "");
     setBabyProfileBirthDate(activeAlbum?.baby?.birthDate ? toDateInputValue(activeAlbum.baby.birthDate) : "");
     setMyRelationDraft(activeAlbum?.membership.relation ?? "");
@@ -129,9 +131,15 @@ export function useSettingsState({ activeTab, activeAlbum, currentUser, refreshA
     try {
       const nextRole = roleDrafts[memberUserId];
       await updateMemberRole(activeAlbum.album.id, memberUserId, nextRole);
+      setOptimisticRoleOverrides((current) => ({ ...current, [memberUserId]: nextRole }));
       showSuccess("权限已更新", `已更新成员权限：${roleLabel(nextRole)}。`);
       await refreshApp(activeAlbum.album.id);
     } catch (err) {
+      setOptimisticRoleOverrides((current) => {
+        const next = { ...current };
+        delete next[memberUserId];
+        return next;
+      });
       showError("更新失败", errorMessageFromUnknown(err, "更新成员权限失败。"));
     }
   }
@@ -227,6 +235,7 @@ export function useSettingsState({ activeTab, activeAlbum, currentUser, refreshA
     openSettingsScreen,
     storagePairing,
     roleDrafts,
+    optimisticRoleOverrides,
     setRoleDraft,
     ownerTransferTarget,
     setOwnerTransferTarget,

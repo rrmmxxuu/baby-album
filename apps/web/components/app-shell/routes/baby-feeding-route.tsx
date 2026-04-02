@@ -40,6 +40,7 @@ import { formatDate } from "../model/format";
 import { buildAuthPath, buildBabyFeedingPath, buildFeedingHubPath, buildPhotosHubPath } from "../model/routes";
 import { BabyAvatar } from "../ui/baby-avatar";
 import { PanelMessage } from "../../ui/panel-message";
+import { FeedingContentLoadingSkeleton } from "../ui/loading-skeletons";
 
 const LAST_FEEDING_MILK_MODE_STORAGE_PREFIX = "baby-album.lastFeedingMilkMode";
 const TIMER_RECONNECT_DELAY_MS = 2500;
@@ -1474,7 +1475,7 @@ export function BabyFeedingRoute() {
           </article>
         ) : null}
 
-        {loading ? <PanelMessage message="正在加载喂养记录..." /> : (
+        {loading ? <FeedingContentLoadingSkeleton ariaLabel="正在加载喂养记录" /> : (
           <FeedingTimeline
             activeBreastTimer={visibleActiveBreastTimer}
             entries={payload.entries}

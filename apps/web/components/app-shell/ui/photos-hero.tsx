@@ -1,6 +1,7 @@
 import type { AlbumSummary, AlbumWorkspace, BabyProfile } from "../../../lib/types";
 import { formatDate, formatDetailedBabyAge } from "../model/format";
 import { BabyAvatar } from "./baby-avatar";
+import { LoadingStatPill } from "./loading-skeletons";
 
 interface PhotosHeroProps {
   activeAlbum: AlbumWorkspace;
@@ -27,7 +28,7 @@ export function PhotosHero({ activeAlbum, activeBaby, albumOptions, timelineCoun
           <p className="momentsHeroMeta">{birthSummary}</p>
         </div>
         <div className="momentsHeroAside">
-          <p className="momentsHeroMeta">{timelineLoading && timelineCount === 0 ? "正在加载" : `${timelineCount} 条内容`}</p>
+          <p className="momentsHeroMeta">{timelineLoading && timelineCount === 0 ? <LoadingStatPill /> : `${timelineCount} 条内容`}</p>
           <select className="heroAlbumSelect" value={currentSelectionValue} onChange={(event) => onAlbumChange(event.target.value)}>
             {albumOptions.map((item) => (
               <option key={item.baby?.id ?? item.album.id} value={item.baby?.id ?? item.album.id}>

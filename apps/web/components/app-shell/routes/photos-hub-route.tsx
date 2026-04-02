@@ -7,6 +7,7 @@ import { joinedBabySummaries } from "../model/babies";
 import { LAST_VIEWED_PHOTO_BABY_STORAGE_KEY } from "../model/constants";
 import { buildBabyPhotosPath, buildFeedingHubPath, buildPhotosHubPath, buildSettingsPath, buildWelcomePath } from "../model/routes";
 import { AuthenticatedShell } from "../ui/authenticated-shell";
+import { PhotosRouteSkeleton } from "../ui/loading-skeletons";
 
 export function PhotosHubRoute() {
   const router = useRouter();
@@ -37,13 +38,7 @@ export function PhotosHubRoute() {
       photosHref={buildPhotosHubPath()}
       settingsHref={buildSettingsPath()}
     >
-      <section className="pageStack">
-        <article className="panel panelStack">
-          <p className="eyebrow">照片</p>
-          <h2>正在进入宝宝时间线</h2>
-          <p className="helperText">根据你最近浏览的宝宝为你恢复照片页。</p>
-        </article>
-      </section>
+      <PhotosRouteSkeleton ariaLabel="正在进入宝宝时间线" />
     </AuthenticatedShell>
   );
 }

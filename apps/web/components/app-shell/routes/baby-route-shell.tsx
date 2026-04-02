@@ -12,6 +12,7 @@ import { errorMessageFromUnknown } from "../model/feedback";
 import { buildAppShellViewModel } from "../model/view";
 import { buildAuthPath, buildBabyFeedingPath, buildBabyPhotosPath, buildFeedingHubPath, buildSettingsBabiesPath, buildSettingsPath, buildWelcomePath } from "../model/routes";
 import { AuthenticatedShell } from "../ui/authenticated-shell";
+import { FeedingRouteSkeleton, PhotosRouteSkeleton, SettingsDetailLoadingSkeleton } from "../ui/loading-skeletons";
 
 interface BabyRouteShellProps {
   babyId: string;
@@ -166,6 +167,12 @@ export function BabyRouteShell({ babyId, children }: BabyRouteShellProps) {
   const photosHref = navKey === "feeding" ? buildBabyPhotosPath(babyId) : navKey === "photos" ? buildBabyPhotosPath(babyId) : buildBabyPhotosPath(babyId);
   const feedingHref = navKey === "feeding" ? buildBabyFeedingPath(babyId) : buildFeedingHubPath();
   const settingsHref = buildSettingsPath();
+  const fallbackAriaLabel = loadingWorkspace ? "正在获取这个宝宝的最新内容" : "当前地址不可用，正在返回可访问页面";
+  const fallbackContent = navKey === "feeding"
+    ? <FeedingRouteSkeleton ariaLabel={fallbackAriaLabel} />
+    : navKey === "photos"
+      ? <PhotosRouteSkeleton ariaLabel={fallbackAriaLabel} />
+      : <SettingsDetailLoadingSkeleton ariaLabel={fallbackAriaLabel} />;
 
   return (
     <AuthenticatedShell
@@ -191,13 +198,7 @@ export function BabyRouteShell({ babyId, children }: BabyRouteShellProps) {
           {children}
         </BabyRouteProvider>
       ) : (
-        <section className="pageStack">
-          <article className="panel panelStack">
-            <p className="eyebrow">宝宝空间</p>
-            <h2>{loadingWorkspace ? "正在加载..." : "正在跳转..."}</h2>
-            <p className="helperText">{loadingWorkspace ? "正在获取这个宝宝的最新内容。" : "当前地址不可用，正在返回可访问页面。"}</p>
-          </article>
-        </section>
+        fallbackContent
       )}
     </AuthenticatedShell>
   );

@@ -1,0 +1,331 @@
+.loadingSkeletonStatus {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.loadingSkeletonPage {
+  align-content: start;
+}
+
+.loadingSkeletonStack {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.loadingSkeletonPanel {
+  min-width: 0;
+}
+
+.loadingSkeletonAppCard {
+  min-height: 164px;
+  align-content: center;
+}
+
+.loadingSkeletonHero {
+  min-width: 0;
+}
+
+.loadingSkeletonFeed {
+  min-width: 0;
+}
+
+.loadingSkeletonDay {
+  min-width: 0;
+}
+
+.loadingSkeletonMomentCard,
+.loadingSkeletonFeedingCard,
+.loadingSkeletonSettingsCard {
+  pointer-events: none;
+}
+
+.loadingSkeletonMomentHeader,
+.loadingSkeletonMomentFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.loadingSkeletonMomentFooter {
+  display: grid;
+  gap: 8px;
+}
+
+.loadingSkeletonPhotoGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.loadingSkeletonDateStrip {
+  min-width: 0;
+}
+
+.loadingSkeletonDateChip {
+  pointer-events: none;
+}
+
+.loadingSkeletonDateChipActive {
+  background: linear-gradient(180deg, rgba(255, 211, 90, 0.28), rgba(255, 190, 46, 0.16));
+  box-shadow: inset 0 0 0 1px rgba(255, 190, 46, 0.16);
+}
+
+.loadingSkeletonFeedingTimeline {
+  min-width: 0;
+}
+
+.loadingSkeletonSettingsScene {
+  min-width: 0;
+}
+
+.loadingSkeletonSettingsCard {
+  min-height: 72px;
+}
+
+.loadingSkeletonBlock {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: 999px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(233, 239, 246, 0.92) 52%, rgba(255, 255, 255, 0.86));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.72);
+}
+
+.loadingSkeletonBlock::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.72) 50%, rgba(255, 255, 255, 0) 100%);
+  transform: translateX(-140%);
+  animation: loadingSkeletonShimmer 1.35s ease-in-out infinite;
+}
+
+.loadingSkeletonInline {
+  display: inline-flex;
+  vertical-align: middle;
+}
+
+.loadingSkeletonBadge {
+  width: 64px;
+  height: 14px;
+}
+
+.loadingSkeletonTitle {
+  width: min(100%, 220px);
+  height: 30px;
+  border-radius: 18px;
+}
+
+.loadingSkeletonTitleCompact {
+  width: min(100%, 168px);
+  height: 20px;
+  border-radius: 16px;
+}
+
+.loadingSkeletonLine {
+  height: 12px;
+}
+
+.loadingSkeletonWidthWide {
+  width: min(100%, 320px);
+}
+
+.loadingSkeletonWidthMedium {
+  width: min(100%, 220px);
+}
+
+.loadingSkeletonWidthShort {
+  width: min(100%, 170px);
+}
+
+.loadingSkeletonAvatar {
+  width: 78px;
+  height: 78px;
+  border-radius: 24px;
+  flex: 0 0 78px;
+}
+
+.loadingSkeletonAvatarSmall {
+  flex: 0 0 48px;
+}
+
+.loadingSkeletonHeroTitle {
+  width: min(100%, 190px);
+  height: 34px;
+  border-radius: 18px;
+}
+
+.loadingSkeletonHeroMeta {
+  width: min(100%, 220px);
+  height: 12px;
+}
+
+.loadingSkeletonPill {
+  width: 92px;
+  height: 18px;
+}
+
+.loadingSkeletonSelect {
+  width: 132px;
+  height: 38px;
+  border-radius: 12px;
+}
+
+.loadingSkeletonDayTitle {
+  width: 128px;
+  height: 20px;
+  border-radius: 16px;
+}
+
+.loadingSkeletonDayBadge {
+  width: 92px;
+  height: 16px;
+}
+
+.loadingSkeletonMomentTitle {
+  width: 44%;
+  height: 14px;
+}
+
+.loadingSkeletonMomentMeta {
+  width: 28%;
+  height: 10px;
+}
+
+.loadingSkeletonThumb {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 18px;
+}
+
+.loadingSkeletonThumbLarge {
+  grid-column: 1 / -1;
+  aspect-ratio: 4 / 3;
+  border-radius: 24px;
+}
+
+.loadingSkeletonTopBarAction {
+  width: 64px;
+  height: 34px;
+}
+
+.loadingSkeletonTopBarTitle {
+  width: min(100%, 124px);
+  height: 22px;
+  justify-self: center;
+}
+
+.loadingSkeletonDateWeekday {
+  width: 34px;
+  height: 10px;
+}
+
+.loadingSkeletonDateNumber {
+  width: 28px;
+  height: 22px;
+}
+
+.loadingSkeletonSummaryLabel {
+  width: 48px;
+  height: 10px;
+}
+
+.loadingSkeletonSummaryValue {
+  width: 58px;
+  height: 16px;
+}
+
+.loadingSkeletonSummaryDetail {
+  width: 42px;
+  height: 10px;
+}
+
+.loadingSkeletonFeedTime {
+  width: 48px;
+  height: 14px;
+  margin-left: auto;
+}
+
+.loadingSkeletonFeedSubtime {
+  width: 38px;
+  height: 10px;
+  margin-left: auto;
+}
+
+.loadingSkeletonFeedBadge {
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  flex: 0 0 40px;
+}
+
+.loadingSkeletonFeedTitle {
+  width: 48%;
+  height: 14px;
+}
+
+.loadingSkeletonFeedValue {
+  width: 24%;
+  height: 10px;
+}
+
+.loadingSkeletonFeedMeta {
+  width: 62%;
+  height: 10px;
+}
+
+.loadingSkeletonFeedNote {
+  width: 74%;
+  height: 10px;
+}
+
+.loadingSkeletonSettingsEyebrow {
+  width: 54px;
+  height: 10px;
+  justify-self: center;
+}
+
+.loadingSkeletonSettingsTitle {
+  width: 132px;
+  height: 22px;
+  justify-self: center;
+}
+
+.loadingSkeletonSettingsAvatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  flex: 0 0 40px;
+}
+
+.loadingSkeletonCardTitle {
+  width: 110px;
+  height: 14px;
+}
+
+.loadingSkeletonCardMeta {
+  width: 168px;
+  height: 10px;
+}
+
+.loadingSkeletonSettingsChevron {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+}
+
+@keyframes loadingSkeletonShimmer {
+  100% {
+    transform: translateX(140%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loadingSkeletonBlock::after {
+    animation: none;
+  }
+}

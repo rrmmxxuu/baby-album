@@ -6,6 +6,7 @@ import { useAppSessionContext } from "../app-session-provider";
 import { feedingBabySummaries } from "../model/babies";
 import { buildBabyFeedingPath, buildFeedingHubPath, buildPhotosHubPath, buildSettingsPath } from "../model/routes";
 import { AuthenticatedShell } from "../ui/authenticated-shell";
+import { FeedingRouteSkeleton } from "../ui/loading-skeletons";
 import { SettingsHeader } from "../ui/settings-header";
 import { SettingsListButton } from "../../ui/settings-list-button";
 import { BabyAvatar } from "../ui/baby-avatar";
@@ -65,13 +66,7 @@ export function FeedingHubRoute() {
       ) : null}
 
       {feedingBabies.length === 1 ? (
-        <section className="pageStack">
-          <article className="panel panelStack">
-            <p className="eyebrow">喂养记录</p>
-            <h2>正在进入喂养页</h2>
-            <p className="helperText">你当前只有一个可记录喂养的宝宝，系统会直接进入该宝宝的喂养页。</p>
-          </article>
-        </section>
+        <FeedingRouteSkeleton ariaLabel="正在进入喂养页" />
       ) : null}
     </AuthenticatedShell>
   );

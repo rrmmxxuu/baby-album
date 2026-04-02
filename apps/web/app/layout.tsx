@@ -5,6 +5,7 @@ import "./globals.css";
 import { ClientErrorReporter } from "../components/client-error-reporter";
 import { PwaBoot } from "../components/pwa-boot";
 import { AppSessionProvider } from "../components/app-shell/app-session-provider";
+import { AppLoadingSkeleton } from "../components/app-shell/ui/loading-skeletons";
 import { hasValidSession } from "../lib/session";
 
 export const metadata: Metadata = {
@@ -48,7 +49,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       <body>
         <PwaBoot />
         <ClientErrorReporter />
-        <Suspense fallback={<main className="appShell"><section className="panel"><p className="helperText">正在加载宝宝相册...</p></section></main>}>
+        <Suspense fallback={<main className="appShell"><AppLoadingSkeleton ariaLabel="正在加载宝宝相册" /></main>}>
           <AppSessionProvider initialAuthenticated={initialAuthenticated}>{children}</AppSessionProvider>
         </Suspense>
       </body>

@@ -2,6 +2,7 @@ import type { AlbumSummary, AlbumWorkspace, BabyProfile } from "../../../lib/typ
 import type { TimelineDayGroup } from "../model/types";
 import type { TimelineState } from "../hooks/use-timeline-state";
 import { PanelMessage } from "../../ui/panel-message";
+import { PhotosTimelineLoadingSkeleton } from "./loading-skeletons";
 import { PhotosHero } from "./photos-hero";
 import { TimelineDaySection } from "./timeline-day-section";
 
@@ -39,7 +40,7 @@ export function PhotosTab({ activeTab, activeAlbum, activeBaby, albumOptions, ti
           <PhotosHero activeAlbum={activeAlbum} activeBaby={activeBaby} albumOptions={albumOptions} onAlbumChange={onAlbumChange} timelineCount={timeline.timelineEntries.length} timelineLoading={timeline.timelineLoading} />
 
           <div className="momentsFeed">
-            {timeline.timelineLoading && timelineDays.length === 0 ? <PanelMessage message="正在加载时间线..." /> : null}
+            {timeline.timelineLoading && timelineDays.length === 0 ? <PhotosTimelineLoadingSkeleton ariaLabel="正在加载时间线" /> : null}
             {!timeline.timelineLoading && timelineDays.length === 0 ? <PanelMessage message="还没有媒体内容，先去上传一张照片吧。" /> : null}
             {timelineDays.map((day, index) => (
               <TimelineDaySection activeAlbum={activeAlbum} currentUserId={currentUserId} day={day} key={day.day} onEditEntry={onEditEntry} onOpenLightbox={onOpenLightbox} priority={index < 2} timeline={timeline} />

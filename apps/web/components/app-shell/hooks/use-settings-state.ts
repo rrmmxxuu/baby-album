@@ -35,11 +35,22 @@ export function useSettingsState({ activeTab, activeAlbum, currentUser, refreshA
   useEffect(() => {
     const members = activeAlbum?.members ?? [];
     const drafts: Record<string, Role> = {};
+    const serverRoles = new Map<string, Role>();
     for (const member of members) {
       drafts[member.userId] = member.role;
+      serverRoles.set(member.userId, member.role);
     }
     setRoleDrafts(drafts);
-    setOptimisticRoleOverrides({});
+    setOptimisticRoleOverrides((current) => {
+      const next: Record<string, Role> = {};
+      for (const [memberUserId, optimisticRole] of Object.entries(current)) {
+        const serverRole = serverRoles.get(memberUserId);
+        if (serverRole && serverRole !== optimisticRole) {
+          next[memberUserId] = optimisticRole;
+        }
+      }
+      return next;
+    });
     setBabyProfileName(activeAlbum?.baby?.name ?? "");
     setBabyProfileBirthDate(activeAlbum?.baby?.birthDate ? toDateInputValue(activeAlbum.baby.birthDate) : "");
     setMyRelationDraft(activeAlbum?.membership.relation ?? "");
@@ -128,10 +139,10 @@ export function useSettingsState({ activeTab, activeAlbum, currentUser, refreshA
       return;
     }
     clearFeedback();
+    const nextRole = roleDrafts[memberUserId];
+    setOptimisticRoleOverrides((current) => ({ ...current, [memberUserId]: nextRole }));
     try {
-      const nextRole = roleDrafts[memberUserId];
       await updateMemberRole(activeAlbum.album.id, memberUserId, nextRole);
-      setOptimisticRoleOverrides((current) => ({ ...current, [memberUserId]: nextRole }));
       showSuccess("权限已更新", `已更新成员权限：${roleLabel(nextRole)}。`);
       await refreshApp(activeAlbum.album.id);
     } catch (err) {

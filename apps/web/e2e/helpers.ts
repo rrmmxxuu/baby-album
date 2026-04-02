@@ -53,7 +53,13 @@ export async function createAlbum(page: Page, input: { babyName: string; relatio
 
 export async function openSettings(page: Page) {
   await waitForBootReady(page);
-  await page.getByRole("link", { name: "设置" }).click();
+  const settingsTab = page.getByRole("link", { name: "设置" });
+  if (await settingsTab.count()) {
+    await settingsTab.click();
+  } else {
+    await page.goto("/settings");
+    await waitForBootReady(page);
+  }
   await expect(page).toHaveURL(/\/settings/);
 }
 

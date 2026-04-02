@@ -1,4 +1,5 @@
 import type { AlbumWorkspace, User } from "../../../lib/types";
+import type { CSSProperties } from "react";
 import type { AppSessionState } from "../hooks/use-app-session";
 import { AppFeedbackToasts } from "./app-feedback-toasts";
 import { BootSplash } from "./boot-splash";
@@ -19,9 +20,14 @@ export function AppPageFrame({ children, session, currentUser, activeAlbum, bloc
   const showBootSplash = session.bootPhase !== "done" || blocking;
   const showAuthenticatedLayout = session.isAuthenticated && (authenticated || Boolean(activeAlbum));
   const reserveBottomNavSpace = hasBottomNav ?? showAuthenticatedLayout;
+  const shellStyle = {
+    "--app-shell-bottom-padding": reserveBottomNavSpace
+      ? "calc(88px + env(safe-area-inset-bottom))"
+      : "calc(18px + env(safe-area-inset-bottom))"
+  } as CSSProperties;
 
   return (
-    <main className={`appShell${showAuthenticatedLayout ? " appShellAuthenticated" : ""}${showBootSplash ? " appShellBooting" : ""}`}>
+    <main className={`appShell${showAuthenticatedLayout ? " appShellAuthenticated" : ""}${showBootSplash ? " appShellBooting" : ""}`} style={shellStyle}>
       {showBootSplash ? <BootSplash phase={session.bootPhase === "exiting" && !blocking ? "exiting" : "loading"} /> : null}
       {showTopBar ? <TopBar currentUser={currentUser} /> : null}
       <AppFeedbackToasts

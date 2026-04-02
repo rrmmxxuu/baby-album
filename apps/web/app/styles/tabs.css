@@ -1,3 +1,41 @@
+.tabWorkspaceRoot {
+  position: relative;
+  height: calc(var(--app-viewport-height) - var(--app-shell-top-padding) - var(--app-shell-bottom-padding));
+  overflow: visible;
+  background: var(--app-chrome-background);
+}
+
+.tabWorkspacePane {
+  position: absolute;
+  inset: 0;
+  min-width: 0;
+  min-height: 0;
+}
+
+.tabWorkspacePaneActive {
+  z-index: 1;
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+.tabWorkspacePaneInactive {
+  z-index: 0;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(22px, 0, 0);
+}
+
+.tabWorkspaceViewport {
+  height: 100%;
+  min-height: 0;
+  margin-inline: -12px;
+  padding-inline: 12px;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  background: transparent;
+}
+
 .tabViewport {
   position: relative;
   background: transparent;

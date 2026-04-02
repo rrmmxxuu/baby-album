@@ -81,6 +81,46 @@ describe("app-shell timeline helpers", () => {
     expect(result).toHaveLength(1);
     expect(result[0].batches.map((batch) => batch.caption)).toEqual(["较晚上传", "较早上传"]);
     expect(result[0].batches[0].uploadedByName).toBe("妈妈");
+    expect(result[0].babyAgeLabel).toBe("26天");
+  });
+
+  it("uses the detailed age label format for timeline day headers", () => {
+    const result = buildTimelineFeed([
+      {
+        id: "entry-3",
+        albumId: "album-1",
+        caption: "两岁了",
+        visibility: "members",
+        timeMode: "captured_at",
+        displayAt: "2026-03-12T10:00:00.000Z",
+        timelineDay: "2026-03-12",
+        uploadedBy: "u1",
+        uploadedByName: "User 1",
+        uploadedAt: "2026-03-12T10:00:00.000Z",
+        createdAt: "2026-03-12T10:00:00.000Z",
+        comments: [],
+        items: [{
+          id: "media-3",
+          albumId: "album-1",
+          entryId: "entry-3",
+          uploadBatchId: "batch-3",
+          uploadedBy: "u1",
+          uploadedByName: "User 1",
+          fileName: "c.jpg",
+          mediaType: "image/jpeg",
+          capturedAt: "2026-03-12T09:00:00.000Z",
+          uploadedAt: "2026-03-12T10:00:00.000Z",
+          timelineDay: "2026-03-12",
+          status: "ready",
+          source: "upload",
+          width: 1,
+          height: 1,
+          previewStatus: "ready"
+        }]
+      }
+    ], "2024-03-10T00:00:00.000Z", { u1: "妈妈" });
+
+    expect(result[0].babyAgeLabel).toBe("2岁0个月2天");
   });
 
   it("checks edit permissions and lightbox navigation", () => {

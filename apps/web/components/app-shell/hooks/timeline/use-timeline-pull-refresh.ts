@@ -1,14 +1,15 @@
 "use client";
 
+import type { RefObject, TouchEvent as ReactTouchEvent } from "react";
 import { useEffect, useState } from "react";
-import type { TouchEvent as ReactTouchEvent } from "react";
 import type { AlbumWorkspace } from "../../../../lib/types";
 import { PULL_REFRESH_MAX, PULL_REFRESH_TRIGGER, TIMELINE_PAGE_SIZE } from "../../model/constants";
-import type { LightboxState, TabKey } from "../../model/types";
+import type { LightboxState } from "../../model/types";
 
 interface UseTimelinePullRefreshOptions {
-  activeTab: TabKey;
+  active: boolean;
   activeAlbum: AlbumWorkspace | null;
+  scrollContainerRef: RefObject<HTMLDivElement | null>;
   timelineEntriesLength: number;
   timelineLoading: boolean;
   timelineLoadingMore: boolean;
@@ -19,8 +20,9 @@ interface UseTimelinePullRefreshOptions {
 }
 
 export function useTimelinePullRefresh({
-  activeTab,
+  active,
   activeAlbum,
+  scrollContainerRef,
   timelineEntriesLength,
   timelineLoading,
   timelineLoadingMore,
@@ -40,10 +42,10 @@ export function useTimelinePullRefresh({
   }
 
   useEffect(() => {
-    if (activeTab !== "photos" || draftSheetOpen || lightbox) {
+    if (!active || draftSheetOpen || lightbox) {
       resetPullRefresh();
     }
-  }, [activeTab, draftSheetOpen, lightbox]);
+  }, [active, draftSheetOpen, lightbox]);
 
   async function triggerPullRefresh() {
     if (!activeAlbum || timelineRefreshing || timelineLoading) {
@@ -56,20 +58,20 @@ export function useTimelinePullRefresh({
   }
 
   function handlePhotosTouchStart(event: ReactTouchEvent<HTMLElement>) {
-    if (activeTab !== "photos" || draftSheetOpen || lightbox || timelineLoadingMore || timelineRefreshing || event.touches.length !== 1) {
+    if (!active || draftSheetOpen || lightbox || timelineLoadingMore || timelineRefreshing || event.touches.length !== 1) {
       return;
     }
-    if (window.scrollY > 0) {
+    if ((scrollContainerRef.current?.scrollTop ?? 0) > 0) {
       return;
     }
     setPullStartY(event.touches[0].clientY);
   }
 
   function handlePhotosTouchMove(event: ReactTouchEvent<HTMLElement>) {
-    if (pullStartY === null || draftSheetOpen || lightbox || activeTab !== "photos") {
+    if (pullStartY === null || draftSheetOpen || lightbox || !active) {
       return;
     }
-    if (window.scrollY > 0) {
+    if ((scrollContainerRef.current?.scrollTop ?? 0) > 0) {
       resetPullRefresh();
       return;
     }

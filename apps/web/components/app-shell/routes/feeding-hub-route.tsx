@@ -4,8 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAppSessionContext } from "../app-session-provider";
 import { feedingBabySummaries } from "../model/babies";
-import { buildBabyFeedingPath, buildFeedingHubPath, buildPhotosHubPath, buildSettingsPath } from "../model/routes";
-import { AuthenticatedShell } from "../ui/authenticated-shell";
+import { buildBabyFeedingPath } from "../model/routes";
 import { FeedingRouteSkeleton } from "../ui/loading-skeletons";
 import { SettingsHeader } from "../ui/settings-header";
 import { SettingsListButton } from "../../ui/settings-list-button";
@@ -18,26 +17,21 @@ export function FeedingHubRoute() {
   const feedingBabies = feedingBabySummaries(session.appState?.albums ?? []);
 
   useEffect(() => {
-    if (session.bootPhase !== "done") {
+    if (session.bootPhase !== "done" || !session.isAuthenticated) {
       return;
     }
     if (!session.appState) {
-      void session.refreshApp(undefined, { silent: true, authenticated: true });
+      void session.refreshApp(undefined, { silent: true });
       return;
     }
     if (feedingBabies.length !== 1) {
       return;
     }
-    router.replace(buildBabyFeedingPath(feedingBabies[0].baby.id));
-  }, [feedingBabies, router, session.appState, session.bootPhase, session.refreshApp]);
+    router.replace(buildBabyFeedingPath(feedingBabies[0].baby.id), { scroll: false });
+  }, [feedingBabies, router, session.appState, session.bootPhase, session.isAuthenticated, session.refreshApp]);
 
   return (
-    <AuthenticatedShell
-      activeNav="feeding"
-      feedingHref={buildFeedingHubPath()}
-      photosHref={buildPhotosHubPath()}
-      settingsHref={buildSettingsPath()}
-    >
+    <>
       {feedingBabies.length > 1 ? (
         <article className="panelStack settingsDetailPage settingsScene settingsSceneForward">
           <SettingsHeader eyebrow="喂养记录" title="选择宝宝" />
@@ -68,6 +62,6 @@ export function FeedingHubRoute() {
       {feedingBabies.length === 1 ? (
         <FeedingRouteSkeleton ariaLabel="正在进入喂养页" />
       ) : null}
-    </AuthenticatedShell>
+    </>
   );
 }

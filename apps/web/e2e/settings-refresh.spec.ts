@@ -7,6 +7,7 @@ test("refreshes baby manage data when re-entering settings screens", async ({ br
   const ownerPage = await ownerContext.newPage();
   const joinerPage = await joinerContext.newPage();
   const joinerName = "Refresh Joiner";
+  const visibleMemberButton = () => ownerPage.locator("button.settingsMemberCard:visible").filter({ hasText: joinerName });
 
   try {
     await login(ownerPage, {
@@ -44,12 +45,12 @@ test("refreshes baby manage data when re-entering settings screens", async ({ br
     await expect(ownerPage).toHaveURL(/\/settings\/babies$/);
     await ownerPage.getByRole("button", { name: /Little Qin/ }).click();
     await expect(ownerPage).toHaveURL(/\/babies\/baby-demo\/manage$/);
-    await expect(ownerPage.getByRole("button", { name: new RegExp(joinerName) })).toBeVisible({ timeout: 20_000 });
+    await expect(visibleMemberButton()).toHaveCount(1, { timeout: 20_000 });
     await expect(ownerPage.getByText(inviteCode)).toHaveCount(0);
 
-    await ownerPage.getByRole("button", { name: new RegExp(joinerName) }).click();
+    await visibleMemberButton().click({ force: true });
     await expect(ownerPage).toHaveURL(/\/babies\/baby-demo\/manage\/members\/.+$/, { timeout: 20_000 });
-    await ownerPage.locator("select").selectOption("admin");
+    await ownerPage.locator(".memberActions select:visible").selectOption("admin");
     await ownerPage.getByRole("button", { name: "保存权限" }).click();
     await expect(ownerPage.getByText("当前权限：管理员")).toBeVisible({ timeout: 20_000 });
 
@@ -58,13 +59,13 @@ test("refreshes baby manage data when re-entering settings screens", async ({ br
     await ownerPage.getByRole("button", { name: "返回" }).click();
     await expect(ownerPage).toHaveURL(/\/settings\/babies$/);
     await ownerPage.getByRole("button", { name: /Little Qin/ }).click();
-    await ownerPage.getByRole("button", { name: new RegExp(joinerName) }).click();
+    await visibleMemberButton().click({ force: true });
     await expect(ownerPage.getByText("当前权限：管理员")).toBeVisible({ timeout: 20_000 });
 
     ownerPage.once("dialog", (dialog) => dialog.accept());
     await ownerPage.getByRole("button", { name: "移除成员" }).click();
     await expect(ownerPage).toHaveURL(/\/babies\/baby-demo\/manage$/, { timeout: 20_000 });
-    await expect(ownerPage.getByRole("button", { name: new RegExp(joinerName) })).toHaveCount(0);
+    await expect(visibleMemberButton()).toHaveCount(0);
 
     await joinerPage.goto("/babies/baby-demo/photos");
     await expect(joinerPage).toHaveURL(/\/welcome$/, { timeout: 20_000 });

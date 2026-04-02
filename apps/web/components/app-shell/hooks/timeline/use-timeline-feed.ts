@@ -1,21 +1,22 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { RefObject } from "react";
+import { useEffect, useRef, useState } from "react";
 import { loadTimelinePage } from "../../../../lib/api";
 import type { AlbumWorkspace, AppStatePayload, TimelineEntry } from "../../../../lib/types";
 import { TIMELINE_PAGE_SIZE } from "../../model/constants";
 import { errorMessageFromUnknown } from "../../model/feedback";
 import { mergeTimelineEntries } from "../../model/timeline";
-import type { TabKey } from "../../model/types";
 
 interface UseTimelineFeedOptions {
-  activeTab: TabKey;
+  active: boolean;
   activeAlbum: AlbumWorkspace | null;
+  scrollContainerRef: RefObject<HTMLDivElement | null>;
   refreshApp: (targetAlbumId?: string, options?: { silent?: boolean }) => Promise<AppStatePayload | null>;
   showError: (title: string, message: string) => void;
 }
 
-export function useTimelineFeed({ activeTab, activeAlbum, refreshApp, showError }: UseTimelineFeedOptions) {
+export function useTimelineFeed({ active, activeAlbum, scrollContainerRef, refreshApp, showError }: UseTimelineFeedOptions) {
   const [timelineEntries, setTimelineEntries] = useState<TimelineEntry[]>([]);
   const [timelineNextCursor, setTimelineNextCursor] = useState("");
   const [timelineHasMore, setTimelineHasMore] = useState(false);
@@ -23,30 +24,9 @@ export function useTimelineFeed({ activeTab, activeAlbum, refreshApp, showError 
   const [timelineLoadingMore, setTimelineLoadingMore] = useState(false);
   const [timelineRefreshing, setTimelineRefreshing] = useState(false);
 
-  const tabScrollPositionsRef = useRef<Record<TabKey, number>>({ photos: 0, feeding: 0, settings: 0 });
   const timelineRequestRef = useRef(0);
   const timelineAlbumRef = useRef("");
   const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!activeAlbum) {
-      return;
-    }
-    function handleScroll() {
-      tabScrollPositionsRef.current[activeTab] = window.scrollY;
-    }
-    handleScroll();
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, [activeAlbum, activeTab]);
-
-  useLayoutEffect(() => {
-    if (!activeAlbum) {
-      return;
-    }
-    const nextScrollTop = tabScrollPositionsRef.current[activeTab] ?? 0;
-    window.scrollTo(0, nextScrollTop);
-  }, [activeAlbum, activeTab]);
 
   async function replaceTimeline(albumId: string, limit = TIMELINE_PAGE_SIZE, showRefreshing = false) {
     const requestId = timelineRequestRef.current + 1;
@@ -110,11 +90,12 @@ export function useTimelineFeed({ activeTab, activeAlbum, refreshApp, showError 
     setTimelineEntries([]);
     setTimelineNextCursor("");
     setTimelineHasMore(false);
+    scrollContainerRef.current?.scrollTo({ top: 0 });
     void replaceTimeline(activeAlbum.album.id);
-  }, [activeAlbum?.album.id]);
+  }, [activeAlbum?.album.id, scrollContainerRef]);
 
   useEffect(() => {
-    if (activeTab !== "photos" || !activeAlbum || !timelineHasMore || timelineLoading || timelineLoadingMore || timelineRefreshing) {
+    if (!active || !activeAlbum || !timelineHasMore || timelineLoading || timelineLoadingMore || timelineRefreshing) {
       return;
     }
     const target = loadMoreSentinelRef.current;
@@ -126,22 +107,25 @@ export function useTimelineFeed({ activeTab, activeAlbum, refreshApp, showError 
         return;
       }
       void loadMoreTimeline(activeAlbum.album.id);
-    }, { rootMargin: "240px 0px" });
+    }, {
+      root: scrollContainerRef.current,
+      rootMargin: "240px 0px"
+    });
     observer.observe(target);
     return () => observer.disconnect();
-  }, [activeAlbum, activeTab, timelineHasMore, timelineLoading, timelineLoadingMore, timelineRefreshing, timelineNextCursor]);
+  }, [active, activeAlbum, scrollContainerRef, timelineHasMore, timelineLoading, timelineLoadingMore, timelineRefreshing, timelineNextCursor]);
 
   const hasPendingPreview = timelineEntries.some((entry) => entry.items.some((item) => item.previewStatus !== "ready"));
 
   useEffect(() => {
-    if (!activeAlbum || !hasPendingPreview) {
+    if (!active || !activeAlbum || !hasPendingPreview) {
       return;
     }
     const timer = window.setInterval(() => {
       void replaceTimeline(activeAlbum.album.id, Math.max(TIMELINE_PAGE_SIZE, timelineEntries.length), true);
     }, 4000);
     return () => window.clearInterval(timer);
-  }, [activeAlbum, hasPendingPreview, timelineEntries.length]);
+  }, [active, activeAlbum, hasPendingPreview, timelineEntries.length]);
 
   function refreshTimelineSoon(targetAlbumId: string) {
     void replaceTimeline(targetAlbumId, Math.max(TIMELINE_PAGE_SIZE, timelineEntries.length), true);
@@ -156,10 +140,6 @@ export function useTimelineFeed({ activeTab, activeAlbum, refreshApp, showError 
     }, 5000);
   }
 
-  function captureTabScrollPosition(tab: TabKey) {
-    tabScrollPositionsRef.current[tab] = window.scrollY;
-  }
-
   return {
     timelineEntries,
     setTimelineEntries,
@@ -169,7 +149,6 @@ export function useTimelineFeed({ activeTab, activeAlbum, refreshApp, showError 
     timelineRefreshing,
     loadMoreSentinelRef,
     replaceTimeline,
-    refreshTimelineSoon,
-    captureTabScrollPosition
+    refreshTimelineSoon
   };
 }

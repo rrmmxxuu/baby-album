@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { ApiError } from "../../../lib/api";
 import type { AlbumWorkspace } from "../../../lib/types";
 import { BabyRouteProvider } from "../baby-route-context";
@@ -9,32 +9,22 @@ import { useAppSessionContext } from "../app-session-provider";
 import { useSettingsState } from "../hooks/use-settings-state";
 import { findJoinedBaby, joinedBabySummaries } from "../model/babies";
 import { errorMessageFromUnknown } from "../model/feedback";
+import { buildAuthPath, buildSettingsBabiesPath, buildWelcomePath } from "../model/routes";
+import type { TabKey } from "../model/types";
 import { buildAppShellViewModel } from "../model/view";
-import { buildAuthPath, buildBabyFeedingPath, buildBabyPhotosPath, buildFeedingHubPath, buildSettingsBabiesPath, buildSettingsPath, buildWelcomePath } from "../model/routes";
-import { AuthenticatedShell } from "../ui/authenticated-shell";
 import { FeedingRouteSkeleton, PhotosRouteSkeleton, SettingsDetailLoadingSkeleton } from "../ui/loading-skeletons";
 
 interface BabyRouteShellProps {
+  activeTab: TabKey;
   babyId: string;
   children: React.ReactNode;
-}
-
-function routeNavKey(pathname: string) {
-  if (pathname.endsWith("/photos")) {
-    return "photos" as const;
-  }
-  if (pathname.endsWith("/feeding")) {
-    return "feeding" as const;
-  }
-  return "settings" as const;
 }
 
 function workspaceFallbackPath(hasJoinedBabies: boolean) {
   return hasJoinedBabies ? buildSettingsBabiesPath() : buildWelcomePath();
 }
 
-export function BabyRouteShell({ babyId, children }: BabyRouteShellProps) {
-  const pathname = usePathname();
+export function BabyRouteShell({ activeTab, babyId, children }: BabyRouteShellProps) {
   const router = useRouter();
   const session = useAppSessionContext();
   const [workspace, setWorkspace] = useState<AlbumWorkspace | null>(null);
@@ -42,7 +32,6 @@ export function BabyRouteShell({ babyId, children }: BabyRouteShellProps) {
   const [workspaceError, setWorkspaceError] = useState<ApiError | null>(null);
   const requestIdRef = useRef(0);
 
-  const navKey = routeNavKey(pathname);
   const currentUser = session.appState?.currentUser ?? workspace?.currentUser ?? null;
   const joinedBabies = useMemo(() => joinedBabySummaries(session.appState?.albums ?? []), [session.appState?.albums]);
   const appView = useMemo(() => buildAppShellViewModel({
@@ -53,7 +42,7 @@ export function BabyRouteShell({ babyId, children }: BabyRouteShellProps) {
   }), [currentUser, workspace]);
 
   const settings = useSettingsState({
-    activeTab: navKey,
+    activeTab,
     activeAlbum: workspace,
     currentUser,
     refreshApp: session.refreshApp,
@@ -73,7 +62,7 @@ export function BabyRouteShell({ babyId, children }: BabyRouteShellProps) {
   }, [session.appState?.activeAlbum, workspace?.album.id]);
 
   useEffect(() => {
-    if (session.bootPhase !== "done") {
+    if (session.bootPhase !== "done" || !session.isAuthenticated) {
       return;
     }
     const requestId = requestIdRef.current + 1;
@@ -87,7 +76,7 @@ export function BabyRouteShell({ babyId, children }: BabyRouteShellProps) {
         let targetBaby = findJoinedBaby(sessionState?.albums ?? [], babyId);
 
         if (!targetBaby) {
-          sessionState = await session.refreshApp(undefined, { silent: true, authenticated: true });
+          sessionState = await session.refreshApp(undefined, { silent: true });
           targetBaby = findJoinedBaby(sessionState?.albums ?? [], babyId);
         }
 
@@ -120,7 +109,7 @@ export function BabyRouteShell({ babyId, children }: BabyRouteShellProps) {
           setWorkspace(null);
         }
 
-        const nextState = await session.refreshApp(targetAlbumId, { silent: true, authenticated: true });
+        const nextState = await session.refreshApp(targetAlbumId, { silent: true });
         const next = nextState?.activeAlbum ?? null;
         if (cancelled || requestIdRef.current !== requestId) {
           return;
@@ -146,7 +135,7 @@ export function BabyRouteShell({ babyId, children }: BabyRouteShellProps) {
     return () => {
       cancelled = true;
     };
-  }, [babyId, session.appState, session.bootPhase, session.refreshApp, workspace?.album.id]);
+  }, [babyId, session.appState, session.bootPhase, session.isAuthenticated, session.refreshApp, workspace?.album.id]);
 
   useEffect(() => {
     if (!workspaceError || loadingWorkspace || session.bootPhase !== "done") {
@@ -164,42 +153,30 @@ export function BabyRouteShell({ babyId, children }: BabyRouteShellProps) {
     session.showError("加载失败", workspaceError.message || "宝宝空间加载失败。");
   }, [joinedBabies.length, loadingWorkspace, router, session.handleLogout, session.showError, session.bootPhase, workspaceError]);
 
-  const photosHref = navKey === "feeding" ? buildBabyPhotosPath(babyId) : navKey === "photos" ? buildBabyPhotosPath(babyId) : buildBabyPhotosPath(babyId);
-  const feedingHref = navKey === "feeding" ? buildBabyFeedingPath(babyId) : buildFeedingHubPath();
-  const settingsHref = buildSettingsPath();
   const fallbackAriaLabel = loadingWorkspace ? "正在获取这个宝宝的最新内容" : "当前地址不可用，正在返回可访问页面";
-  const fallbackContent = navKey === "feeding"
+  const fallbackContent = activeTab === "feeding"
     ? <FeedingRouteSkeleton ariaLabel={fallbackAriaLabel} />
-    : navKey === "photos"
+    : activeTab === "photos"
       ? <PhotosRouteSkeleton ariaLabel={fallbackAriaLabel} />
       : <SettingsDetailLoadingSkeleton ariaLabel={fallbackAriaLabel} />;
 
   return (
-    <AuthenticatedShell
-      activeNav={navKey}
-      blocking={false}
-      bottomNavHidden={navKey === "feeding"}
-      feedingHref={feedingHref}
-      photosHref={photosHref}
-      settingsHref={settingsHref}
-    >
-      {workspace ? (
-        <BabyRouteProvider
-          value={{
-            babyId,
-            workspace,
-            currentUser,
-            joinedBabies,
-            session,
-            settings,
-            appView
-          }}
-        >
-          {children}
-        </BabyRouteProvider>
-      ) : (
-        fallbackContent
-      )}
-    </AuthenticatedShell>
+    workspace ? (
+      <BabyRouteProvider
+        value={{
+          babyId,
+          workspace,
+          currentUser,
+          joinedBabies,
+          session,
+          settings,
+          appView
+        }}
+      >
+        {children}
+      </BabyRouteProvider>
+    ) : (
+      fallbackContent
+    )
   );
 }

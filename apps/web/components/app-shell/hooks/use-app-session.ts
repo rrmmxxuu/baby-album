@@ -222,11 +222,11 @@ export function useAppSession(queryInviteCode: string, initialAuthenticated = fa
   }, [hydrated, isAuthenticated, pathname]);
 
   useEffect(() => {
-    if (!hydrated || bootPhase !== "done" || !isProtectedPathname(pathname) || appState || loading) {
+    if (!hydrated || !isAuthenticated || bootPhase !== "done" || !isProtectedPathname(pathname) || appState || loading) {
       return;
     }
-    void refreshApp(selectedAlbumId || undefined, { silent: true, authenticated: true });
-  }, [appState, bootPhase, hydrated, loading, pathname, refreshApp, selectedAlbumId]);
+    void refreshApp(selectedAlbumId || undefined, { silent: true });
+  }, [appState, bootPhase, hydrated, isAuthenticated, loading, pathname, refreshApp, selectedAlbumId]);
 
   function saveSession() {
     setIsAuthenticated(true);

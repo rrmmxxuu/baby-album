@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useBabyRouteContext } from "../baby-route-context";
 import { buildBabyManageMemberPath, buildBabyManageStoragePath, buildSettingsBabiesPath } from "../model/routes";
+import { useWorkspaceScrollReset } from "../workspace-viewport";
 import { SettingsBabyDetailScene } from "../ui/settings-baby-detail-scene";
 
 export function BabyManageRoute() {
@@ -11,9 +12,14 @@ export function BabyManageRoute() {
   const { babyId, workspace, currentUser, session, settings, appView } = useBabyRouteContext();
   const refreshApp = session.refreshApp;
 
+  useWorkspaceScrollReset();
+
   useEffect(() => {
-    void refreshApp(workspace.album.id, { silent: true, authenticated: true });
-  }, [refreshApp, workspace.album.id]);
+    if (!session.isAuthenticated) {
+      return;
+    }
+    void refreshApp(workspace.album.id, { silent: true });
+  }, [refreshApp, session.isAuthenticated, workspace.album.id]);
 
   return (
     <SettingsBabyDetailScene

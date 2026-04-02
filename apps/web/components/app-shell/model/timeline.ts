@@ -1,5 +1,5 @@
 import type { AlbumMember, Role, TimelineEntry } from "../../../lib/types";
-import { formatBabyAge } from "./format";
+import { formatDetailedBabyAge } from "./format";
 import type { LightboxState, TimelineDayGroup } from "./types";
 
 export function buildRelationLabels(members: AlbumMember[]) {
@@ -40,7 +40,7 @@ export function buildTimelineFeed(items: TimelineEntry[], birthDate?: string, re
     .sort((left, right) => new Date(right[0]).getTime() - new Date(left[0]).getTime())
     .map(([day, batches]) => ({
       day,
-      babyAgeLabel: birthDate ? formatBabyAge(birthDate, day) : "",
+      babyAgeLabel: birthDate ? formatDetailedBabyAge(birthDate, day) : "",
       itemsCount: batches.reduce((sum, batch) => sum + batch.items.length, 0),
       batches: batches.sort((left, right) => new Date(right.uploadedAt).getTime() - new Date(left.uploadedAt).getTime())
     } satisfies TimelineDayGroup));

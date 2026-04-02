@@ -47,7 +47,7 @@ export function TimelineDaySection({ activeAlbum, day, timeline, currentUserId, 
       <header className="momentDayHeader">
         <div className="momentDayHeaderCopy">
           <h3>{formatTimelineDate(day.day)}</h3>
-          {day.babyAgeLabel ? <span className="momentBabyDay">宝宝第 {day.babyAgeLabel}</span> : null}
+          {day.babyAgeLabel ? <span className="momentBabyDay">{day.babyAgeLabel}</span> : null}
         </div>
       </header>
       {shouldRenderBatches ? (

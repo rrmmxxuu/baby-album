@@ -10,6 +10,7 @@ import { useTimelineState } from "../hooks/use-timeline-state";
 import { LAST_VIEWED_PHOTO_BABY_STORAGE_KEY } from "../model/constants";
 import { buildRelationLabels, buildTimelineFeed } from "../model/timeline";
 import { buildBabyManageStoragePath, buildBabyPhotosPath } from "../model/routes";
+import { useWorkspaceViewport } from "../workspace-viewport";
 import { FloatingAddButton } from "../ui/floating-add-button";
 import { LightboxViewer } from "../ui/lightbox-viewer";
 import { PhotosTab } from "../ui/photos-tab";
@@ -23,9 +24,11 @@ export function BabyPhotosRoute() {
   const requestedComposer = searchParams.get("composer") ?? "";
   const requestedEditEntryId = searchParams.get("edit") ?? "";
   const { babyId, workspace, currentUser, joinedBabies, session, appView } = useBabyRouteContext();
+  const workspaceViewport = useWorkspaceViewport();
   const timeline = useTimelineState({
-    activeTab: "photos",
+    active: workspaceViewport.active,
     activeAlbum: workspace,
+    scrollContainerRef: workspaceViewport.viewportRef,
     refreshApp: session.refreshApp,
     clearFeedback: session.clearFeedback,
     showWarning: session.showWarning,
@@ -115,8 +118,7 @@ export function BabyPhotosRoute() {
     if (nextBabyId === babyId) {
       return;
     }
-    timeline.captureTabScrollPosition("photos");
-    router.push(buildBabyPhotosPath(nextBabyId));
+    router.push(buildBabyPhotosPath(nextBabyId), { scroll: false });
   }
 
   async function handleOpenUploadFlow() {
@@ -140,11 +142,11 @@ export function BabyPhotosRoute() {
       session.showWarning("没有权限", "当前身份没有上传权限。");
       return;
     }
-    router.push(buildBabyPhotosPath(babyId, { composer: "new" }));
+    router.push(buildBabyPhotosPath(babyId, { composer: "new" }), { scroll: false });
   }
 
   function handleOpenLightbox(entryId: string, mediaId: string) {
-    router.push(buildBabyPhotosPath(babyId, { lightboxEntryId: entryId, mediaId }));
+    router.push(buildBabyPhotosPath(babyId, { lightboxEntryId: entryId, mediaId }), { scroll: false });
   }
 
   function handleNavigateLightbox(direction: -1 | 1) {
@@ -158,19 +160,19 @@ export function BabyPhotosRoute() {
     router.replace(buildBabyPhotosPath(babyId, {
       lightboxEntryId: timeline.lightbox?.batch.entry.id,
       mediaId: nextItem.id
-    }));
+    }), { scroll: false });
   }
 
   function handleCloseLightbox() {
-    router.replace(buildBabyPhotosPath(babyId));
+    router.replace(buildBabyPhotosPath(babyId), { scroll: false });
   }
 
   function handleOpenEditEntry(entryId: string) {
-    router.push(buildBabyPhotosPath(babyId, { editEntryId: entryId }));
+    router.push(buildBabyPhotosPath(babyId, { editEntryId: entryId }), { scroll: false });
   }
 
   function handleCloseDraftSheet() {
-    router.replace(buildBabyPhotosPath(babyId));
+    router.replace(buildBabyPhotosPath(babyId), { scroll: false });
   }
 
   function handleMinimizeUpload() {

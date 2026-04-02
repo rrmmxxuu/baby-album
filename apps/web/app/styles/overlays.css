@@ -801,6 +801,9 @@
   background: var(--panel-strong);
   display: grid;
   gap: 6px;
+  box-shadow:
+    0 16px 32px rgba(15, 23, 42, 0.08),
+    0 6px 14px rgba(15, 23, 42, 0.05);
 }
 
 .inviteLink {

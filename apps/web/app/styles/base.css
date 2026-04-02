@@ -1,4 +1,10 @@
 :root {
+  --app-viewport-height: 100vh;
+  --app-shell-top-padding: calc(10px + env(safe-area-inset-top));
+  --app-shell-bottom-padding: calc(88px + env(safe-area-inset-bottom));
+  --app-chrome-background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0) 30%),
+    linear-gradient(180deg, #ffffff 0px, #ffffff 180px, #f8f8fc 320px, #f2f2f7 100%);
   --bg: #f2f2f7;
   --panel: linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(255, 255, 255, 0.64));
   --panel-strong: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.82));
@@ -14,21 +20,26 @@
     0 10px 22px rgba(15, 23, 42, 0.07);
 }
 
+@supports (height: 100dvh) {
+  :root {
+    --app-viewport-height: 100dvh;
+  }
+}
+
 * {
   box-sizing: border-box;
 }
 
 html {
+  height: 100%;
   min-height: 100%;
   overflow-x: hidden;
-  background:
-    radial-gradient(circle at top, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0) 30%),
-    linear-gradient(180deg, #ffffff 0px, #ffffff 180px, #f8f8fc 320px, #f2f2f7 100%);
+  background: var(--app-chrome-background);
 }
 
 body {
   margin: 0;
-  min-height: 100vh;
+  min-height: var(--app-viewport-height);
   overflow-x: hidden;
   overscroll-behavior-x: none;
   touch-action: pan-y;
@@ -36,9 +47,7 @@ body {
   font-family: "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  background:
-    radial-gradient(circle at top, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0) 30%),
-    linear-gradient(180deg, #ffffff 0px, #ffffff 180px, #f8f8fc 320px, #f2f2f7 100%);
+  background: var(--app-chrome-background);
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -60,8 +69,9 @@ code {
 
 .appShell {
   width: min(960px, 100vw);
+  min-height: var(--app-viewport-height);
   margin: 0 auto;
-  padding: calc(10px + env(safe-area-inset-top)) 12px calc(88px + env(safe-area-inset-bottom));
+  padding: var(--app-shell-top-padding) 12px var(--app-shell-bottom-padding);
 }
 
 .appShellAuthenticated {
@@ -69,7 +79,7 @@ code {
 }
 
 .appShellBooting {
-  min-height: 100vh;
+  min-height: var(--app-viewport-height);
 }
 
 .bootSplash {

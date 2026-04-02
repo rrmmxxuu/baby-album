@@ -1,30 +1,33 @@
 "use client";
 
+import type { RefObject } from "react";
 import type { AlbumWorkspace, AppStatePayload } from "../../../lib/types";
 import { useTimelineComments } from "./timeline/use-timeline-comments";
 import { useTimelineFeed } from "./timeline/use-timeline-feed";
 import { useTimelineOverlays } from "./timeline/use-timeline-overlays";
 import { useTimelinePullRefresh } from "./timeline/use-timeline-pull-refresh";
-import type { TabKey } from "../model/types";
 
 interface UseTimelineStateOptions {
-  activeTab: TabKey;
+  active: boolean;
   activeAlbum: AlbumWorkspace | null;
+  scrollContainerRef: RefObject<HTMLDivElement | null>;
   refreshApp: (targetAlbumId?: string, options?: { silent?: boolean }) => Promise<AppStatePayload | null>;
   clearFeedback: () => void;
   showWarning: (title: string, message: string) => void;
   showError: (title: string, message: string) => void;
 }
 
-export function useTimelineState({ activeTab, activeAlbum, refreshApp, clearFeedback, showWarning, showError }: UseTimelineStateOptions) {
+export function useTimelineState({ active, activeAlbum, scrollContainerRef, refreshApp, clearFeedback, showWarning, showError }: UseTimelineStateOptions) {
   const feed = useTimelineFeed({
-    activeTab,
+    active,
     activeAlbum,
+    scrollContainerRef,
     refreshApp,
     showError
   });
 
   const overlays = useTimelineOverlays({
+    scrollContainerRef,
     timelineEntries: feed.timelineEntries
   });
 
@@ -37,8 +40,9 @@ export function useTimelineState({ activeTab, activeAlbum, refreshApp, clearFeed
   });
 
   const pullRefresh = useTimelinePullRefresh({
-    activeTab,
+    active,
     activeAlbum,
+    scrollContainerRef,
     timelineEntriesLength: feed.timelineEntries.length,
     timelineLoading: feed.timelineLoading,
     timelineLoadingMore: feed.timelineLoadingMore,
@@ -77,8 +81,7 @@ export function useTimelineState({ activeTab, activeAlbum, refreshApp, clearFeed
     openNewDraftSheet: overlays.openNewDraftSheet,
     openEditEntry: overlays.openEditEntry,
     closeDraftSheet: overlays.closeDraftSheet,
-    refreshTimelineSoon: feed.refreshTimelineSoon,
-    captureTabScrollPosition: feed.captureTabScrollPosition
+    refreshTimelineSoon: feed.refreshTimelineSoon
   };
 }
 

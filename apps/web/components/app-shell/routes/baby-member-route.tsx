@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useBabyRouteContext } from "../baby-route-context";
 import { buildBabyManagePath } from "../model/routes";
+import { useWorkspaceScrollReset } from "../workspace-viewport";
 import { SettingsMemberDetailScene } from "../ui/settings-member-detail-scene";
 
 interface BabyMemberRouteProps {
@@ -15,9 +16,14 @@ export function BabyMemberRoute({ memberId }: BabyMemberRouteProps) {
   const { babyId, workspace, currentUser, settings, appView, session } = useBabyRouteContext();
   const refreshApp = session.refreshApp;
 
+  useWorkspaceScrollReset();
+
   useEffect(() => {
-    void refreshApp(workspace.album.id, { silent: true, authenticated: true });
-  }, [refreshApp, workspace.album.id]);
+    if (!session.isAuthenticated) {
+      return;
+    }
+    void refreshApp(workspace.album.id, { silent: true });
+  }, [refreshApp, session.isAuthenticated, workspace.album.id]);
 
   async function handleRemoveMember(targetMemberId: string) {
     const removed = await settings.handleRemoveMember(targetMemberId);

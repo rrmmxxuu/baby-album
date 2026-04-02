@@ -1,5 +1,6 @@
 "use client";
 
+import type { RefObject } from "react";
 import { useEffect, useState } from "react";
 import type { TimelineEntry } from "../../../../lib/types";
 import { OVERLAY_EXIT_MS } from "../../model/constants";
@@ -7,10 +8,11 @@ import { moveLightbox } from "../../model/timeline";
 import type { LightboxState } from "../../model/types";
 
 interface UseTimelineOverlaysOptions {
+  scrollContainerRef: RefObject<HTMLDivElement | null>;
   timelineEntries: TimelineEntry[];
 }
 
-export function useTimelineOverlays({ timelineEntries }: UseTimelineOverlaysOptions) {
+export function useTimelineOverlays({ scrollContainerRef, timelineEntries }: UseTimelineOverlaysOptions) {
   const [lightbox, setLightbox] = useState<LightboxState | null>(null);
   const [lightboxClosing, setLightboxClosing] = useState(false);
   const [draftSheetOpen, setDraftSheetOpen] = useState(false);
@@ -20,26 +22,21 @@ export function useTimelineOverlays({ timelineEntries }: UseTimelineOverlaysOpti
     if (!lightbox && !draftSheetOpen) {
       return;
     }
-    const scrollY = window.scrollY;
-    const previousHtmlOverflow = document.documentElement.style.overflow;
-    const previousBodyOverflow = document.body.style.overflow;
-    const previousBodyPosition = document.body.style.position;
-    const previousBodyTop = document.body.style.top;
-    const previousBodyWidth = document.body.style.width;
-    document.documentElement.style.overflow = "hidden";
-    document.body.style.overflow = "hidden";
-    document.body.style.position = "fixed";
-    document.body.style.top = `-${scrollY}px`;
-    document.body.style.width = "100%";
+    const viewport = scrollContainerRef.current;
+    if (!viewport) {
+      return;
+    }
+    const scrollTop = viewport.scrollTop;
+    const previousOverflow = viewport.style.overflow;
+    const previousOverscrollBehavior = viewport.style.overscrollBehavior;
+    viewport.style.overflow = "hidden";
+    viewport.style.overscrollBehavior = "contain";
     return () => {
-      document.documentElement.style.overflow = previousHtmlOverflow;
-      document.body.style.overflow = previousBodyOverflow;
-      document.body.style.position = previousBodyPosition;
-      document.body.style.top = previousBodyTop;
-      document.body.style.width = previousBodyWidth;
-      window.scrollTo(0, scrollY);
+      viewport.style.overflow = previousOverflow;
+      viewport.style.overscrollBehavior = previousOverscrollBehavior;
+      viewport.scrollTop = scrollTop;
     };
-  }, [draftSheetOpen, lightbox]);
+  }, [draftSheetOpen, lightbox, scrollContainerRef]);
 
   useEffect(() => {
     if (!lightbox) {

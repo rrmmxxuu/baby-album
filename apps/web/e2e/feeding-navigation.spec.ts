@@ -1,7 +1,15 @@
 import { expect, test } from "@playwright/test";
 import { login, openSettings, register, setRelation, uniqueEmail } from "./helpers";
 
-test("opens the only eligible baby directly from the feeding tab", async ({ page }) => {
+async function openFeedingForBaby(page: import("@playwright/test").Page, babyName: string) {
+  await page.getByRole("link", { name: "喂养" }).click();
+  await expect(page).toHaveURL(/\/feeding$/, { timeout: 20_000 });
+  await expect(page.getByRole("heading", { name: "选择宝宝" })).toBeVisible();
+  await page.getByRole("button", { name: new RegExp(babyName) }).click();
+  await expect(page).toHaveURL(/\/babies\/([^/]+)\/feeding(?:\?.*)?$/, { timeout: 20_000 });
+}
+
+test("requires explicit baby selection even when only one baby can access feeding", async ({ page }) => {
   await login(page, {
     email: "owner@example.com",
     password: "demo12345"
@@ -9,9 +17,16 @@ test("opens the only eligible baby directly from the feeding tab", async ({ page
 
   await expect(page).toHaveURL(/\/babies\/baby-demo\/photos/);
   await page.getByRole("link", { name: "喂养" }).click();
+  await expect(page).toHaveURL(/\/feeding$/, { timeout: 20_000 });
+  await expect(page.getByRole("heading", { name: "选择宝宝" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Little Qin/ })).toBeVisible();
+  await page.getByRole("button", { name: /Little Qin/ }).click();
   await expect(page).toHaveURL(/\/babies\/baby-demo\/feeding(?:\?.*)?$/, { timeout: 20_000 });
   await expect(page.getByRole("heading", { name: "喂养" })).toBeVisible();
   await expect(page.getByRole("button", { name: "记喂奶" })).toBeVisible();
+  await page.getByRole("button", { name: "返回" }).click();
+  await expect(page).toHaveURL(/\/feeding$/, { timeout: 20_000 });
+  await expect(page.getByRole("heading", { name: "选择宝宝" })).toBeVisible();
 });
 
 test("can create a feeding record from the day timeline", async ({ page }) => {
@@ -22,8 +37,7 @@ test("can create a feeding record from the day timeline", async ({ page }) => {
     password: "demo12345"
   });
 
-  await page.getByRole("link", { name: "喂养" }).click();
-  await expect(page).toHaveURL(/\/babies\/baby-demo\/feeding(?:\?.*)?$/, { timeout: 20_000 });
+  await openFeedingForBaby(page, "Little Qin");
 
   await page.getByRole("button", { name: "记喂奶" }).click();
   await expect(page.getByRole("heading", { name: "记喂奶" })).toBeVisible();
@@ -44,8 +58,7 @@ test("can create a supplement record with the dose dialog", async ({ page }) => 
     password: "demo12345"
   });
 
-  await page.getByRole("link", { name: "喂养" }).click();
-  await expect(page).toHaveURL(/\/babies\/baby-demo\/feeding(?:\?.*)?$/, { timeout: 20_000 });
+  await openFeedingForBaby(page, "Little Qin");
 
   await page.getByRole("button", { name: "展开更多记录按钮" }).click();
   await page.getByRole("button", { name: "记营养品" }).click();

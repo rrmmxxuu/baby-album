@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useAppSessionContext } from "../app-session-provider";
 import { LAST_VIEWED_PHOTO_BABY_STORAGE_KEY } from "../model/constants";
@@ -24,12 +24,32 @@ interface WorkspacePaneProps {
 }
 
 function WorkspacePane({ active, children, tab }: WorkspacePaneProps) {
+  const paneRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
 
+  useLayoutEffect(() => {
+    const pane = paneRef.current;
+    if (!pane) {
+      return;
+    }
+
+    if (active) {
+      pane.removeAttribute("inert");
+      return;
+    }
+
+    if (pane.contains(document.activeElement)) {
+      const nextFocusTarget = document.querySelector<HTMLElement>(".tabWorkspacePaneActive .tabWorkspaceViewport, .bottomNav .navActive");
+      nextFocusTarget?.focus();
+    }
+
+    pane.setAttribute("inert", "");
+  }, [active]);
+
   return (
-    <div aria-hidden={!active} className={`tabWorkspacePane ${active ? "tabWorkspacePaneActive" : "tabWorkspacePaneInactive"}`} data-tab={tab}>
+    <div className={`tabWorkspacePane ${active ? "tabWorkspacePaneActive" : "tabWorkspacePaneInactive"}`} data-tab={tab} hidden={!active} ref={paneRef}>
       <WorkspaceViewportProvider active={active} tab={tab} viewportRef={viewportRef}>
-        <div className="tabWorkspaceViewport" ref={viewportRef}>
+        <div className="tabWorkspaceViewport" ref={viewportRef} tabIndex={active ? -1 : undefined}>
           {children}
         </div>
       </WorkspaceViewportProvider>

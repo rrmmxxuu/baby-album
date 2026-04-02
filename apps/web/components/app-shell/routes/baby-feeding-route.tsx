@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ApiError, applyFeedingTimerAction, createFeedingEntry, deleteFeedingEntry, feedingTimerStreamUrl, FeedingTimerConflictError, finishFeedingTimer, loadFeedingDay, loadFeedingTimer, updateFeedingEntry } from "../../../lib/api";
 import type { BreastFeedingTimerSession, FeedingCategory, FeedingDayPayload, FeedingEntry, FeedingEntryItemInput, FeedingEntryUpsertInput, FeedingMilkMode, FeedingTimerSide } from "../../../lib/types";
 import { useBabyRouteContext } from "../baby-route-context";
-import { canAccessFeeding, feedingBabySummaries } from "../model/babies";
+import { canAccessFeeding } from "../model/babies";
 import {
   activeBreastTimerDetail,
   buildFeedingSummary,
@@ -37,7 +37,7 @@ import {
 } from "../model/feeding";
 import { errorMessageFromUnknown } from "../model/feedback";
 import { formatDate } from "../model/format";
-import { buildAuthPath, buildBabyFeedingPath, buildFeedingHubPath, buildPhotosHubPath } from "../model/routes";
+import { buildAuthPath, buildBabyFeedingPath, buildFeedingHubPath } from "../model/routes";
 import { BabyAvatar } from "../ui/baby-avatar";
 import { PanelMessage } from "../../ui/panel-message";
 import { FeedingContentLoadingSkeleton } from "../ui/loading-skeletons";
@@ -933,7 +933,6 @@ export function BabyFeedingRoute() {
   const showError = session.showError;
   const showSuccess = session.showSuccess;
   const showWarning = session.showWarning;
-  const feedingBabies = useMemo(() => feedingBabySummaries(session.appState?.albums ?? []), [session.appState?.albums]);
   const requestedDay = searchParams.get("day");
   const requestedComposer = searchParams.get("composer");
   const requestedEditEntryId = searchParams.get("edit") ?? "";
@@ -946,7 +945,7 @@ export function BabyFeedingRoute() {
   const composerKind = isFeedingComposerKind(requestedComposer) ? requestedComposer : null;
   const isToday = isTodayFeedingDay(selectedDay, timeZone);
   const futureDay = isFutureFeedingDay(selectedDay, timeZone);
-  const backPath = feedingBabies.length > 1 ? buildFeedingHubPath() : buildPhotosHubPath();
+  const backPath = buildFeedingHubPath();
   const milkModeStorageKey = `${LAST_FEEDING_MILK_MODE_STORAGE_PREFIX}:${babyId}`;
 
   const [payload, setPayload] = useState<FeedingDayPayload>(EMPTY_DAY_PAYLOAD);

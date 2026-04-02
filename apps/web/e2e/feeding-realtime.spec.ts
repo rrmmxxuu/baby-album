@@ -3,6 +3,9 @@ import { login } from "./helpers";
 
 async function openFeeding(page: import("@playwright/test").Page) {
   await page.getByRole("link", { name: "喂养" }).click();
+  await expect(page).toHaveURL(/\/feeding$/, { timeout: 20_000 });
+  await expect(page.getByRole("heading", { name: "选择宝宝" })).toBeVisible();
+  await page.getByRole("button", { name: /Little Qin/ }).click();
   await expect(page).toHaveURL(/\/babies\/baby-demo\/feeding(?:\?.*)?$/, { timeout: 20_000 });
 }
 

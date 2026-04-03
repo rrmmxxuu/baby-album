@@ -194,6 +194,8 @@ type UploadContentInput struct {
 	ByteSize               int64
 	BlobKey                string
 	ContentSHA256          string
+	DetectedMediaType      string
+	DetectedCapturedAtRaw  string
 	Width                  int
 	Height                 int
 	PreviewStatus          domain.PreviewStatus
@@ -398,8 +400,9 @@ type AppState struct {
 }
 
 type DeleteCleanup struct {
-	LocalBlobKeys  []string
-	WarmObjectKeys []string
+	LocalBlobKeys           []string
+	ScreenPreviewObjectKeys []string
+	WarmObjectKeys          []string
 }
 
 type Repository interface {
@@ -472,6 +475,44 @@ func NormalizeCapturedAt(metaCapturedAt, modifiedAt *time.Time, uploadedAt time.
 	default:
 		return uploadedAt.UTC()
 	}
+}
+
+func ParseCapturedAtMetadata(raw, timezone string) *time.Time {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return nil
+	}
+
+	for _, layout := range []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05Z07:00",
+	} {
+		if parsed, err := time.Parse(layout, value); err == nil {
+			result := parsed.UTC()
+			return &result
+		}
+	}
+
+	location := time.UTC
+	if trimmed := strings.TrimSpace(timezone); trimmed != "" {
+		if parsedLocation, err := time.LoadLocation(trimmed); err == nil {
+			location = parsedLocation
+		}
+	}
+	for _, layout := range []string{
+		"2006:01:02 15:04:05",
+		"2006-01-02 15:04:05",
+		"2006-01-02T15:04:05",
+		"2006-01-02T15:04:05.000000",
+		"2006-01-02T15:04:05.000000000",
+	} {
+		if parsed, err := time.ParseInLocation(layout, value, location); err == nil {
+			result := parsed.UTC()
+			return &result
+		}
+	}
+	return nil
 }
 
 func roleRank(role domain.Role) int {

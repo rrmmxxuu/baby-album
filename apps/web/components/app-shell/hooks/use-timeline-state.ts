@@ -1,7 +1,7 @@
 "use client";
 
 import type { RefObject } from "react";
-import type { AlbumWorkspace, AppStatePayload } from "../../../lib/types";
+import type { AlbumWorkspace, AppStatePayload, MediaAsset } from "../../../lib/types";
 import { useTimelineComments } from "./timeline/use-timeline-comments";
 import { useTimelineFeed } from "./timeline/use-timeline-feed";
 import { useTimelineOverlays } from "./timeline/use-timeline-overlays";
@@ -52,6 +52,11 @@ export function useTimelineState({ active, activeAlbum, scrollContainerRef, refr
     replaceTimeline: feed.replaceTimeline
   });
 
+  function patchMediaAsset(updatedMedia: MediaAsset) {
+    feed.patchMediaAsset(updatedMedia);
+    overlays.patchMediaAsset(updatedMedia);
+  }
+
   return {
     timelineEntries: feed.timelineEntries,
     timelineHasMore: feed.timelineHasMore,
@@ -81,7 +86,8 @@ export function useTimelineState({ active, activeAlbum, scrollContainerRef, refr
     openNewDraftSheet: overlays.openNewDraftSheet,
     openEditEntry: overlays.openEditEntry,
     closeDraftSheet: overlays.closeDraftSheet,
-    refreshTimelineSoon: feed.refreshTimelineSoon
+    refreshTimelineSoon: feed.refreshTimelineSoon,
+    patchMediaAsset
   };
 }
 

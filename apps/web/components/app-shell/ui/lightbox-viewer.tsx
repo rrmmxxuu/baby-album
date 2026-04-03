@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { getOriginalUrl, getPreviewUrl, getScreenPreviewUrl, loadOriginalStatus, repairMediaPreview } from "../../../lib/api";
+import type { MediaAsset } from "../../../lib/types";
 import { useLightboxOriginalImage } from "../hooks/use-lightbox-original-image";
 import { formatDateTime, formatRelativeUploadTime } from "../model/format";
 import type { LightboxState } from "../model/types";
@@ -14,6 +15,7 @@ interface LightboxViewerProps {
   closing: boolean;
   onClose: () => void;
   onNavigate: (direction: -1 | 1) => void;
+  onPreviewRepair?: (media: MediaAsset) => void;
 }
 
 function originalUrlNeedsRefresh(url: string) {
@@ -64,7 +66,7 @@ function LightboxDownloadProgress({ progress, label }: { progress: number | null
   );
 }
 
-export function LightboxViewer({ lightbox, closing, onClose, onNavigate }: LightboxViewerProps) {
+export function LightboxViewer({ lightbox, closing, onClose, onNavigate, onPreviewRepair }: LightboxViewerProps) {
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [visible, setVisible] = useState(false);
   const [visibleOriginalUrl, setVisibleOriginalUrl] = useState("");
@@ -194,11 +196,12 @@ export function LightboxViewer({ lightbox, closing, onClose, onNavigate }: Light
       }
       setScreenPreviewOverrideStatus(result.media.screenPreviewStatus ?? "");
       setScreenPreviewOverrideUrl(result.media.screenPreviewUrl ?? "");
+      onPreviewRepair?.(result.media);
     }).catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [currentItem.id, currentItem.previewStatus, currentItem.screenPreviewStatus, lightbox.albumId]);
+  }, [currentItem.id, currentItem.previewStatus, currentItem.screenPreviewStatus, lightbox.albumId, onPreviewRepair]);
 
   function handleRequestOriginal() {
     setOriginalRequestedMediaId(currentItem.id);

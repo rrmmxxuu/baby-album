@@ -29,7 +29,14 @@ type uploadedMediaPreview struct {
 	ScreenPreviewObjectKey string
 }
 
-func (s *Server) generateUploadedMediaPreview(originalBlobKey, originalName string) uploadedMediaPreview {
+type GeneratedMediaPreviewArtifacts struct {
+	Width             int
+	Height            int
+	PreviewJPEG       []byte
+	ScreenPreviewJPEG []byte
+}
+
+func (s *Server) generateUploadedMediaPreview(originalBlobKey, originalName, mediaType string) uploadedMediaPreview {
 	result := uploadedMediaPreview{Status: domain.PreviewUnavailable, ScreenPreviewStatus: domain.PreviewUnavailable}
 	sourceKey := strings.TrimSpace(originalBlobKey)
 	if sourceKey == "" {
@@ -37,14 +44,14 @@ func (s *Server) generateUploadedMediaPreview(originalBlobKey, originalName stri
 	}
 	sourcePath := filepath.Join(s.blob.Root(), sourceKey)
 
-	if width, height, thumbEncoded, err := generateImagePreview(sourcePath, 480, 82); err == nil {
+	if width, height, thumbEncoded, err := generateBestStillImagePreview(sourcePath, mediaType, originalName, 480, 82); err == nil {
 		result.Width = width
 		result.Height = height
 		if blobKey, saveErr := s.savePreviewBlob(sourceKey, originalName, thumbEncoded); saveErr == nil {
 			result.Status = domain.PreviewReady
 			result.BlobKey = blobKey
 		}
-		if screenEncoded, screenErr := generateImagePreviewBytes(sourcePath, 1600, 84); screenErr == nil {
+		if _, _, screenEncoded, screenErr := generateBestStillImagePreview(sourcePath, mediaType, originalName, 1600, 84); screenErr == nil {
 			if objectKey, saveErr := s.saveScreenPreviewObject(context.Background(), sourceKey, originalName, screenEncoded); saveErr == nil {
 				result.ScreenPreviewStatus = domain.PreviewReady
 				result.ScreenPreviewObjectKey = objectKey
@@ -165,6 +172,109 @@ func generateImagePreviewBytes(sourcePath string, maxEdge, quality int) ([]byte,
 	return data, err
 }
 
+func GenerateMediaPreviewArtifacts(sourcePath, mediaType, originalName string) (GeneratedMediaPreviewArtifacts, error) {
+	result := GeneratedMediaPreviewArtifacts{}
+
+	if width, height, preview, err := generateBestStillImagePreview(sourcePath, mediaType, originalName, 480, 82); err == nil {
+		result.Width = width
+		result.Height = height
+		result.PreviewJPEG = preview
+		if screenWidth, screenHeight, screenPreview, screenErr := generateBestStillImagePreview(sourcePath, mediaType, originalName, 1600, 84); screenErr == nil {
+			if screenWidth > 0 {
+				result.Width = screenWidth
+			}
+			if screenHeight > 0 {
+				result.Height = screenHeight
+			}
+			result.ScreenPreviewJPEG = screenPreview
+		}
+		return result, nil
+	}
+
+	width, height, preview, err := generateVideoPreview(sourcePath, 480, 82)
+	if err != nil {
+		return result, err
+	}
+	result.Width = width
+	result.Height = height
+	result.PreviewJPEG = preview
+	screenPreview, screenErr := generateVideoPreviewBytes(sourcePath, 1600, 84)
+	if screenErr == nil {
+		result.ScreenPreviewJPEG = screenPreview
+	}
+	return result, nil
+}
+
+func generateBestStillImagePreview(sourcePath, mediaType, originalName string, maxEdge, quality int) (int, int, []byte, error) {
+	width, height, encoded, err := generateImagePreview(sourcePath, maxEdge, quality)
+	if err == nil {
+		return width, height, encoded, nil
+	}
+	if !allowsStillImageFFmpegFallback(mediaType, originalName) {
+		return width, height, nil, err
+	}
+	return generateFFmpegStillImagePreview(sourcePath, maxEdge, quality)
+}
+
+func allowsStillImageFFmpegFallback(mediaType, originalName string) bool {
+	mediaType = strings.ToLower(strings.TrimSpace(mediaType))
+	switch mediaType {
+	case "image/heic", "image/heif":
+		return true
+	}
+
+	switch strings.ToLower(filepath.Ext(strings.TrimSpace(originalName))) {
+	case ".heic", ".heif":
+		return true
+	default:
+		return false
+	}
+}
+
+func generateFFmpegStillImagePreview(sourcePath string, maxEdge, quality int) (int, int, []byte, error) {
+	width, height, _ := probeVisualSize(sourcePath)
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		if width > 0 && height > 0 {
+			return width, height, nil, err
+		}
+		return 0, 0, nil, err
+	}
+
+	tempDir, err := os.MkdirTemp("", "baby-album-still-preview-*")
+	if err != nil {
+		return width, height, nil, err
+	}
+	defer os.RemoveAll(tempDir)
+
+	thumbPath := filepath.Join(tempDir, "thumb.jpg")
+	cmd := exec.Command(
+		"ffmpeg",
+		"-y",
+		"-i", sourcePath,
+		"-vf", fmt.Sprintf("scale=%d:-1:force_original_aspect_ratio=decrease", maxEdge),
+		"-frames:v", "1",
+		"-q:v", strconv.Itoa(maxInt(2, 31-((quality*29)/100))),
+		thumbPath,
+	)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		if width > 0 && height > 0 {
+			return width, height, nil, fmt.Errorf("ffmpeg still preview failed: %v (%s)", err, strings.TrimSpace(string(output)))
+		}
+		return 0, 0, nil, fmt.Errorf("ffmpeg still preview failed: %v (%s)", err, strings.TrimSpace(string(output)))
+	}
+	encoded, err := os.ReadFile(thumbPath)
+	if err != nil {
+		return width, height, nil, err
+	}
+	if (width == 0 || height == 0) && len(encoded) > 0 {
+		if thumbWidth, thumbHeight, sizeErr := probeImageSize(thumbPath); sizeErr == nil {
+			width = thumbWidth
+			height = thumbHeight
+		}
+	}
+	return width, height, encoded, nil
+}
+
 func generateVideoPreview(sourcePath string, maxEdge, quality int) (int, int, []byte, error) {
 	width, height, _ := probeVideoSize(sourcePath)
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
@@ -247,6 +357,10 @@ func probeImageSize(path string) (int, int, error) {
 }
 
 func probeVideoSize(path string) (int, int, error) {
+	return probeVisualSize(path)
+}
+
+func probeVisualSize(path string) (int, int, error) {
 	if _, err := exec.LookPath("ffprobe"); err != nil {
 		return 0, 0, err
 	}

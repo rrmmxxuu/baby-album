@@ -19,7 +19,7 @@ interface MomentCardProps {
   onCommentToggle: () => void;
   onEdit: () => void;
   onOpen: (index: number) => void;
-  onPreviewRepair?: () => void;
+  onPreviewRepair?: (media: TimelineBatch["items"][number]) => void;
 }
 
 export function MomentCard({ albumId, batch, canEdit, commentComposerOpen, commentDraft, commentSubmitting, onCommentDraftChange, onCommentSubmit, onCommentToggle, onEdit, onOpen, onPreviewRepair }: MomentCardProps) {

@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
+	"encoding/base64"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -15,6 +17,8 @@ import (
 	"babyalbum/api/internal/domain"
 	"babyalbum/api/internal/store"
 )
+
+const sampleHEICBase64 = "AAAAHGZ0eXBoZWl4AAAAAG1pZjFoZWl4bWlhZgAAAXZtZXRhAAAAAAAAACFoZGxyAAAAAAAAAABwaWN0AAAAAAAAAAAAAAAAAAAAAA5waXRtAAAAAAABAAAAImlsb2MAAAAAREAAAQABAAAAAAGaAAEAAAAAAAAAIwAAACNpaW5mAAAAAAABAAAAFWluZmUCAAAAAAEAAGh2YzEAAAAA9mlwcnAAAADWaXBjbwAAAHFodmNDAQQIAAAAAAAAAAAAHvAA/Pz4+AAADwNgAAEAF0ABDAH//wQIAAADAJ/4AAADAAAeugJAYQABACZCAQEECAAAAwCf+AAAAwAAHsCCBBZbqrprmwIAAAMAAgAAAwACEGIAAQAGRAHBc8GJAAAAE2NvbHJuY2x4AAEADQAGgAAAABRpc3BlAAAAAAAAAEAAAABAAAAAKGNsYXAAAAAQAAAAAQAAABAAAAAB////0AAAAAL////QAAAAAgAAAA5waXhpAAAAAAEIAAAAGGlwbWEAAAAAAAAAAQABBYECAwWEAAAAK21kYXQAAAAfKAGuJkJKJOfXDf/+HwsXYVVzU7JsIGJEKRKAY/X0rg=="
 
 func TestHandleUploadSessionContentGeneratesPreviewInAPI(t *testing.T) {
 	blobStorage := blob.New(t.TempDir())
@@ -44,6 +48,9 @@ func TestHandleUploadSessionContentGeneratesPreviewInAPI(t *testing.T) {
 			}
 			if input.ContentSHA256 == "" {
 				t.Fatal("expected original sha256")
+			}
+			if input.DetectedMediaType != "image/jpeg" {
+				t.Fatalf("expected detected media type image/jpeg, got %s", input.DetectedMediaType)
 			}
 			if input.PreviewStatus != domain.PreviewReady {
 				t.Fatalf("expected preview ready, got %s", input.PreviewStatus)
@@ -136,6 +143,78 @@ func TestServePreviewAssetMarksMissingPreviewBlob(t *testing.T) {
 	}
 	if recorder.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", recorder.Code)
+	}
+}
+
+func TestApplyDeleteCleanupRemovesScreenPreviewObject(t *testing.T) {
+	blobStorage := blob.New(t.TempDir())
+	server := NewServerWithOptions(&stubRepository{}, blobStorage, Options{
+		MaxUploadBytes: 8 << 20,
+		R2LocalRoot:    t.TempDir(),
+	})
+	if server.screenPreviews == nil || !server.screenPreviews.Enabled() {
+		t.Fatal("expected screen preview store to be configured")
+	}
+	if _, err := server.screenPreviews.PutBytes(context.Background(), "screen-previews/media-1-preview.jpg", []byte("preview"), "image/jpeg"); err != nil {
+		t.Fatalf("seed screen preview object: %v", err)
+	}
+
+	server.applyDeleteCleanup(store.DeleteCleanup{
+		ScreenPreviewObjectKeys: []string{"screen-previews/media-1-preview.jpg"},
+	})
+
+	if _, err := server.screenPreviews.Get(context.Background(), "screen-previews/media-1-preview.jpg"); err == nil {
+		t.Fatal("expected screen preview object to be deleted")
+	}
+}
+
+func TestEnsureMediaPreviewsRepairsHEICFromOriginalBlob(t *testing.T) {
+	blobStorage := blob.New(t.TempDir())
+	heicData, err := base64.StdEncoding.DecodeString(sampleHEICBase64)
+	if err != nil {
+		t.Fatalf("decode heic fixture: %v", err)
+	}
+	saved, err := blobStorage.SaveBytes("media-1", "sample.heic", heicData)
+	if err != nil {
+		t.Fatalf("seed original blob: %v", err)
+	}
+
+	server := NewServerWithOptions(&stubRepository{}, blobStorage, Options{
+		MaxUploadBytes: 8 << 20,
+		R2LocalRoot:    t.TempDir(),
+	})
+	if server.cacheController == nil {
+		t.Fatal("expected cache controller")
+	}
+
+	item, err := server.cacheController.EnsureMediaPreviews(context.Background(), domain.MediaAsset{
+		ID:                  "media-1",
+		FamilyID:            "album-1",
+		FileName:            "sample.heic",
+		MediaType:           "image/heic",
+		OriginalBlobKey:     saved.Key,
+		OriginalLocalState:  "online",
+		PreviewStatus:       domain.PreviewUnavailable,
+		ScreenPreviewStatus: domain.PreviewUnavailable,
+		UploadedAt:          time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("repair heic previews: %v", err)
+	}
+	if item.PreviewStatus != domain.PreviewReady {
+		t.Fatalf("expected preview ready, got %s", item.PreviewStatus)
+	}
+	if item.ScreenPreviewStatus != domain.PreviewReady {
+		t.Fatalf("expected screen preview ready, got %s", item.ScreenPreviewStatus)
+	}
+	if item.Width <= 0 || item.Height <= 0 {
+		t.Fatalf("expected positive dimensions, got %dx%d", item.Width, item.Height)
+	}
+	if item.PreviewBlobKey == "" {
+		t.Fatal("expected preview blob key")
+	}
+	if item.ScreenPreviewObjectKey == "" {
+		t.Fatal("expected screen preview object key")
 	}
 }
 

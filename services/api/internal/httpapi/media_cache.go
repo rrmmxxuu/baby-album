@@ -340,7 +340,7 @@ func (c *mediaCacheController) attachScreenPreviewFromWarmOriginalLocked(ctx con
 }
 
 func (c *mediaCacheController) attachScreenPreviewFromSourcePathLocked(ctx context.Context, item domain.MediaAsset, sourcePath, sourceBlobKey string) (domain.MediaAsset, error) {
-	if width, height, encoded, err := generateImagePreview(sourcePath, 1600, 84); err == nil {
+	if width, height, encoded, err := generateBestStillImagePreview(sourcePath, item.MediaType, item.FileName, 1600, 84); err == nil {
 		objectKey, saveErr := c.saveScreenPreviewObject(ctx, sourceBlobKey, item.FileName, encoded)
 		if saveErr != nil {
 			return item, saveErr
@@ -406,7 +406,7 @@ func (c *mediaCacheController) attachThumbFromScreenPreviewLocked(ctx context.Co
 }
 
 func (c *mediaCacheController) attachThumbFromSourcePathLocked(item domain.MediaAsset, sourcePath, sourceBlobKey string) (domain.MediaAsset, error) {
-	if width, height, encoded, err := generateImagePreview(sourcePath, 480, 82); err == nil {
+	if width, height, encoded, err := generateBestStillImagePreview(sourcePath, item.MediaType, item.FileName, 480, 82); err == nil {
 		blobKey, saveErr := c.savePreviewBlob(sourceBlobKey, item.FileName, encoded)
 		if saveErr != nil {
 			return item, saveErr

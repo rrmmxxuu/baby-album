@@ -1,4 +1,4 @@
-import type { AlbumSummary, AlbumWorkspace, BabyProfile } from "../../../lib/types";
+import type { AlbumSummary, AlbumWorkspace, BabyProfile, MediaAsset } from "../../../lib/types";
 import type { TimelineDayGroup } from "../model/types";
 import type { TimelineState } from "../hooks/use-timeline-state";
 import { PanelMessage } from "../../ui/panel-message";
@@ -17,7 +17,7 @@ interface PhotosTabProps {
   onAlbumChange: (albumId: string) => void;
   onEditEntry: (entryId: string) => void;
   onOpenLightbox: (entryId: string, mediaId: string) => void;
-  onPreviewRepair?: () => void;
+  onPreviewRepair?: (media: MediaAsset) => void;
 }
 
 export function PhotosTab({ activeTab, activeAlbum, activeBaby, albumOptions, timeline, timelineDays, currentUserId, onAlbumChange, onEditEntry, onOpenLightbox, onPreviewRepair }: PhotosTabProps) {

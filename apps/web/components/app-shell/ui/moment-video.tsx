@@ -5,7 +5,7 @@ interface MomentVideoProps {
   albumId: string;
   item: MediaAsset;
   onOpen: () => void;
-  onPreviewRepair?: () => void;
+  onPreviewRepair?: (media: MediaAsset) => void;
 }
 
 export function MomentVideo({ albumId, item, onOpen, onPreviewRepair }: MomentVideoProps) {

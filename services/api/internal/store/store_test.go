@@ -23,6 +23,36 @@ func TestNormalizeCapturedAt(t *testing.T) {
 	}
 }
 
+func TestParseCapturedAtMetadata(t *testing.T) {
+	t.Run("parses zoned timestamps directly", func(t *testing.T) {
+		got := ParseCapturedAtMetadata("2026-04-03T08:09:10+08:00", "UTC")
+		if got == nil {
+			t.Fatal("expected parsed timestamp")
+		}
+		want := time.Date(2026, 4, 3, 0, 9, 10, 0, time.UTC)
+		if !got.Equal(want) {
+			t.Fatalf("expected %v, got %v", want, *got)
+		}
+	})
+
+	t.Run("parses local EXIF timestamps using album timezone", func(t *testing.T) {
+		got := ParseCapturedAtMetadata("2026:04:03 08:09:10", "Asia/Shanghai")
+		if got == nil {
+			t.Fatal("expected parsed timestamp")
+		}
+		want := time.Date(2026, 4, 3, 0, 9, 10, 0, time.UTC)
+		if !got.Equal(want) {
+			t.Fatalf("expected %v, got %v", want, *got)
+		}
+	})
+
+	t.Run("returns nil for blank input", func(t *testing.T) {
+		if got := ParseCapturedAtMetadata("", "Asia/Shanghai"); got != nil {
+			t.Fatalf("expected nil, got %v", *got)
+		}
+	})
+}
+
 func TestTimelineCursorRoundTrip(t *testing.T) {
 	entry := domain.TimelineEntry{
 		ID:         "entry-demo",

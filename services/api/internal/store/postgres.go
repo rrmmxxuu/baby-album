@@ -1454,20 +1454,24 @@ type mediaDeletionJob struct {
 }
 
 func (s *PostgresStore) collectEntryDeleteCleanupTx(tx *sql.Tx, albumID, entryID string) (DeleteCleanup, []mediaDeletionJob, error) {
-	rows, err := tx.Query(`select preview_blob_key, original_blob_key, original_r2_key from media_assets where family_id = $1 and entry_id = $2`, albumID, entryID)
+	rows, err := tx.Query(`select preview_blob_key, screen_preview_object_key, original_blob_key, original_r2_key from media_assets where family_id = $1 and entry_id = $2`, albumID, entryID)
 	if err != nil {
 		return DeleteCleanup{}, nil, err
 	}
 	defer rows.Close()
 	localKeys := make(map[string]struct{})
+	screenPreviewKeys := make(map[string]struct{})
 	warmKeys := make(map[string]struct{})
 	for rows.Next() {
-		var previewKey, originalKey, warmKey string
-		if err := rows.Scan(&previewKey, &originalKey, &warmKey); err != nil {
+		var previewKey, screenPreviewKey, originalKey, warmKey string
+		if err := rows.Scan(&previewKey, &screenPreviewKey, &originalKey, &warmKey); err != nil {
 			return DeleteCleanup{}, nil, err
 		}
 		if previewKey != "" {
 			localKeys[previewKey] = struct{}{}
+		}
+		if screenPreviewKey != "" {
+			screenPreviewKeys[screenPreviewKey] = struct{}{}
 		}
 		if originalKey != "" {
 			localKeys[originalKey] = struct{}{}
@@ -1496,14 +1500,15 @@ func (s *PostgresStore) collectEntryDeleteCleanupTx(tx *sql.Tx, albumID, entryID
 		return DeleteCleanup{}, nil, err
 	}
 	return DeleteCleanup{
-		LocalBlobKeys:  mapKeys(localKeys),
-		WarmObjectKeys: mapKeys(warmKeys),
+		LocalBlobKeys:           mapKeys(localKeys),
+		ScreenPreviewObjectKeys: mapKeys(screenPreviewKeys),
+		WarmObjectKeys:          mapKeys(warmKeys),
 	}, jobs, nil
 }
 
 func (s *PostgresStore) collectMediaDeleteCleanupTx(tx *sql.Tx, albumID, entryID, mediaID string) (DeleteCleanup, []mediaDeletionJob, error) {
-	var previewKey, originalKey, warmKey string
-	err := tx.QueryRow(`select preview_blob_key, original_blob_key, original_r2_key from media_assets where family_id = $1 and entry_id = $2 and id = $3`, albumID, entryID, mediaID).Scan(&previewKey, &originalKey, &warmKey)
+	var previewKey, screenPreviewKey, originalKey, warmKey string
+	err := tx.QueryRow(`select preview_blob_key, screen_preview_object_key, original_blob_key, original_r2_key from media_assets where family_id = $1 and entry_id = $2 and id = $3`, albumID, entryID, mediaID).Scan(&previewKey, &screenPreviewKey, &originalKey, &warmKey)
 	if err == sql.ErrNoRows {
 		return DeleteCleanup{}, nil, ErrNotFound
 	}
@@ -1529,6 +1534,9 @@ func (s *PostgresStore) collectMediaDeleteCleanupTx(tx *sql.Tx, albumID, entryID
 	cleanup := DeleteCleanup{}
 	if previewKey != "" {
 		cleanup.LocalBlobKeys = append(cleanup.LocalBlobKeys, previewKey)
+	}
+	if screenPreviewKey != "" {
+		cleanup.ScreenPreviewObjectKeys = append(cleanup.ScreenPreviewObjectKeys, screenPreviewKey)
 	}
 	if originalKey != "" {
 		cleanup.LocalBlobKeys = append(cleanup.LocalBlobKeys, originalKey)
@@ -1645,6 +1653,9 @@ func (s *PostgresStore) DeleteTimelineEntryMedia(userID, albumID, entryID, media
 	}
 	if affected == 0 {
 		return DeleteCleanup{}, ErrNotFound
+	}
+	if err := s.recalculateCapturedTimelineEntryTx(tx, albumID, entryID); err != nil {
+		return DeleteCleanup{}, err
 	}
 	if err := tx.Commit(); err != nil {
 		return DeleteCleanup{}, err
@@ -2104,6 +2115,16 @@ func (s *PostgresStore) AttachUploadContent(userID, sessionID string, input Uplo
 	if session.Status != "created" {
 		return domain.UploadSession{}, ErrConflict
 	}
+	family, err := s.familyByID(session.FamilyID)
+	if err != nil {
+		return domain.UploadSession{}, err
+	}
+	detectedCapturedAt := ParseCapturedAtMetadata(input.DetectedCapturedAtRaw, family.Timezone)
+	detectedTimelineDay := ""
+	if detectedCapturedAt != nil {
+		detectedTimelineDay = detectedCapturedAt.UTC().Format("2006-01-02")
+	}
+	detectedMediaType := strings.ToLower(strings.TrimSpace(input.DetectedMediaType))
 	now := time.Now().UTC()
 	jobID := newID("job")
 	tx, err := s.db.Begin()
@@ -2114,7 +2135,10 @@ func (s *PostgresStore) AttachUploadContent(userID, sessionID string, input Uplo
 	if _, err := tx.Exec(`update upload_sessions set status = $1, byte_size = $2, blob_key = $3, failure_reason = '' where id = $4`, "uploaded", input.ByteSize, input.BlobKey, sessionID); err != nil {
 		return domain.UploadSession{}, err
 	}
-	if _, err := tx.Exec(`update media_assets set byte_size = $1, original_blob_key = $2, content_sha256 = $3, width = $4, height = $5, preview_status = $6, preview_blob_key = $7, screen_preview_status = $8, screen_preview_object_key = $9, original_local_state = 'online', original_restore_state = 'idle', original_last_accessed_at = $10 where id = $11`, input.ByteSize, input.BlobKey, strings.ToLower(strings.TrimSpace(input.ContentSHA256)), input.Width, input.Height, input.PreviewStatus, input.PreviewBlobKey, input.ScreenPreviewStatus, input.ScreenPreviewObjectKey, now, session.MediaID); err != nil {
+	if _, err := tx.Exec(`update media_assets set byte_size = $1, original_blob_key = $2, content_sha256 = $3, media_type = case when $4 <> '' then $4 else media_type end, captured_at = case when $5 is not null then $5 else captured_at end, timeline_day = case when $6 <> '' then $6 else timeline_day end, width = $7, height = $8, preview_status = $9, preview_blob_key = $10, screen_preview_status = $11, screen_preview_object_key = $12, original_local_state = 'online', original_restore_state = 'idle', original_last_accessed_at = $13 where id = $14`, input.ByteSize, input.BlobKey, strings.ToLower(strings.TrimSpace(input.ContentSHA256)), detectedMediaType, nullableTime(detectedCapturedAt), detectedTimelineDay, input.Width, input.Height, input.PreviewStatus, input.PreviewBlobKey, input.ScreenPreviewStatus, input.ScreenPreviewObjectKey, now, session.MediaID); err != nil {
+		return domain.UploadSession{}, err
+	}
+	if err := s.recalculateCapturedTimelineEntryTx(tx, session.FamilyID, session.EntryID); err != nil {
 		return domain.UploadSession{}, err
 	}
 	if _, err := tx.Exec(`insert into agent_jobs (id, node_id, family_id, media_id, type, status, created_at, updated_at) values ($1,$2,$3,$4,$5,$6,$7,$8)`, jobID, session.AssignedTo, session.FamilyID, session.MediaID, "ingest_media", domain.JobPending, now, now); err != nil {
@@ -2127,6 +2151,9 @@ func (s *PostgresStore) AttachUploadContent(userID, sessionID string, input Uplo
 	session.Status = "uploaded"
 	session.ByteSize = input.ByteSize
 	session.BlobKey = input.BlobKey
+	if detectedMediaType != "" {
+		session.MediaType = detectedMediaType
+	}
 	return session, nil
 }
 
@@ -2814,6 +2841,36 @@ func (s *PostgresStore) ensureTimelineEntry(albumID, entryID string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+func (s *PostgresStore) recalculateCapturedTimelineEntryTx(tx *sql.Tx, albumID, entryID string) error {
+	if strings.TrimSpace(entryID) == "" {
+		return nil
+	}
+
+	var timeMode string
+	err := tx.QueryRow(`select time_mode from timeline_entries where family_id = $1 and id = $2 for update`, albumID, entryID).Scan(&timeMode)
+	if err == sql.ErrNoRows {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if domain.TimelineEntryTimeMode(timeMode) != domain.EntryTimeCaptured {
+		return nil
+	}
+
+	var displayAt sql.NullTime
+	if err := tx.QueryRow(`select min(captured_at) from media_assets where family_id = $1 and entry_id = $2`, albumID, entryID).Scan(&displayAt); err != nil {
+		return err
+	}
+	if !displayAt.Valid {
+		return nil
+	}
+
+	value := displayAt.Time.UTC()
+	_, err = tx.Exec(`update timeline_entries set display_at = $1, timeline_day = $2 where family_id = $3 and id = $4`, value, value.Format("2006-01-02"), albumID, entryID)
+	return err
 }
 
 func (s *PostgresStore) timelineEntryByID(albumID, entryID string) (domain.TimelineEntry, error) {

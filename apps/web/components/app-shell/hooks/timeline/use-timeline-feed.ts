@@ -3,7 +3,7 @@
 import type { RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
 import { loadTimelinePage } from "../../../../lib/api";
-import type { AlbumWorkspace, AppStatePayload, TimelineEntry } from "../../../../lib/types";
+import type { AlbumWorkspace, AppStatePayload, MediaAsset, TimelineEntry } from "../../../../lib/types";
 import { TIMELINE_PAGE_SIZE } from "../../model/constants";
 import { errorMessageFromUnknown } from "../../model/feedback";
 import { mergeTimelineEntries } from "../../model/timeline";
@@ -75,6 +75,23 @@ export function useTimelineFeed({ active, activeAlbum, scrollContainerRef, refre
     }
   }
 
+  function patchMediaAsset(updatedMedia: MediaAsset) {
+    setTimelineEntries((current) => {
+      let changed = false;
+      const next = current.map((entry) => {
+        if (!entry.items.some((item) => item.id === updatedMedia.id)) {
+          return entry;
+        }
+        changed = true;
+        return {
+          ...entry,
+          items: entry.items.map((item) => item.id === updatedMedia.id ? updatedMedia : item)
+        };
+      });
+      return changed ? next : current;
+    });
+  }
+
   useEffect(() => {
     if (!activeAlbum) {
       timelineAlbumRef.current = "";
@@ -115,34 +132,15 @@ export function useTimelineFeed({ active, activeAlbum, scrollContainerRef, refre
     return () => observer.disconnect();
   }, [active, activeAlbum, scrollContainerRef, timelineHasMore, timelineLoading, timelineLoadingMore, timelineRefreshing, timelineNextCursor]);
 
-  const hasPendingPreview = timelineEntries.some((entry) => entry.items.some((item) => item.previewStatus !== "ready"));
-
-  useEffect(() => {
-    if (!active || !activeAlbum || !hasPendingPreview) {
-      return;
-    }
-    const timer = window.setInterval(() => {
-      void replaceTimeline(activeAlbum.album.id, Math.max(TIMELINE_PAGE_SIZE, timelineEntries.length), true);
-    }, 4000);
-    return () => window.clearInterval(timer);
-  }, [active, activeAlbum, hasPendingPreview, timelineEntries.length]);
-
   function refreshTimelineSoon(targetAlbumId: string) {
     void replaceTimeline(targetAlbumId, Math.max(TIMELINE_PAGE_SIZE, timelineEntries.length), true);
     void refreshApp(targetAlbumId);
-    window.setTimeout(() => {
-      void replaceTimeline(targetAlbumId, Math.max(TIMELINE_PAGE_SIZE, timelineEntries.length), true);
-      void refreshApp(targetAlbumId);
-    }, 2000);
-    window.setTimeout(() => {
-      void replaceTimeline(targetAlbumId, Math.max(TIMELINE_PAGE_SIZE, timelineEntries.length), true);
-      void refreshApp(targetAlbumId);
-    }, 5000);
   }
 
   return {
     timelineEntries,
     setTimelineEntries,
+    patchMediaAsset,
     timelineHasMore,
     timelineLoading,
     timelineLoadingMore,

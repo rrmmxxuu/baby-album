@@ -105,6 +105,12 @@ func (s *Server) applyDeleteCleanup(cleanup store.DeleteCleanup) {
 	for _, key := range cleanup.LocalBlobKeys {
 		_ = s.blob.Delete(key)
 	}
+	for _, key := range cleanup.ScreenPreviewObjectKeys {
+		if s.screenPreviews == nil || !s.screenPreviews.Enabled() {
+			continue
+		}
+		_ = s.screenPreviews.Delete(context.Background(), key)
+	}
 	if s.cacheController == nil {
 		return
 	}

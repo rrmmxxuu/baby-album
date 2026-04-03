@@ -9,14 +9,14 @@ interface MomentThumbProps {
   item: MediaAsset;
   large?: boolean;
   onOpen?: () => void;
-  onPreviewRepair?: () => void;
+  onPreviewRepair?: (media: MediaAsset) => void;
 }
 
 const repairCooldownByMediaId = new Map<string, number>();
 const repairInFlightByMediaId = new Map<string, Promise<void>>();
 const REPAIR_COOLDOWN_MS = 30_000;
 
-function triggerPreviewRepair(albumId: string, item: MediaAsset, onPreviewRepair?: () => void) {
+function triggerPreviewRepair(albumId: string, item: MediaAsset, onPreviewRepair?: (media: MediaAsset) => void) {
   const existing = repairInFlightByMediaId.get(item.id);
   if (existing) {
     return existing;
@@ -27,8 +27,8 @@ function triggerPreviewRepair(albumId: string, item: MediaAsset, onPreviewRepair
   }
   repairCooldownByMediaId.set(item.id, Date.now());
   const task = repairMediaPreview(albumId, item.id)
-    .then(() => {
-      onPreviewRepair?.();
+    .then((result) => {
+      onPreviewRepair?.(result.media);
     })
     .catch(() => {})
     .finally(() => {

@@ -1,4 +1,5 @@
 import type { DraftDuplicateState, DraftMedia } from "../model/types";
+import { DraftMediaThumb } from "./draft-media-thumb";
 
 interface DraftMediaGridProps {
   draftId: string;
@@ -13,7 +14,7 @@ export function DraftMediaGrid({ draftId, duplicateItemStates, items, onAppendFi
     <div className={`draftEditorMedia draftEditorMedia${Math.min(items.length, 4)}`}>
       {items.map((item) => (
         <div className="draftEditorMediaCard draftPreviewSurface" key={item.id}>
-          <img alt={item.fileName} src={item.previewUrl} />
+          <DraftMediaThumb item={item} />
           {duplicateItemStates[item.id]?.status === "duplicate" ? <span className="draftDuplicateBadge">重复</span> : null}
           <div className="draftMediaActions">
             <button className="draftRemoveButton" onClick={() => onRemoveItem(draftId, item.id)} type="button">移除</button>

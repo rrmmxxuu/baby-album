@@ -2,7 +2,7 @@
 
 import type { RefObject } from "react";
 import { useEffect, useState } from "react";
-import type { TimelineEntry } from "../../../../lib/types";
+import type { MediaAsset, TimelineEntry } from "../../../../lib/types";
 import { OVERLAY_EXIT_MS } from "../../model/constants";
 import { moveLightbox } from "../../model/timeline";
 import type { LightboxState } from "../../model/types";
@@ -116,6 +116,35 @@ export function useTimelineOverlays({ scrollContainerRef, timelineEntries }: Use
     setDraftSheetOpen(false);
   }
 
+  function patchMediaAsset(updatedMedia: MediaAsset) {
+    setLightbox((current) => {
+      if (!current || current.batch.entry.id !== updatedMedia.entryId) {
+        return current;
+      }
+      const entryItems = current.batch.entry.items.map((item) => item.id === updatedMedia.id ? updatedMedia : item);
+      return {
+        ...current,
+        batch: {
+          ...current.batch,
+          entry: {
+            ...current.batch.entry,
+            items: entryItems
+          },
+          items: current.batch.items.map((item) => item.id === updatedMedia.id ? updatedMedia : item)
+        }
+      };
+    });
+    setEditingEntry((current) => {
+      if (!current || current.id !== updatedMedia.entryId) {
+        return current;
+      }
+      return {
+        ...current,
+        items: current.items.map((item) => item.id === updatedMedia.id ? updatedMedia : item)
+      };
+    });
+  }
+
   return {
     lightbox,
     lightboxClosing,
@@ -126,6 +155,7 @@ export function useTimelineOverlays({ scrollContainerRef, timelineEntries }: Use
     editingEntry,
     openNewDraftSheet,
     openEditEntry,
-    closeDraftSheet
+    closeDraftSheet,
+    patchMediaAsset
   };
 }

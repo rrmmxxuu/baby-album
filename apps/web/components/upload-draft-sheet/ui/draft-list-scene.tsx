@@ -2,6 +2,7 @@ import type { UploadDraftState } from "../hooks/use-upload-draft-state";
 import type { DraftDuplicateCheckState } from "../hooks/use-draft-duplicate-check";
 import { draftDayLabel, timeModeLabel, visibilityLabel } from "../model/drafts";
 import { DraftCaptionField } from "./draft-caption-field";
+import { DraftMediaThumb } from "./draft-media-thumb";
 
 interface DraftListSceneProps {
   draftState: UploadDraftState;
@@ -32,7 +33,7 @@ export function DraftListScene({ draftState, duplicateState }: DraftListScenePro
                 <div className="draftListThumbs draftPreviewSurface">
                   {draft.items.map((item) => (
                     <div className="draftListThumbCard" key={item.id}>
-                      <img alt={item.fileName} src={item.previewUrl} />
+                      <DraftMediaThumb item={item} />
                       {duplicateState.itemStates[item.id]?.status === "duplicate" ? <span className="draftDuplicateBadge">重复</span> : null}
                     </div>
                   ))}

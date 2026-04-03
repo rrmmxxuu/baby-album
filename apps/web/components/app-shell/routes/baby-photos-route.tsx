@@ -202,7 +202,7 @@ export function BabyPhotosRoute() {
         onAlbumChange={handleAlbumChange}
         onEditEntry={handleOpenEditEntry}
         onOpenLightbox={handleOpenLightbox}
-        onPreviewRepair={() => timeline.refreshTimelineSoon(workspace.album.id)}
+        onPreviewRepair={timeline.patchMediaAsset}
         timeline={timeline}
         timelineDays={timelineDays}
       />
@@ -214,6 +214,7 @@ export function BabyPhotosRoute() {
           lightbox={timeline.lightbox}
           onClose={handleCloseLightbox}
           onNavigate={handleNavigateLightbox}
+          onPreviewRepair={timeline.patchMediaAsset}
         />
       ) : null}
 

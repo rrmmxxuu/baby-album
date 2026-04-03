@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { AlbumWorkspace } from "../../../lib/types";
+import type { AlbumWorkspace, MediaAsset } from "../../../lib/types";
 import type { TimelineState } from "../hooks/use-timeline-state";
 import { formatTimelineDate } from "../model/format";
 import type { TimelineDayGroup } from "../model/types";
@@ -15,7 +15,7 @@ interface TimelineDaySectionProps {
   currentUserId?: string;
   onEditEntry: (entryId: string) => void;
   onOpenLightbox: (entryId: string, mediaId: string) => void;
-  onPreviewRepair?: () => void;
+  onPreviewRepair?: (media: MediaAsset) => void;
   priority?: boolean;
 }
 

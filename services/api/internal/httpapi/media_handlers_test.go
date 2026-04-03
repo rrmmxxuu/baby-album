@@ -10,6 +10,9 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -178,6 +181,9 @@ func TestEnsureMediaPreviewsRepairsHEICFromOriginalBlob(t *testing.T) {
 	if err != nil {
 		t.Fatalf("seed original blob: %v", err)
 	}
+	if !heicPreviewSupported(t, filepath.Join(blobStorage.Root(), saved.Key)) {
+		t.Skip("ffmpeg on this runner does not support HEIC decoding")
+	}
 
 	server := NewServerWithOptions(&stubRepository{}, blobStorage, Options{
 		MaxUploadBytes: 8 << 20,
@@ -216,6 +222,28 @@ func TestEnsureMediaPreviewsRepairsHEICFromOriginalBlob(t *testing.T) {
 	if item.ScreenPreviewObjectKey == "" {
 		t.Fatal("expected screen preview object key")
 	}
+}
+
+func heicPreviewSupported(t *testing.T, sourcePath string) bool {
+	t.Helper()
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		return false
+	}
+	tempDir := t.TempDir()
+	outputPath := filepath.Join(tempDir, "probe.jpg")
+	cmd := exec.Command(
+		"ffmpeg",
+		"-v", "error",
+		"-y",
+		"-i", sourcePath,
+		"-frames:v", "1",
+		outputPath,
+	)
+	if err := cmd.Run(); err != nil {
+		return false
+	}
+	info, err := os.Stat(outputPath)
+	return err == nil && info.Size() > 0
 }
 
 func TestServeOriginalAssetMarksMissingLocalOriginal(t *testing.T) {

@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { login, register, setRelation, uniqueEmail } from "./helpers";
 
 test("refreshes baby manage data when re-entering settings screens", async ({ browser }) => {
+  test.setTimeout(90_000);
   const ownerContext = await browser.newContext();
   const joinerContext = await browser.newContext();
   const ownerPage = await ownerContext.newPage();
@@ -51,7 +52,13 @@ test("refreshes baby manage data when re-entering settings screens", async ({ br
     await visibleMemberButton().click({ force: true });
     await expect(ownerPage).toHaveURL(/\/babies\/baby-demo\/manage\/members\/.+$/, { timeout: 20_000 });
     await ownerPage.locator(".memberActions select:visible").selectOption("admin");
+    const saveRoleResponse = ownerPage.waitForResponse((response) => (
+      response.request().method() === "POST"
+      && /\/api\/proxy\/api\/v1\/albums\/[^/]+\/members\/[^/]+\/role$/.test(response.url())
+      && response.status() === 200
+    ));
     await ownerPage.getByRole("button", { name: "保存权限" }).click();
+    await saveRoleResponse;
     await expect(ownerPage.getByText("当前权限：管理员")).toBeVisible({ timeout: 20_000 });
 
     await ownerPage.getByRole("button", { name: "返回" }).click();

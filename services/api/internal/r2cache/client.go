@@ -84,8 +84,8 @@ func (c *Client) PutFile(ctx context.Context, key, filePath, contentType string)
 	if err != nil {
 		return 0, err
 	}
+	req.ContentLength = info.Size()
 	req.Header.Set("Content-Type", contentType)
-	req.Header.Set("Content-Length", fmt.Sprintf("%d", info.Size()))
 	if err := c.sign(req, payloadHash, time.Now().UTC()); err != nil {
 		return 0, err
 	}

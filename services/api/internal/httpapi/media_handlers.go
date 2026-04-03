@@ -191,6 +191,11 @@ func (s *Server) servePreviewAsset(w http.ResponseWriter, r *http.Request, item 
 	}
 	file, err := s.blob.Open(item.PreviewBlobKey)
 	if err != nil {
+		if s.cacheController != nil {
+			go s.cacheController.RepairMissingPreview(item)
+		} else if s.mediaStore != nil {
+			_ = s.mediaStore.MarkPreviewMissing(item.ID)
+		}
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "preview blob not found"})
 		return
 	}
@@ -219,6 +224,15 @@ func (s *Server) serveOriginalAsset(w http.ResponseWriter, r *http.Request, item
 	if availability == domain.OriginalHot {
 		if err := s.serveLocalOriginal(w, r, item); err == nil {
 			return
+		}
+		if s.mediaStore != nil {
+			_ = s.mediaStore.MarkOriginalBlobMissing(item.ID)
+		}
+		item.OriginalBlobKey = ""
+		if strings.TrimSpace(item.OriginalPath) != "" {
+			item.OriginalLocalState = "evicted"
+		} else {
+			item.OriginalLocalState = "pending"
 		}
 		if item.OriginalR2State == "online" && strings.TrimSpace(item.OriginalR2Key) != "" {
 			availability = domain.OriginalWarm
@@ -338,6 +352,9 @@ func (s *Server) handleBabyAvatarAsset(w http.ResponseWriter, r *http.Request, b
 	}
 	file, err := s.blob.Open(baby.AvatarKey)
 	if err != nil {
+		if s.mediaStore != nil {
+			_ = s.mediaStore.ClearBabyAvatar(baby.ID)
+		}
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "avatar blob not found"})
 		return
 	}

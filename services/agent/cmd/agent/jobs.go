@@ -7,10 +7,13 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 )
+
+const agentJobLongPollSeconds = 25
 
 type workerHooks interface {
 	onPendingJobs(items []job)
@@ -21,7 +24,8 @@ type workerHooks interface {
 }
 
 func processJobs(ctx context.Context, controlClient, transferClient *http.Client, cfg config, hooks workerHooks) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/api/v1/agents/jobs?nodeId=%s", cfg.apiBaseURL, cfg.nodeID), nil)
+	jobsURL := fmt.Sprintf("%s/api/v1/agents/jobs?nodeId=%s&waitSeconds=%d", cfg.apiBaseURL, url.QueryEscape(cfg.nodeID), agentJobLongPollSeconds)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, jobsURL, nil)
 	if err != nil {
 		return err
 	}

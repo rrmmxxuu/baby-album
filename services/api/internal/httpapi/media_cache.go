@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,9 +24,16 @@ type mediaStateStore interface {
 	ResolveOriginalStatus(userID, albumID, mediaID string, triggerRestore bool) (domain.MediaAsset, error)
 	RecordOriginalAccess(mediaID string, accessedAt time.Time) error
 	ReferencedBlobKeys() ([]string, error)
+	PreviewBlobAssets(limit int) ([]domain.MediaAsset, error)
+	LocalOriginalBlobAssets(limit int) ([]domain.MediaAsset, error)
+	AvatarBabies(limit int) ([]domain.BabyProfile, error)
+	MarkPreviewMissing(mediaID string) error
+	AttachPreviewBlob(mediaID string, input store.PreviewBlobAttachmentInput) error
 	LocalOriginalEvictionCandidates(limit int, processedBefore time.Time) ([]domain.MediaAsset, error)
 	MarkOriginalEvicted(mediaID string, evictedAt time.Time) error
 	AttachLocalOriginalBlob(mediaID, blobKey string, accessedAt time.Time) error
+	MarkOriginalBlobMissing(mediaID string) error
+	ClearBabyAvatar(babyID string) error
 	MarkOriginalR2Uploaded(mediaID, r2Key string) error
 	MarkOriginalR2Missing(mediaID string) error
 	CurrentMonthR2Usage(monthKey string) (int64, int64, error)
@@ -215,6 +223,12 @@ func (c *mediaCacheController) OpenWarmOriginal(ctx context.Context, item domain
 	return result, nil
 }
 
+func (c *mediaCacheController) RepairMissingPreview(item domain.MediaAsset) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.repairMissingPreviewLocked(item)
+}
+
 func (c *mediaCacheController) DeleteWarmObject(ctx context.Context, key string) error {
 	if !c.r2.Enabled() || strings.TrimSpace(key) == "" {
 		return nil
@@ -225,9 +239,154 @@ func (c *mediaCacheController) DeleteWarmObject(ctx context.Context, key string)
 func (c *mediaCacheController) runMaintenance() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.reconcileMissingBlobReferences()
 	c.cleanupOrphanBlobs()
 	c.evictLocalOriginals()
 	c.trimWarmCache()
+}
+
+func (c *mediaCacheController) reconcileMissingBlobReferences() {
+	previews, err := c.store.PreviewBlobAssets(1024)
+	if err == nil {
+		for _, item := range previews {
+			if c.localBlobExists(item.PreviewBlobKey) {
+				continue
+			}
+			c.repairMissingPreviewLocked(item)
+		}
+	}
+
+	originals, err := c.store.LocalOriginalBlobAssets(1024)
+	if err == nil {
+		for _, item := range originals {
+			if c.localBlobExists(item.OriginalBlobKey) {
+				continue
+			}
+			_ = c.store.MarkOriginalBlobMissing(item.ID)
+		}
+	}
+
+	babies, err := c.store.AvatarBabies(1024)
+	if err == nil {
+		for _, baby := range babies {
+			if c.localBlobExists(baby.AvatarKey) {
+				continue
+			}
+			_ = c.store.ClearBabyAvatar(baby.ID)
+		}
+	}
+}
+
+func (c *mediaCacheController) repairMissingPreviewLocked(item domain.MediaAsset) {
+	_ = c.store.MarkPreviewMissing(item.ID)
+
+	if strings.TrimSpace(item.OriginalBlobKey) != "" && c.localBlobExists(item.OriginalBlobKey) {
+		if err := c.attachPreviewFromSourcePathLocked(item, filepath.Join(c.blob.Root(), strings.TrimSpace(item.OriginalBlobKey)), item.OriginalBlobKey); err == nil {
+			return
+		}
+	}
+	if item.OriginalR2State == "online" && strings.TrimSpace(item.OriginalR2Key) != "" {
+		_ = c.attachPreviewFromWarmOriginalLocked(item)
+	}
+}
+
+func (c *mediaCacheController) attachPreviewFromWarmOriginalLocked(item domain.MediaAsset) error {
+	result, err := c.OpenWarmOriginal(context.Background(), item)
+	if err != nil {
+		return err
+	}
+	defer result.Body.Close()
+
+	tempDir, err := os.MkdirTemp("", "baby-album-preview-repair-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tempDir)
+
+	sourcePath := filepath.Join(tempDir, filepath.Base(strings.TrimSpace(item.FileName)))
+	file, err := os.Create(sourcePath)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(file, result.Body); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	return c.attachPreviewFromSourcePathLocked(item, sourcePath, firstNonEmptyBlobKey(item.OriginalR2Key, item.ID))
+}
+
+func (c *mediaCacheController) attachPreviewFromSourcePathLocked(item domain.MediaAsset, sourcePath, sourceBlobKey string) error {
+	if width, height, encoded, err := generateImagePreview(sourcePath); err == nil {
+		blobKey, saveErr := c.savePreviewBlob(sourceBlobKey, item.FileName, encoded)
+		if saveErr != nil {
+			return saveErr
+		}
+		return c.store.AttachPreviewBlob(item.ID, store.PreviewBlobAttachmentInput{
+			BlobKey: blobKey,
+			Width:   width,
+			Height:  height,
+		})
+	}
+	if width, height, encoded, err := generateVideoPreview(sourcePath); err == nil {
+		blobKey, saveErr := c.savePreviewBlob(sourceBlobKey, item.FileName, encoded)
+		if saveErr != nil {
+			return saveErr
+		}
+		return c.store.AttachPreviewBlob(item.ID, store.PreviewBlobAttachmentInput{
+			BlobKey: blobKey,
+			Width:   width,
+			Height:  height,
+		})
+	}
+	return store.ErrNotFound
+}
+
+func (c *mediaCacheController) savePreviewBlob(sourceBlobKey, originalName string, data []byte) (string, error) {
+	if len(data) == 0 {
+		return "", store.ErrNotFound
+	}
+	if c.localMaxBytes > 0 {
+		used, err := c.blob.UsedBytes()
+		if err != nil {
+			return "", err
+		}
+		if used+int64(len(data)) > c.localMaxBytes {
+			return "", errInsufficientLocalStorage
+		}
+	}
+	prefix := strings.TrimSuffix(filepath.Base(strings.TrimSpace(sourceBlobKey)), filepath.Ext(strings.TrimSpace(sourceBlobKey))) + "-preview"
+	if strings.TrimSpace(prefix) == "" {
+		prefix = "preview"
+	}
+	saved, err := c.blob.SaveBytes(prefix, previewFileName(originalName), data)
+	if err != nil {
+		return "", err
+	}
+	return saved.Key, nil
+}
+
+func (c *mediaCacheController) localBlobExists(key string) bool {
+	if strings.TrimSpace(key) == "" {
+		return false
+	}
+	file, err := c.blob.Open(key)
+	if err != nil {
+		return false
+	}
+	_ = file.Close()
+	return true
+}
+
+func firstNonEmptyBlobKey(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func (c *mediaCacheController) cleanupOrphanBlobs() {

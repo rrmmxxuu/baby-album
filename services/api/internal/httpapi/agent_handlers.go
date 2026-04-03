@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -114,12 +115,77 @@ func (s *Server) handleAgentJobs(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "nodeId is required"})
 		return
 	}
-	jobs, err := s.store.PendingJobs(nodeID, r.Header.Get("X-Node-Token"))
+	waitTimeout, err := parseAgentJobsWaitTimeout(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	nodeToken := r.Header.Get("X-Node-Token")
+	if waitTimeout <= 0 {
+		s.writePendingJobs(w, nodeID, nodeToken)
+		return
+	}
+
+	updates, unsubscribe := s.agentJobHub.Subscribe(nodeID)
+	defer unsubscribe()
+	deadline := time.Now().UTC().Add(waitTimeout)
+	for {
+		jobs, pendingErr := s.store.PendingJobs(nodeID, nodeToken)
+		if pendingErr != nil {
+			writeStoreError(w, pendingErr)
+			return
+		}
+		if len(jobs) > 0 {
+			writeJSON(w, http.StatusOK, map[string]any{"items": jobs})
+			return
+		}
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			writeJSON(w, http.StatusOK, map[string]any{"items": []domain.AgentJob{}})
+			return
+		}
+		timer := time.NewTimer(remaining)
+		select {
+		case <-r.Context().Done():
+			timer.Stop()
+			return
+		case <-updates:
+			timer.Stop()
+		case <-timer.C:
+			writeJSON(w, http.StatusOK, map[string]any{"items": []domain.AgentJob{}})
+			return
+		}
+	}
+}
+
+func (s *Server) writePendingJobs(w http.ResponseWriter, nodeID, nodeToken string) {
+	jobs, err := s.store.PendingJobs(nodeID, nodeToken)
 	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": jobs})
+}
+
+func parseAgentJobsWaitTimeout(r *http.Request) (time.Duration, error) {
+	value := strings.TrimSpace(r.URL.Query().Get("waitSeconds"))
+	if value == "" {
+		return 0, nil
+	}
+	waitSeconds, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, fmt.Errorf("waitSeconds must be an integer")
+	}
+	if waitSeconds < 0 {
+		return 0, fmt.Errorf("waitSeconds must be non-negative")
+	}
+	if waitSeconds == 0 {
+		return 0, nil
+	}
+	if waitSeconds > 30 {
+		waitSeconds = 30
+	}
+	return time.Duration(waitSeconds) * time.Second, nil
 }
 
 func (s *Server) handleAgentJobActions(w http.ResponseWriter, r *http.Request) {
@@ -166,6 +232,9 @@ func (s *Server) handleAgentJobBlob(w http.ResponseWriter, r *http.Request, node
 			http.ServeContent(w, r, job.FileName, time.Time{}, blobFile)
 			return
 		}
+		if s.mediaStore != nil {
+			_ = s.mediaStore.MarkOriginalBlobMissing(job.MediaID)
+		}
 	}
 	if s.cacheController != nil && job.OriginalR2State == "online" && strings.TrimSpace(job.OriginalR2Key) != "" {
 		result, err := s.cacheController.OpenWarmOriginal(r.Context(), domain.MediaAsset{
@@ -183,6 +252,10 @@ func (s *Server) handleAgentJobBlob(w http.ResponseWriter, r *http.Request, node
 			_, _ = io.Copy(w, result.Body)
 			return
 		}
+	}
+	if job.Type == "ingest_media" || job.Type == "rehydrate_media" {
+		_ = s.store.FailAgentJob(jobID, "job blob not available")
+		_ = s.store.FailUploadSessionByMedia(job.MediaID, "job blob not available")
 	}
 	writeJSON(w, http.StatusNotFound, map[string]string{"error": "job blob not available"})
 }
@@ -263,6 +336,12 @@ func (s *Server) handleAgentJobComplete(w http.ResponseWriter, r *http.Request, 
 	if err != nil {
 		writeStoreError(w, err)
 		return
+	}
+	if s.cacheController != nil && s.mediaStore != nil && job.Type == "restore_original" {
+		media, mediaErr := s.mediaStore.MediaByPublicID(job.MediaID)
+		if mediaErr == nil && media.PreviewStatus != domain.PreviewReady {
+			go s.cacheController.RepairMissingPreview(media)
+		}
 	}
 	if s.cacheController != nil {
 		s.cacheController.RunNow()

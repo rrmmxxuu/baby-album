@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -13,7 +14,11 @@ import (
 	"babyalbum/api/internal/domain"
 )
 
-type PostgresStore struct{ db *sql.DB }
+type PostgresStore struct {
+	db               *sql.DB
+	mu               sync.RWMutex
+	agentJobNotifier AgentJobNotifier
+}
 
 const mediaAssetColumns = `id, family_id, entry_id, upload_batch_id, uploaded_by, uploaded_by_name, file_name, media_type, captured_at, uploaded_at, timeline_day, status, source, width, height, byte_size, preview_status, preview_blob_key, original_blob_key, content_sha256, processed_at, original_path, original_local_state, original_r2_state, original_r2_key, original_restore_state, original_last_accessed_at, original_evicted_at`
 const feedingEntryColumns = `id, family_id, baby_id, category, occurred_at, ended_at, day_key, note, created_by, created_by_name, created_at, updated_at, milk_mode, amount_ml, breast_left_seconds, breast_right_seconds, food_name, has_stool`
@@ -44,6 +49,33 @@ func NewPostgresStore(databaseURL string) (*PostgresStore, error) {
 }
 
 func (s *PostgresStore) Close() error { return s.db.Close() }
+
+func (s *PostgresStore) SetAgentJobNotifier(notifier AgentJobNotifier) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.agentJobNotifier = notifier
+}
+
+func (s *PostgresStore) notifyAgentNodes(nodeIDs ...string) {
+	unique := make(map[string]struct{}, len(nodeIDs))
+	s.mu.RLock()
+	notifier := s.agentJobNotifier
+	s.mu.RUnlock()
+	if notifier == nil {
+		return
+	}
+	for _, nodeID := range nodeIDs {
+		nodeID = strings.TrimSpace(nodeID)
+		if nodeID == "" {
+			continue
+		}
+		if _, exists := unique[nodeID]; exists {
+			continue
+		}
+		unique[nodeID] = struct{}{}
+		notifier(nodeID)
+	}
+}
 
 func (s *PostgresStore) migrate() error {
 	statements := []string{
@@ -112,6 +144,9 @@ func (s *PostgresStore) migrate() error {
 		`update upload_sessions set entry_id = upload_batch_id where entry_id = ''`,
 		`create table if not exists agent_jobs (id text primary key, node_id text not null references storage_nodes(id), family_id text not null references families(id), media_id text not null references media_assets(id), type text not null, status text not null, created_at timestamptz not null, updated_at timestamptz not null)`,
 		`create table if not exists media_deletion_jobs (id text primary key, node_id text not null references storage_nodes(id), family_id text not null references families(id), media_id text not null, original_path text not null default '', status text not null, created_at timestamptz not null, updated_at timestamptz not null)`,
+		`alter table agent_jobs add column if not exists failure_reason text not null default ''`,
+		`alter table media_deletion_jobs add column if not exists failure_reason text not null default ''`,
+		`alter table upload_sessions add column if not exists failure_reason text not null default ''`,
 		`create table if not exists r2_usage_counters (month_key text primary key, class_a_count bigint not null default 0, class_b_count bigint not null default 0, updated_at timestamptz not null)`,
 		`create index if not exists idx_family_members_user on family_members (user_id)`,
 		`alter table family_members add column if not exists relation text not null default ''`,
@@ -1539,6 +1574,7 @@ func (s *PostgresStore) DeleteTimelineEntry(userID, albumID, entryID string) (De
 	if err != nil {
 		return DeleteCleanup{}, err
 	}
+	nodeIDs := nodeIDsFromMediaDeletionJobs(deletionJobs)
 	if err := s.enqueueMediaDeletionJobsTx(tx, albumID, deletionJobs, time.Now().UTC()); err != nil {
 		return DeleteCleanup{}, err
 	}
@@ -1563,6 +1599,7 @@ func (s *PostgresStore) DeleteTimelineEntry(userID, albumID, entryID string) (De
 	if err := tx.Commit(); err != nil {
 		return DeleteCleanup{}, err
 	}
+	s.notifyAgentNodes(nodeIDs...)
 	return cleanup, nil
 }
 
@@ -1583,6 +1620,7 @@ func (s *PostgresStore) DeleteTimelineEntryMedia(userID, albumID, entryID, media
 	if err != nil {
 		return DeleteCleanup{}, err
 	}
+	nodeIDs := nodeIDsFromMediaDeletionJobs(deletionJobs)
 	if err := s.enqueueMediaDeletionJobsTx(tx, albumID, deletionJobs, time.Now().UTC()); err != nil {
 		return DeleteCleanup{}, err
 	}
@@ -1609,6 +1647,7 @@ func (s *PostgresStore) DeleteTimelineEntryMedia(userID, albumID, entryID, media
 	if err := tx.Commit(); err != nil {
 		return DeleteCleanup{}, err
 	}
+	s.notifyAgentNodes(nodeIDs...)
 	return cleanup, nil
 }
 
@@ -2070,7 +2109,7 @@ func (s *PostgresStore) AttachUploadContent(userID, sessionID string, input Uplo
 		return domain.UploadSession{}, err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`update upload_sessions set status = $1, byte_size = $2, blob_key = $3 where id = $4`, "uploaded", input.ByteSize, input.BlobKey, sessionID); err != nil {
+	if _, err := tx.Exec(`update upload_sessions set status = $1, byte_size = $2, blob_key = $3, failure_reason = '' where id = $4`, "uploaded", input.ByteSize, input.BlobKey, sessionID); err != nil {
 		return domain.UploadSession{}, err
 	}
 	if _, err := tx.Exec(`update media_assets set byte_size = $1, original_blob_key = $2, content_sha256 = $3, width = $4, height = $5, preview_status = $6, preview_blob_key = $7, original_local_state = 'online', original_restore_state = 'idle', original_last_accessed_at = $8 where id = $9`, input.ByteSize, input.BlobKey, strings.ToLower(strings.TrimSpace(input.ContentSHA256)), input.Width, input.Height, input.PreviewStatus, input.PreviewBlobKey, now, session.MediaID); err != nil {
@@ -2082,6 +2121,7 @@ func (s *PostgresStore) AttachUploadContent(userID, sessionID string, input Uplo
 	if err := tx.Commit(); err != nil {
 		return domain.UploadSession{}, err
 	}
+	s.notifyAgentNodes(session.AssignedTo)
 	session.Status = "uploaded"
 	session.ByteSize = input.ByteSize
 	session.BlobKey = input.BlobKey
@@ -2140,6 +2180,7 @@ func (s *PostgresStore) RegisterStorageNode(input StorageNodeRegisterInput) (Sto
 			if err := tx.Commit(); err != nil {
 				return StorageNodeRegisterResult{}, err
 			}
+			s.notifyAgentNodes(node.ID)
 			node.FamilyID = pairing.FamilyID
 		}
 		return StorageNodeRegisterResult{Node: node, NodeID: node.ID, NodeToken: node.RegistrationToken}, nil
@@ -2181,6 +2222,7 @@ func (s *PostgresStore) RegisterStorageNode(input StorageNodeRegisterInput) (Sto
 	if err := tx.Commit(); err != nil {
 		return StorageNodeRegisterResult{}, err
 	}
+	s.notifyAgentNodes(nodeID)
 	node := domain.StorageNode{
 		ID:                nodeID,
 		FamilyID:          pairing.FamilyID,
@@ -2255,7 +2297,7 @@ func (s *PostgresStore) PendingJobs(nodeID, token string) ([]domain.AgentJob, er
 	if node.RegistrationToken != token {
 		return nil, ErrNodeUnauthorized
 	}
-	rows, err := s.db.Query(`select aj.id, aj.node_id, aj.family_id, aj.media_id, aj.type, aj.status, aj.created_at, aj.updated_at, ma.file_name, ma.media_type, coalesce(us.byte_size, 0), ma.original_blob_key, ma.original_path, ma.original_r2_state, ma.original_r2_key from agent_jobs aj join media_assets ma on ma.id = aj.media_id left join upload_sessions us on us.media_id = aj.media_id where aj.node_id = $1 and aj.status = $2 order by aj.created_at asc`, nodeID, domain.JobPending)
+	rows, err := s.db.Query(`select aj.id, aj.node_id, aj.family_id, aj.media_id, aj.type, aj.status, aj.created_at, aj.updated_at, ma.file_name, ma.media_type, coalesce(us.byte_size, 0), aj.failure_reason, ma.original_blob_key, ma.original_path, ma.original_r2_state, ma.original_r2_key from agent_jobs aj join media_assets ma on ma.id = aj.media_id left join upload_sessions us on us.media_id = aj.media_id where aj.node_id = $1 and aj.status = $2 order by aj.created_at asc`, nodeID, domain.JobPending)
 	if err != nil {
 		return nil, err
 	}
@@ -2263,7 +2305,7 @@ func (s *PostgresStore) PendingJobs(nodeID, token string) ([]domain.AgentJob, er
 	var jobs []domain.AgentJob
 	for rows.Next() {
 		var item domain.AgentJob
-		if err := rows.Scan(&item.ID, &item.NodeID, &item.FamilyID, &item.MediaID, &item.Type, &item.Status, &item.CreatedAt, &item.UpdatedAt, &item.FileName, &item.MediaType, &item.ByteSize, &item.BlobKey, &item.OriginalPath, &item.OriginalR2State, &item.OriginalR2Key); err != nil {
+		if err := rows.Scan(&item.ID, &item.NodeID, &item.FamilyID, &item.MediaID, &item.Type, &item.Status, &item.CreatedAt, &item.UpdatedAt, &item.FileName, &item.MediaType, &item.ByteSize, &item.FailureReason, &item.BlobKey, &item.OriginalPath, &item.OriginalR2State, &item.OriginalR2Key); err != nil {
 			return nil, err
 		}
 		jobs = append(jobs, item)
@@ -2303,7 +2345,7 @@ func (s *PostgresStore) AgentJob(nodeID, token, jobID string) (domain.AgentJob, 
 		return domain.AgentJob{}, ErrNodeUnauthorized
 	}
 	var item domain.AgentJob
-	err = s.db.QueryRow(`select aj.id, aj.node_id, aj.family_id, aj.media_id, aj.type, aj.status, aj.created_at, aj.updated_at, ma.file_name, ma.media_type, coalesce(us.byte_size, 0), ma.original_blob_key, ma.original_path, ma.original_r2_state, ma.original_r2_key from agent_jobs aj join media_assets ma on ma.id = aj.media_id left join upload_sessions us on us.media_id = aj.media_id where aj.id = $1`, jobID).Scan(&item.ID, &item.NodeID, &item.FamilyID, &item.MediaID, &item.Type, &item.Status, &item.CreatedAt, &item.UpdatedAt, &item.FileName, &item.MediaType, &item.ByteSize, &item.BlobKey, &item.OriginalPath, &item.OriginalR2State, &item.OriginalR2Key)
+	err = s.db.QueryRow(`select aj.id, aj.node_id, aj.family_id, aj.media_id, aj.type, aj.status, aj.created_at, aj.updated_at, ma.file_name, ma.media_type, coalesce(us.byte_size, 0), aj.failure_reason, ma.original_blob_key, ma.original_path, ma.original_r2_state, ma.original_r2_key from agent_jobs aj join media_assets ma on ma.id = aj.media_id left join upload_sessions us on us.media_id = aj.media_id where aj.id = $1`, jobID).Scan(&item.ID, &item.NodeID, &item.FamilyID, &item.MediaID, &item.Type, &item.Status, &item.CreatedAt, &item.UpdatedAt, &item.FileName, &item.MediaType, &item.ByteSize, &item.FailureReason, &item.BlobKey, &item.OriginalPath, &item.OriginalR2State, &item.OriginalR2Key)
 	if err == sql.ErrNoRows {
 		err = s.db.QueryRow(`select id, node_id, family_id, media_id, status, created_at, updated_at, original_path from media_deletion_jobs where id = $1`, jobID).Scan(&item.ID, &item.NodeID, &item.FamilyID, &item.MediaID, &item.Status, &item.CreatedAt, &item.UpdatedAt, &item.OriginalPath)
 		if err == sql.ErrNoRows {
@@ -2350,7 +2392,7 @@ func (s *PostgresStore) CompleteJob(nodeID, token, jobID string, input JobComple
 	}
 	defer tx.Rollback()
 	var job domain.AgentJob
-	err = tx.QueryRow(`select id, node_id, family_id, media_id, type, status, created_at, updated_at from agent_jobs where id = $1`, jobID).Scan(&job.ID, &job.NodeID, &job.FamilyID, &job.MediaID, &job.Type, &job.Status, &job.CreatedAt, &job.UpdatedAt)
+	err = tx.QueryRow(`select id, node_id, family_id, media_id, type, status, created_at, updated_at, failure_reason from agent_jobs where id = $1`, jobID).Scan(&job.ID, &job.NodeID, &job.FamilyID, &job.MediaID, &job.Type, &job.Status, &job.CreatedAt, &job.UpdatedAt, &job.FailureReason)
 	if err == sql.ErrNoRows {
 		err = tx.QueryRow(`select id, node_id, family_id, media_id, status, created_at, updated_at, original_path from media_deletion_jobs where id = $1`, jobID).Scan(&job.ID, &job.NodeID, &job.FamilyID, &job.MediaID, &job.Status, &job.CreatedAt, &job.UpdatedAt, &job.OriginalPath)
 		if err == sql.ErrNoRows {
@@ -2381,7 +2423,7 @@ func (s *PostgresStore) CompleteJob(nodeID, token, jobID string, input JobComple
 	}
 	job.Status = domain.JobCompleted
 	job.UpdatedAt = time.Now().UTC()
-	if _, err := tx.Exec(`update agent_jobs set status = $1, updated_at = $2 where id = $3`, job.Status, job.UpdatedAt, job.ID); err != nil {
+	if _, err := tx.Exec(`update agent_jobs set status = $1, updated_at = $2, failure_reason = '' where id = $3`, job.Status, job.UpdatedAt, job.ID); err != nil {
 		return domain.AgentJob{}, err
 	}
 	switch job.Type {
@@ -2408,7 +2450,7 @@ func (s *PostgresStore) CompleteJob(nodeID, token, jobID string, input JobComple
 		}
 	}
 	if job.Type != "restore_original" {
-		if _, err := tx.Exec(`update upload_sessions set status = $1 where media_id = $2`, "ready", job.MediaID); err != nil {
+		if _, err := tx.Exec(`update upload_sessions set status = $1, failure_reason = '' where media_id = $2`, "ready", job.MediaID); err != nil {
 			return domain.AgentJob{}, err
 		}
 	}
@@ -2663,6 +2705,17 @@ func nullableString(value string) any {
 	return value
 }
 
+func nodeIDsFromMediaDeletionJobs(jobs []mediaDeletionJob) []string {
+	nodeIDs := make([]string, 0, len(jobs))
+	for _, item := range jobs {
+		if strings.TrimSpace(item.NodeID) == "" || strings.TrimSpace(item.OriginalPath) == "" {
+			continue
+		}
+		nodeIDs = append(nodeIDs, item.NodeID)
+	}
+	return nodeIDs
+}
+
 func nullableTime(value *time.Time) any {
 	if value == nil {
 		return nil
@@ -2740,7 +2793,7 @@ func (s *PostgresStore) nodeByID(nodeID string) (domain.StorageNode, error) {
 
 func (s *PostgresStore) uploadSessionByID(sessionID string) (domain.UploadSession, error) {
 	var session domain.UploadSession
-	err := s.db.QueryRow(`select id, family_id, entry_id, upload_batch_id, uploaded_by, uploaded_by_name, media_id, file_name, media_type, status, created_at, assigned_to, byte_size, blob_key from upload_sessions where id = $1`, sessionID).Scan(&session.ID, &session.FamilyID, &session.EntryID, &session.UploadBatchID, &session.UploadedBy, &session.UploadedByName, &session.MediaID, &session.FileName, &session.MediaType, &session.Status, &session.CreatedAt, &session.AssignedTo, &session.ByteSize, &session.BlobKey)
+	err := s.db.QueryRow(`select id, family_id, entry_id, upload_batch_id, uploaded_by, uploaded_by_name, media_id, file_name, media_type, status, created_at, assigned_to, byte_size, failure_reason, blob_key from upload_sessions where id = $1`, sessionID).Scan(&session.ID, &session.FamilyID, &session.EntryID, &session.UploadBatchID, &session.UploadedBy, &session.UploadedByName, &session.MediaID, &session.FileName, &session.MediaType, &session.Status, &session.CreatedAt, &session.AssignedTo, &session.ByteSize, &session.FailureReason, &session.BlobKey)
 	if err == sql.ErrNoRows {
 		return domain.UploadSession{}, ErrNotFound
 	}
@@ -3101,8 +3154,122 @@ func (s *PostgresStore) ResolveOriginalStatus(userID, albumID, mediaID string, t
 	if err := tx.Commit(); err != nil {
 		return domain.MediaAsset{}, err
 	}
+	s.notifyAgentNodes(node.ID)
 	item.OriginalRestoreState = "pending"
 	return item, nil
+}
+
+func (s *PostgresStore) PreviewBlobAssets(limit int) ([]domain.MediaAsset, error) {
+	if limit <= 0 {
+		limit = 512
+	}
+	rows, err := s.db.Query(`select `+mediaAssetColumns+` from media_assets where (preview_blob_key <> '' or preview_status = $1) and (original_blob_key <> '' or original_r2_state = 'online') order by processed_at desc nulls last, uploaded_at desc, id asc limit $2`, domain.PreviewUnavailable, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []domain.MediaAsset
+	for rows.Next() {
+		item, err := scanMediaAsset(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *PostgresStore) LocalOriginalBlobAssets(limit int) ([]domain.MediaAsset, error) {
+	if limit <= 0 {
+		limit = 512
+	}
+	rows, err := s.db.Query(`select `+mediaAssetColumns+` from media_assets where original_blob_key <> '' and original_local_state = 'online' order by coalesce(processed_at, uploaded_at) desc, id asc limit $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []domain.MediaAsset
+	for rows.Next() {
+		item, err := scanMediaAsset(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *PostgresStore) AvatarBabies(limit int) ([]domain.BabyProfile, error) {
+	if limit <= 0 {
+		limit = 512
+	}
+	rows, err := s.db.Query(`select id, family_id, name, birth_date, avatar_blob_key, avatar_updated_at, created_at from babies where avatar_blob_key <> '' order by coalesce(avatar_updated_at, created_at) desc, id asc limit $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []domain.BabyProfile
+	for rows.Next() {
+		var item domain.BabyProfile
+		var birthDate sql.NullTime
+		var avatarUpdatedAt sql.NullTime
+		if err := rows.Scan(&item.ID, &item.FamilyID, &item.Name, &birthDate, &item.AvatarKey, &avatarUpdatedAt, &item.CreatedAt); err != nil {
+			return nil, err
+		}
+		if birthDate.Valid {
+			value := birthDate.Time
+			item.BirthDate = &value
+		}
+		if avatarUpdatedAt.Valid {
+			value := avatarUpdatedAt.Time
+			item.AvatarUpdatedAt = &value
+		}
+		item.HasAvatar = item.AvatarKey != ""
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *PostgresStore) MarkPreviewMissing(mediaID string) error {
+	_, err := s.db.Exec(`update media_assets set preview_status = $1, preview_blob_key = '' where id = $2`, domain.PreviewUnavailable, mediaID)
+	return err
+}
+
+func (s *PostgresStore) AttachPreviewBlob(mediaID string, input PreviewBlobAttachmentInput) error {
+	_, err := s.db.Exec(`update media_assets set preview_status = $1, preview_blob_key = $2, width = case when $3 > 0 then $3 else width end, height = case when $4 > 0 then $4 else height end where id = $5`, domain.PreviewReady, strings.TrimSpace(input.BlobKey), input.Width, input.Height, mediaID)
+	return err
+}
+
+func (s *PostgresStore) MarkOriginalBlobMissing(mediaID string) error {
+	_, err := s.db.Exec(`update media_assets set original_blob_key = '', original_local_state = case when original_path <> '' then 'evicted' else 'pending' end, original_restore_state = case when original_restore_state = 'pending' then original_restore_state else 'idle' end where id = $1`, mediaID)
+	return err
+}
+
+func (s *PostgresStore) ClearBabyAvatar(babyID string) error {
+	_, err := s.db.Exec(`update babies set avatar_blob_key = '', avatar_updated_at = $2 where id = $1`, babyID, time.Now().UTC())
+	return err
+}
+
+func (s *PostgresStore) FailUploadSessionByMedia(mediaID, reason string) error {
+	_, err := s.db.Exec(`update upload_sessions set status = 'failed', failure_reason = $2 where media_id = $1 and status in ('created', 'uploaded')`, mediaID, strings.TrimSpace(reason))
+	return err
+}
+
+func (s *PostgresStore) FailAgentJob(jobID, reason string) error {
+	now := time.Now().UTC()
+	result, err := s.db.Exec(`update agent_jobs set status = $1, updated_at = $2, failure_reason = $3 where id = $4 and status = $5`, domain.JobFailed, now, strings.TrimSpace(reason), jobID, domain.JobPending)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected > 0 {
+		return nil
+	}
+	_, err = s.db.Exec(`update media_deletion_jobs set status = $1, updated_at = $2, failure_reason = $3 where id = $4 and status = $5`, domain.JobFailed, now, strings.TrimSpace(reason), jobID, domain.JobPending)
+	return err
 }
 
 func (s *PostgresStore) RecordOriginalAccess(mediaID string, accessedAt time.Time) error {

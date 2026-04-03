@@ -336,10 +336,11 @@ func (c *agentController) Run(ctx context.Context) error {
 
 func (c *agentController) workerLoop(ctx context.Context) {
 	heartbeatTicker := time.NewTicker(c.cfg.heartbeatInterval)
-	jobTicker := time.NewTicker(8 * time.Second)
+	jobRetryTicker := time.NewTicker(time.Second)
 	jobResults := make(chan error, 1)
 	defer heartbeatTicker.Stop()
-	defer jobTicker.Stop()
+	defer jobRetryTicker.Stop()
+	c.maybeStartJobRun(ctx, jobResults)
 
 	for {
 		select {
@@ -347,6 +348,9 @@ func (c *agentController) workerLoop(ctx context.Context) {
 			return
 		case err := <-jobResults:
 			c.finishJobRun(err)
+			if err == nil {
+				c.maybeStartJobRun(ctx, jobResults)
+			}
 		case <-heartbeatTicker.C:
 			cfg, should := c.snapshotConfigForHeartbeat()
 			if !should {
@@ -359,16 +363,20 @@ func (c *agentController) workerLoop(ctx context.Context) {
 			}
 			capacity, capErr := detectStorageCapacity(cfg.libraryRoot)
 			c.recordHeartbeat(capacity, capErr)
-		case <-jobTicker.C:
-			cfg, should := c.snapshotConfigForJobs()
-			if !should {
-				continue
-			}
-			go func(snapshot config) {
-				jobResults <- processJobs(ctx, c.controlClient, c.transferClient, snapshot, c)
-			}(cfg)
+		case <-jobRetryTicker.C:
+			c.maybeStartJobRun(ctx, jobResults)
 		}
 	}
+}
+
+func (c *agentController) maybeStartJobRun(ctx context.Context, jobResults chan<- error) {
+	cfg, should := c.snapshotConfigForJobs()
+	if !should {
+		return
+	}
+	go func(snapshot config) {
+		jobResults <- processJobs(ctx, c.controlClient, c.transferClient, snapshot, c)
+	}(cfg)
 }
 
 func (c *agentController) snapshotConfigForHeartbeat() (config, bool) {

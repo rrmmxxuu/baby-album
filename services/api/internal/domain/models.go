@@ -296,6 +296,7 @@ type UploadSession struct {
 	CreatedAt      time.Time `json:"createdAt"`
 	AssignedTo     string    `json:"assignedTo"`
 	ByteSize       int64     `json:"byteSize"`
+	FailureReason  string    `json:"failureReason,omitempty"`
 	BlobKey        string    `json:"-"`
 }
 
@@ -304,6 +305,7 @@ type AgentJobStatus string
 const (
 	JobPending   AgentJobStatus = "pending"
 	JobCompleted AgentJobStatus = "completed"
+	JobFailed    AgentJobStatus = "failed"
 )
 
 type AgentJob struct {
@@ -318,6 +320,7 @@ type AgentJob struct {
 	FileName        string         `json:"fileName"`
 	MediaType       string         `json:"mediaType"`
 	ByteSize        int64          `json:"byteSize"`
+	FailureReason   string         `json:"failureReason,omitempty"`
 	BlobKey         string         `json:"blobKey"`
 	OriginalPath    string         `json:"originalPath,omitempty"`
 	OriginalR2State string         `json:"-"`

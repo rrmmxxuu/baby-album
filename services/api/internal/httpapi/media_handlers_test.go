@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"babyalbum/api/internal/blob"
 	"babyalbum/api/internal/domain"
@@ -97,5 +98,120 @@ func TestHandleUploadSessionContentGeneratesPreviewInAPI(t *testing.T) {
 	}
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", recorder.Code)
+	}
+}
+
+func TestServePreviewAssetMarksMissingPreviewBlob(t *testing.T) {
+	called := false
+	server := NewServer(&stubRepository{
+		mediaByID: func(albumID, userID, mediaID string) (domain.MediaAsset, error) {
+			return domain.MediaAsset{
+				ID:             mediaID,
+				FamilyID:       albumID,
+				FileName:       "moment.jpg",
+				MediaType:      "image/jpeg",
+				UploadedAt:     time.Now().UTC(),
+				PreviewStatus:  domain.PreviewReady,
+				PreviewBlobKey: "missing-preview.jpg",
+			}, nil
+		},
+		markPreviewMissing: func(mediaID string) error {
+			called = true
+			if mediaID != "media-1" {
+				t.Fatalf("unexpected media id %s", mediaID)
+			}
+			return nil
+		},
+	}, blob.New(t.TempDir()), 8<<20, nil)
+	server.cacheController = nil
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/media/media-1/preview?albumId=album-1", nil)
+	request.Header.Set("X-User-ID", "user-1")
+
+	server.withMiddleware(server.mux).ServeHTTP(recorder, request)
+
+	if !called {
+		t.Fatal("expected preview to be marked missing")
+	}
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", recorder.Code)
+	}
+}
+
+func TestServeOriginalAssetMarksMissingLocalOriginal(t *testing.T) {
+	called := false
+	server := NewServer(&stubRepository{
+		mediaByID: func(albumID, userID, mediaID string) (domain.MediaAsset, error) {
+			return domain.MediaAsset{
+				ID:                 mediaID,
+				FamilyID:           albumID,
+				FileName:           "moment.jpg",
+				MediaType:          "image/jpeg",
+				Status:             domain.MediaReady,
+				UploadedAt:         time.Now().UTC(),
+				OriginalBlobKey:    "missing-original.jpg",
+				OriginalPath:       "/nas/family/media-1/moment.jpg",
+				OriginalLocalState: "online",
+			}, nil
+		},
+		markOriginalMissing: func(mediaID string) error {
+			called = true
+			if mediaID != "media-1" {
+				t.Fatalf("unexpected media id %s", mediaID)
+			}
+			return nil
+		},
+	}, blob.New(t.TempDir()), 8<<20, nil)
+	server.cacheController = nil
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/media/media-1/original?albumId=album-1", nil)
+	request.Header.Set("X-User-ID", "user-1")
+
+	server.withMiddleware(server.mux).ServeHTTP(recorder, request)
+
+	if !called {
+		t.Fatal("expected original blob to be marked missing")
+	}
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", recorder.Code)
+	}
+}
+
+func TestServeAvatarMarksMissingAvatarBlob(t *testing.T) {
+	called := false
+	server := NewServer(&stubRepository{
+		babyByID: func(userID, albumID, babyID string) (domain.BabyProfile, error) {
+			return domain.BabyProfile{
+				ID:        babyID,
+				FamilyID:  albumID,
+				Name:      "Baby",
+				AvatarKey: "missing-avatar.jpg",
+				CreatedAt: time.Now().UTC(),
+				HasAvatar: true,
+			}, nil
+		},
+		clearBabyAvatar: func(babyID string) error {
+			called = true
+			if babyID != "baby-1" {
+				t.Fatalf("unexpected baby id %s", babyID)
+			}
+			return nil
+		},
+	}, blob.New(t.TempDir()), 8<<20, nil)
+	server.cacheController = nil
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/babies/baby-1/avatar?albumId=album-1", nil)
+	request.Header.Set("X-User-ID", "user-1")
+
+	server.withMiddleware(server.mux).ServeHTTP(recorder, request)
+
+	if !called {
+		t.Fatal("expected avatar to be cleared")
+	}
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", recorder.Code)
 	}
 }

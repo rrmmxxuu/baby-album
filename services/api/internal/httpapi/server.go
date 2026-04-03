@@ -36,6 +36,7 @@ type Server struct {
 	publicBaseURL   string
 	signingSecret   []byte
 	cacheController *mediaCacheController
+	agentJobHub     *agentJobHub
 	timerHub        *feedingTimerHub
 	mux             *http.ServeMux
 }
@@ -59,6 +60,7 @@ func NewServerWithOptions(repo store.Repository, blobStorage *blob.Storage, opti
 		allowedOrigins: normalizeOrigins(options.AllowedOrigins),
 		publicBaseURL:  strings.TrimRight(strings.TrimSpace(options.PublicBaseURL), "/"),
 		signingSecret:  []byte(strings.TrimSpace(options.MediaURLSigningSecret)),
+		agentJobHub:    newAgentJobHub(),
 		timerHub:       newFeedingTimerHub(),
 		mux:            http.NewServeMux(),
 	}
@@ -70,6 +72,9 @@ func NewServerWithOptions(repo store.Repository, blobStorage *blob.Storage, opti
 	}
 	if mediaStore != nil {
 		s.cacheController = newMediaCacheController(mediaStore, blobStorage, options)
+	}
+	if notifierTarget, ok := repo.(interface{ SetAgentJobNotifier(store.AgentJobNotifier) }); ok {
+		notifierTarget.SetAgentJobNotifier(s.agentJobHub.Publish)
 	}
 	s.routes()
 	return s

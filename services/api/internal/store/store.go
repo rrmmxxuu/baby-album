@@ -200,6 +200,12 @@ type UploadContentInput struct {
 	PreviewBlobKey string
 }
 
+type PreviewBlobAttachmentInput struct {
+	BlobKey string
+	Width   int
+	Height  int
+}
+
 type DuplicateMediaProbeItemInput struct {
 	ClientID string
 	ByteSize int64
@@ -435,6 +441,15 @@ type Repository interface {
 	PendingJobs(nodeID, token string) ([]domain.AgentJob, error)
 	AgentJob(nodeID, token, jobID string) (domain.AgentJob, error)
 	CompleteJob(nodeID, token, jobID string, input JobCompletionInput) (domain.AgentJob, error)
+	PreviewBlobAssets(limit int) ([]domain.MediaAsset, error)
+	LocalOriginalBlobAssets(limit int) ([]domain.MediaAsset, error)
+	AvatarBabies(limit int) ([]domain.BabyProfile, error)
+	MarkPreviewMissing(mediaID string) error
+	AttachPreviewBlob(mediaID string, input PreviewBlobAttachmentInput) error
+	MarkOriginalBlobMissing(mediaID string) error
+	ClearBabyAvatar(babyID string) error
+	FailUploadSessionByMedia(mediaID, reason string) error
+	FailAgentJob(jobID, reason string) error
 }
 
 func NormalizeCapturedAt(metaCapturedAt, modifiedAt *time.Time, uploadedAt time.Time) time.Time {

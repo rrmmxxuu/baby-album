@@ -3,10 +3,12 @@ package httpapi
 import (
 	"context"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"babyalbum/api/internal/blob"
+	"babyalbum/api/internal/objectstore"
 	"babyalbum/api/internal/r2cache"
 	"babyalbum/api/internal/store"
 )
@@ -21,6 +23,7 @@ type Options struct {
 	LocalOriginalMinRetention time.Duration
 	LocalMaintenanceInterval  time.Duration
 	R2Config                  r2cache.Config
+	R2LocalRoot               string
 	R2MaxBytes                int64
 	R2TargetBytes             int64
 	R2ClassASoftLimit         int64
@@ -35,6 +38,7 @@ type Server struct {
 	allowedOrigins  []string
 	publicBaseURL   string
 	signingSecret   []byte
+	screenPreviews  objectstore.Store
 	cacheController *mediaCacheController
 	agentJobHub     *agentJobHub
 	timerHub        *feedingTimerHub
@@ -70,8 +74,18 @@ func NewServerWithOptions(repo store.Repository, blobStorage *blob.Storage, opti
 	if s.publicBaseURL == "" {
 		s.publicBaseURL = "http://localhost:8080"
 	}
+	r2Client := r2cache.New(options.R2Config)
+	if r2Client.Enabled() {
+		s.screenPreviews = objectstore.NewR2(r2Client)
+	} else {
+		localRoot := strings.TrimSpace(options.R2LocalRoot)
+		if localRoot == "" {
+			localRoot = filepath.Join(blobStorage.Root(), "screen-previews")
+		}
+		s.screenPreviews = objectstore.NewLocalFS(localRoot)
+	}
 	if mediaStore != nil {
-		s.cacheController = newMediaCacheController(mediaStore, blobStorage, options)
+		s.cacheController = newMediaCacheController(mediaStore, blobStorage, s.screenPreviews, options)
 	}
 	if notifierTarget, ok := repo.(interface{ SetAgentJobNotifier(store.AgentJobNotifier) }); ok {
 		notifierTarget.SetAgentJobNotifier(s.agentJobHub.Publish)

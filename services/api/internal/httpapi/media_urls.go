@@ -18,9 +18,10 @@ import (
 )
 
 const (
-	previewURLKind  = "preview"
-	originalURLKind = "original"
-	avatarURLKind   = "avatar"
+	previewURLKind       = "preview"
+	screenPreviewURLKind = "screen_preview"
+	originalURLKind      = "original"
+	avatarURLKind        = "avatar"
 )
 
 func (s *Server) decorateAppState(value store.AppState) store.AppState {
@@ -66,6 +67,9 @@ func (s *Server) decorateTimelineEntries(items []domain.TimelineEntry) []domain.
 func (s *Server) decorateMediaAsset(item domain.MediaAsset) domain.MediaAsset {
 	if item.PreviewStatus == domain.PreviewReady && strings.TrimSpace(item.PreviewBlobKey) != "" {
 		item.PreviewURL = s.signedMediaURL(mediaPublicPath("media", item.ID, "preview"), previewURLKind, mediaVersion(item), s.previewURLExpiry())
+	}
+	if item.ScreenPreviewStatus == domain.PreviewReady && strings.TrimSpace(item.ScreenPreviewObjectKey) != "" {
+		item.ScreenPreviewURL = s.signedMediaURL(mediaPublicPath("media", item.ID, "screen-preview"), screenPreviewURLKind, mediaVersion(item), s.previewURLExpiry())
 	}
 	item.OriginalAvail = mediaOriginalAvailability(item)
 	if item.OriginalAvail == domain.OriginalHot || item.OriginalAvail == domain.OriginalWarm {

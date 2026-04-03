@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -97,13 +98,15 @@ func (s *Server) handleUploadSessionActions(w http.ResponseWriter, r *http.Reque
 	}
 	preview := s.generateUploadedMediaPreview(saved.Key, header.Filename)
 	session, err := s.store.AttachUploadContent(userID, sessionID, store.UploadContentInput{
-		ByteSize:       saved.ByteSize,
-		BlobKey:        saved.Key,
-		ContentSHA256:  saved.ContentSHA256,
-		Width:          preview.Width,
-		Height:         preview.Height,
-		PreviewStatus:  preview.Status,
-		PreviewBlobKey: preview.BlobKey,
+		ByteSize:               saved.ByteSize,
+		BlobKey:                saved.Key,
+		ContentSHA256:          saved.ContentSHA256,
+		Width:                  preview.Width,
+		Height:                 preview.Height,
+		PreviewStatus:          preview.Status,
+		PreviewBlobKey:         preview.BlobKey,
+		ScreenPreviewStatus:    preview.ScreenPreviewStatus,
+		ScreenPreviewObjectKey: preview.ScreenPreviewObjectKey,
 	})
 	if err != nil {
 		writeStoreError(w, err)
@@ -118,10 +121,12 @@ func (s *Server) handleUploadSessionActions(w http.ResponseWriter, r *http.Reque
 func (s *Server) handleMediaActions(w http.ResponseWriter, r *http.Request) {
 	path := trimAPIPrefix(r.URL.Path, "/api/v1/media/")
 	switch {
-	case strings.HasSuffix(path, "/preview"), strings.HasSuffix(path, "/original"):
+	case strings.HasSuffix(path, "/preview"), strings.HasSuffix(path, "/screen-preview"), strings.HasSuffix(path, "/original"):
 		s.handleMediaBinary(w, r, path)
 	case strings.HasSuffix(path, "/original-status"):
 		s.handleMediaOriginalStatus(w, r, path)
+	case strings.HasSuffix(path, "/preview-repair"):
+		s.handleMediaPreviewRepair(w, r, path)
 	default:
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 	}
@@ -133,12 +138,22 @@ func (s *Server) handleMediaBinary(w http.ResponseWriter, r *http.Request, path 
 		return
 	}
 	serveOriginal := strings.HasSuffix(path, "/original")
-	mediaID := strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(path, "/preview"), "/original"), "/")
+	serveScreenPreview := strings.HasSuffix(path, "/screen-preview")
+	mediaID := path
+	switch {
+	case serveOriginal:
+		mediaID = strings.TrimSuffix(path, "/original")
+	case serveScreenPreview:
+		mediaID = strings.TrimSuffix(path, "/screen-preview")
+	default:
+		mediaID = strings.TrimSuffix(path, "/preview")
+	}
+	mediaID = strings.TrimSuffix(mediaID, "/")
 	if mediaID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "media id is required"})
 		return
 	}
-	item, err := s.resolveMediaAssetRequest(r, mediaID, mediaRequestKind(serveOriginal))
+	item, err := s.resolveMediaAssetRequest(r, mediaID, mediaRequestKind(serveOriginal, serveScreenPreview))
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -146,6 +161,10 @@ func (s *Server) handleMediaBinary(w http.ResponseWriter, r *http.Request, path 
 	item = s.decorateMediaAsset(item)
 	if serveOriginal {
 		s.serveOriginalAsset(w, r, item)
+		return
+	}
+	if serveScreenPreview {
+		s.serveScreenPreviewAsset(w, r, item)
 		return
 	}
 	s.servePreviewAsset(w, r, item)
@@ -184,6 +203,52 @@ func (s *Server) handleMediaOriginalStatus(w http.ResponseWriter, r *http.Reques
 	})
 }
 
+func (s *Server) handleMediaPreviewRepair(w http.ResponseWriter, r *http.Request, path string) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w)
+		return
+	}
+	if s.mediaStore == nil || s.cacheController == nil {
+		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "preview repair unavailable"})
+		return
+	}
+	userID, err := s.actorID(r)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	mediaID := strings.TrimSuffix(strings.TrimSuffix(path, "/preview-repair"), "/")
+	album := albumID(r)
+	if mediaID == "" || album == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "media id and albumId are required"})
+		return
+	}
+	item, err := s.store.MediaByID(album, userID, mediaID)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if strings.TrimSpace(item.PreviewBlobKey) == "" && strings.TrimSpace(item.ScreenPreviewObjectKey) == "" && strings.TrimSpace(item.OriginalBlobKey) == "" && item.OriginalR2State != "online" && strings.TrimSpace(item.OriginalPath) != "" && item.OriginalRestoreState != "pending" {
+		if markErr := s.store.MarkPreviewsPending(mediaID); markErr != nil {
+			writeStoreError(w, markErr)
+			return
+		}
+		item.PreviewStatus = domain.PreviewPending
+		item.ScreenPreviewStatus = domain.PreviewPending
+		item, err = s.mediaStore.ResolveOriginalStatus(userID, album, mediaID, true)
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+	}
+	repaired, repairErr := s.cacheController.EnsureMediaPreviews(r.Context(), item)
+	if repairErr == nil {
+		item = repaired
+	}
+	item = s.decorateMediaAsset(item)
+	writeJSON(w, http.StatusOK, map[string]any{"media": item})
+}
+
 func (s *Server) servePreviewAsset(w http.ResponseWriter, r *http.Request, item domain.MediaAsset) {
 	if item.PreviewStatus != domain.PreviewReady || item.PreviewBlobKey == "" {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "preview not available"})
@@ -217,6 +282,51 @@ func (s *Server) servePreviewAsset(w http.ResponseWriter, r *http.Request, item 
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Last-Modified", lastModified.UTC().Format(http.TimeFormat))
 	http.ServeContent(w, r, filepath.Base(item.FileName)+"-preview.jpg", lastModified, file)
+}
+
+func (s *Server) serveScreenPreviewAsset(w http.ResponseWriter, r *http.Request, item domain.MediaAsset) {
+	if item.ScreenPreviewStatus != domain.PreviewReady || strings.TrimSpace(item.ScreenPreviewObjectKey) == "" || s.screenPreviews == nil || !s.screenPreviews.Enabled() {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "screen preview not available"})
+		return
+	}
+	result, err := s.screenPreviews.Get(r.Context(), item.ScreenPreviewObjectKey)
+	if err != nil {
+		if s.cacheController != nil {
+			go func(media domain.MediaAsset) {
+				_, _ = s.cacheController.EnsureMediaPreviews(context.Background(), media)
+			}(item)
+		} else if s.mediaStore != nil {
+			_ = s.mediaStore.MarkScreenPreviewMissing(item.ID)
+		}
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "screen preview not available"})
+		return
+	}
+	defer result.Body.Close()
+	lastModified := item.UploadedAt
+	if item.ProcessedAt != nil {
+		lastModified = item.ProcessedAt.UTC()
+	}
+	etag := mediaETag(screenPreviewURLKind, item)
+	if etagMatches(r, etag) || modifiedSince(r, lastModified) {
+		w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
+		w.Header().Set("ETag", etag)
+		w.Header().Set("Last-Modified", lastModified.UTC().Format(http.TimeFormat))
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
+	w.Header().Set("Content-Type", firstNonEmptyContentType(result.ContentType))
+	w.Header().Set("ETag", etag)
+	w.Header().Set("Last-Modified", lastModified.UTC().Format(http.TimeFormat))
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.Copy(w, result.Body)
+}
+
+func firstNonEmptyContentType(value string) string {
+	if strings.TrimSpace(value) != "" {
+		return value
+	}
+	return "image/jpeg"
 }
 
 func (s *Server) serveOriginalAsset(w http.ResponseWriter, r *http.Request, item domain.MediaAsset) {
@@ -378,9 +488,12 @@ func (s *Server) handleBabyAvatarAsset(w http.ResponseWriter, r *http.Request, b
 	http.ServeContent(w, r, filepath.Base(baby.AvatarKey), lastModified, file)
 }
 
-func mediaRequestKind(serveOriginal bool) string {
+func mediaRequestKind(serveOriginal, serveScreenPreview bool) string {
 	if serveOriginal {
 		return originalURLKind
+	}
+	if serveScreenPreview {
+		return screenPreviewURLKind
 	}
 	return previewURLKind
 }

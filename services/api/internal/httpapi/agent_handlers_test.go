@@ -16,35 +16,38 @@ import (
 )
 
 type stubRepository struct {
-	unbindStorageNode      func(nodeID, token string) error
-	attachUploadContent    func(userID, sessionID string, input store.UploadContentInput) (domain.UploadSession, error)
-	pendingJobs            func(nodeID, token string) ([]domain.AgentJob, error)
-	agentJob               func(nodeID, token, jobID string) (domain.AgentJob, error)
-	mediaByID              func(albumID, userID, mediaID string) (domain.MediaAsset, error)
-	babyByID               func(userID, albumID, babyID string) (domain.BabyProfile, error)
-	mediaByPublicID        func(mediaID string) (domain.MediaAsset, error)
-	babyByPublicID         func(babyID string) (domain.BabyProfile, error)
-	resolveOriginal        func(userID, albumID, mediaID string, triggerRestore bool) (domain.MediaAsset, error)
-	recordOriginalAccess   func(mediaID string, accessedAt time.Time) error
-	referencedBlobKeys     func() ([]string, error)
-	previewBlobAssets      func(limit int) ([]domain.MediaAsset, error)
-	localOriginalAssets    func(limit int) ([]domain.MediaAsset, error)
-	avatarBabies           func(limit int) ([]domain.BabyProfile, error)
-	markPreviewMissing     func(mediaID string) error
-	attachPreviewBlob      func(mediaID string, input store.PreviewBlobAttachmentInput) error
-	markOriginalMissing    func(mediaID string) error
-	clearBabyAvatar        func(babyID string) error
-	localEviction          func(limit int, processedBefore time.Time) ([]domain.MediaAsset, error)
-	markOriginalEvicted    func(mediaID string, evictedAt time.Time) error
-	attachLocalOriginal    func(mediaID, blobKey string, accessedAt time.Time) error
-	markOriginalR2Uploaded func(mediaID, r2Key string) error
-	markOriginalR2Missing  func(mediaID string) error
-	currentMonthR2Usage    func(monthKey string) (int64, int64, error)
-	addR2Usage             func(monthKey string, classA, classB int64) error
-	r2Footprint            func() (int64, error)
-	r2Eviction             func(limit int) ([]domain.MediaAsset, error)
-	failUploadByMedia      func(mediaID, reason string) error
-	failAgentJob           func(jobID, reason string) error
+	unbindStorageNode        func(nodeID, token string) error
+	attachUploadContent      func(userID, sessionID string, input store.UploadContentInput) (domain.UploadSession, error)
+	pendingJobs              func(nodeID, token string) ([]domain.AgentJob, error)
+	agentJob                 func(nodeID, token, jobID string) (domain.AgentJob, error)
+	mediaByID                func(albumID, userID, mediaID string) (domain.MediaAsset, error)
+	babyByID                 func(userID, albumID, babyID string) (domain.BabyProfile, error)
+	mediaByPublicID          func(mediaID string) (domain.MediaAsset, error)
+	babyByPublicID           func(babyID string) (domain.BabyProfile, error)
+	resolveOriginal          func(userID, albumID, mediaID string, triggerRestore bool) (domain.MediaAsset, error)
+	recordOriginalAccess     func(mediaID string, accessedAt time.Time) error
+	referencedBlobKeys       func() ([]string, error)
+	previewBlobAssets        func(limit int) ([]domain.MediaAsset, error)
+	localOriginalAssets      func(limit int) ([]domain.MediaAsset, error)
+	avatarBabies             func(limit int) ([]domain.BabyProfile, error)
+	markPreviewMissing       func(mediaID string) error
+	attachPreviewBlob        func(mediaID string, input store.PreviewBlobAttachmentInput) error
+	markPreviewsPending      func(mediaID string) error
+	markScreenPreviewMissing func(mediaID string) error
+	attachScreenPreview      func(mediaID string, input store.ScreenPreviewAttachmentInput) error
+	markOriginalMissing      func(mediaID string) error
+	clearBabyAvatar          func(babyID string) error
+	localEviction            func(limit int, processedBefore time.Time) ([]domain.MediaAsset, error)
+	markOriginalEvicted      func(mediaID string, evictedAt time.Time) error
+	attachLocalOriginal      func(mediaID, blobKey string, accessedAt time.Time) error
+	markOriginalR2Uploaded   func(mediaID, r2Key string) error
+	markOriginalR2Missing    func(mediaID string) error
+	currentMonthR2Usage      func(monthKey string) (int64, int64, error)
+	addR2Usage               func(monthKey string, classA, classB int64) error
+	r2Footprint              func() (int64, error)
+	r2Eviction               func(limit int) ([]domain.MediaAsset, error)
+	failUploadByMedia        func(mediaID, reason string) error
+	failAgentJob             func(jobID, reason string) error
 }
 
 func (s *stubRepository) RegisterUser(input store.RegisterUserInput) (store.AuthResult, error) {
@@ -274,6 +277,27 @@ func (s *stubRepository) MarkPreviewMissing(mediaID string) error {
 func (s *stubRepository) AttachPreviewBlob(mediaID string, input store.PreviewBlobAttachmentInput) error {
 	if s.attachPreviewBlob != nil {
 		return s.attachPreviewBlob(mediaID, input)
+	}
+	return nil
+}
+
+func (s *stubRepository) MarkPreviewsPending(mediaID string) error {
+	if s.markPreviewsPending != nil {
+		return s.markPreviewsPending(mediaID)
+	}
+	return nil
+}
+
+func (s *stubRepository) MarkScreenPreviewMissing(mediaID string) error {
+	if s.markScreenPreviewMissing != nil {
+		return s.markScreenPreviewMissing(mediaID)
+	}
+	return nil
+}
+
+func (s *stubRepository) AttachScreenPreview(mediaID string, input store.ScreenPreviewAttachmentInput) error {
+	if s.attachScreenPreview != nil {
+		return s.attachScreenPreview(mediaID, input)
 	}
 	return nil
 }

@@ -2,12 +2,14 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"image"
 	"image/jpeg"
 	"io"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -19,26 +21,34 @@ import (
 )
 
 type uploadedMediaPreview struct {
-	Width   int
-	Height  int
-	Status  domain.PreviewStatus
-	BlobKey string
+	Width                  int
+	Height                 int
+	Status                 domain.PreviewStatus
+	BlobKey                string
+	ScreenPreviewStatus    domain.PreviewStatus
+	ScreenPreviewObjectKey string
 }
 
 func (s *Server) generateUploadedMediaPreview(originalBlobKey, originalName string) uploadedMediaPreview {
-	result := uploadedMediaPreview{Status: domain.PreviewUnavailable}
+	result := uploadedMediaPreview{Status: domain.PreviewUnavailable, ScreenPreviewStatus: domain.PreviewUnavailable}
 	sourceKey := strings.TrimSpace(originalBlobKey)
 	if sourceKey == "" {
 		return result
 	}
 	sourcePath := filepath.Join(s.blob.Root(), sourceKey)
 
-	if width, height, encoded, err := generateImagePreview(sourcePath); err == nil {
+	if width, height, thumbEncoded, err := generateImagePreview(sourcePath, 480, 82); err == nil {
 		result.Width = width
 		result.Height = height
-		if blobKey, saveErr := s.savePreviewBlob(sourceKey, originalName, encoded); saveErr == nil {
+		if blobKey, saveErr := s.savePreviewBlob(sourceKey, originalName, thumbEncoded); saveErr == nil {
 			result.Status = domain.PreviewReady
 			result.BlobKey = blobKey
+		}
+		if screenEncoded, screenErr := generateImagePreviewBytes(sourcePath, 1600, 84); screenErr == nil {
+			if objectKey, saveErr := s.saveScreenPreviewObject(context.Background(), sourceKey, originalName, screenEncoded); saveErr == nil {
+				result.ScreenPreviewStatus = domain.PreviewReady
+				result.ScreenPreviewObjectKey = objectKey
+			}
 		}
 		return result
 	} else if width > 0 && height > 0 {
@@ -46,12 +56,18 @@ func (s *Server) generateUploadedMediaPreview(originalBlobKey, originalName stri
 		result.Height = height
 	}
 
-	if width, height, encoded, err := generateVideoPreview(sourcePath); err == nil {
+	if width, height, thumbEncoded, err := generateVideoPreview(sourcePath, 480, 82); err == nil {
 		result.Width = width
 		result.Height = height
-		if blobKey, saveErr := s.savePreviewBlob(sourceKey, originalName, encoded); saveErr == nil {
+		if blobKey, saveErr := s.savePreviewBlob(sourceKey, originalName, thumbEncoded); saveErr == nil {
 			result.Status = domain.PreviewReady
 			result.BlobKey = blobKey
+		}
+		if screenEncoded, screenErr := generateVideoPreviewBytes(sourcePath, 1600, 84); screenErr == nil {
+			if objectKey, saveErr := s.saveScreenPreviewObject(context.Background(), sourceKey, originalName, screenEncoded); saveErr == nil {
+				result.ScreenPreviewStatus = domain.PreviewReady
+				result.ScreenPreviewObjectKey = objectKey
+			}
 		}
 		return result
 	} else if result.Width == 0 && result.Height == 0 && width > 0 && height > 0 {
@@ -82,6 +98,21 @@ func (s *Server) savePreviewBlob(sourceBlobKey, originalName string, data []byte
 	return saved.Key, nil
 }
 
+func (s *Server) saveScreenPreviewObject(ctx context.Context, sourceBlobKey, originalName string, data []byte) (string, error) {
+	if len(data) == 0 {
+		return "", fmt.Errorf("screen preview payload is empty")
+	}
+	if s.screenPreviews == nil || !s.screenPreviews.Enabled() {
+		return "", fmt.Errorf("screen preview store is not configured")
+	}
+	key := screenPreviewObjectKey(sourceBlobKey, originalName)
+	saved, err := s.screenPreviews.PutBytes(ctx, key, data, "image/jpeg")
+	if err != nil {
+		return "", err
+	}
+	return saved.Key, nil
+}
+
 func previewFileName(originalName string) string {
 	base := strings.TrimSpace(filepath.Base(originalName))
 	if base == "" {
@@ -90,7 +121,15 @@ func previewFileName(originalName string) string {
 	return strings.TrimSuffix(base, filepath.Ext(base)) + ".jpg"
 }
 
-func generateImagePreview(sourcePath string) (int, int, []byte, error) {
+func screenPreviewObjectKey(sourceBlobKey, originalName string) string {
+	prefix := strings.TrimSuffix(filepath.Base(strings.TrimSpace(sourceBlobKey)), filepath.Ext(strings.TrimSpace(sourceBlobKey)))
+	if strings.TrimSpace(prefix) == "" {
+		prefix = "screen-preview"
+	}
+	return path.Join("screen-previews", prefix+"-"+previewFileName(originalName))
+}
+
+func generateImagePreview(sourcePath string, maxEdge, quality int) (int, int, []byte, error) {
 	width, height, err := probeImageSize(sourcePath)
 	if err != nil {
 		return 0, 0, nil, err
@@ -112,16 +151,21 @@ func generateImagePreview(sourcePath string) (int, int, []byte, error) {
 			height = bounds.Dy()
 		}
 	}
-	dstW, dstH := fitWithin(width, height, 480)
+	dstW, dstH := fitWithin(width, height, maxEdge)
 	preview := resizeImage(img, dstW, dstH)
 	var encoded bytes.Buffer
-	if err := jpeg.Encode(&encoded, preview, &jpeg.Options{Quality: 82}); err != nil {
+	if err := jpeg.Encode(&encoded, preview, &jpeg.Options{Quality: quality}); err != nil {
 		return width, height, nil, err
 	}
 	return width, height, encoded.Bytes(), nil
 }
 
-func generateVideoPreview(sourcePath string) (int, int, []byte, error) {
+func generateImagePreviewBytes(sourcePath string, maxEdge, quality int) ([]byte, error) {
+	_, _, data, err := generateImagePreview(sourcePath, maxEdge, quality)
+	return data, err
+}
+
+func generateVideoPreview(sourcePath string, maxEdge, quality int) (int, int, []byte, error) {
 	width, height, _ := probeVideoSize(sourcePath)
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		if width > 0 && height > 0 {
@@ -140,8 +184,9 @@ func generateVideoPreview(sourcePath string) (int, int, []byte, error) {
 		"ffmpeg",
 		"-y",
 		"-i", sourcePath,
-		"-vf", "thumbnail,scale=480:-1:force_original_aspect_ratio=decrease",
+		"-vf", fmt.Sprintf("thumbnail,scale=%d:-1:force_original_aspect_ratio=decrease", maxEdge),
 		"-frames:v", "1",
+		"-q:v", strconv.Itoa(maxInt(2, 31-((quality*29)/100))),
 		thumbPath,
 	)
 	if output, err := cmd.CombinedOutput(); err != nil {
@@ -161,6 +206,11 @@ func generateVideoPreview(sourcePath string) (int, int, []byte, error) {
 		}
 	}
 	return width, height, encoded, nil
+}
+
+func generateVideoPreviewBytes(sourcePath string, maxEdge, quality int) ([]byte, error) {
+	_, _, data, err := generateVideoPreview(sourcePath, maxEdge, quality)
+	return data, err
 }
 
 func resizeImage(src image.Image, targetWidth, targetHeight int) *image.RGBA {

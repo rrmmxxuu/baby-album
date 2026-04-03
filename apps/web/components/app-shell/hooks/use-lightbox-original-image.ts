@@ -28,11 +28,13 @@ export type LightboxOriginalImageState = {
   totalBytes: number;
   progress: number | null;
   objectUrl: string;
+  requestDownload: () => void;
 };
 
 interface UseLightboxOriginalImageOptions {
   albumId: string;
   currentItem: MediaAsset;
+  enabled: boolean;
 }
 
 function createTask(mediaId: string): OriginalImageTask {
@@ -56,7 +58,8 @@ function toSnapshot(task?: OriginalImageTask): LightboxOriginalImageState {
       loadedBytes: 0,
       totalBytes: 0,
       progress: null,
-      objectUrl: ""
+      objectUrl: "",
+      requestDownload: () => {}
     };
   }
   return {
@@ -64,11 +67,12 @@ function toSnapshot(task?: OriginalImageTask): LightboxOriginalImageState {
     loadedBytes: task.loadedBytes,
     totalBytes: task.totalBytes,
     progress: task.progress,
-    objectUrl: task.objectUrl
+    objectUrl: task.objectUrl,
+    requestDownload: () => {}
   };
 }
 
-export function useLightboxOriginalImage({ albumId, currentItem }: UseLightboxOriginalImageOptions) {
+export function useLightboxOriginalImage({ albumId, currentItem, enabled }: UseLightboxOriginalImageOptions) {
   const tasksRef = useRef<Map<string, OriginalImageTask>>(new Map());
   const mountedRef = useRef(false);
   const currentMediaIdRef = useRef(currentItem.id);
@@ -339,8 +343,12 @@ export function useLightboxOriginalImage({ albumId, currentItem }: UseLightboxOr
       currentTask.lastAccessedAt = Date.now();
     }
     pruneTasks();
-    startDownload(currentItem);
-  }, [albumId, currentItem.id, currentItem.mediaType, currentItem.originalAvailability, currentItem.originalUrl]);
+    if (enabled) {
+      startDownload(currentItem);
+    }
+  }, [albumId, currentItem.id, currentItem.mediaType, currentItem.originalAvailability, currentItem.originalUrl, enabled]);
 
-  return toSnapshot(tasksRef.current.get(currentItem.id));
+  const snapshot = toSnapshot(tasksRef.current.get(currentItem.id));
+  snapshot.requestDownload = () => startDownload(currentItem);
+  return snapshot;
 }

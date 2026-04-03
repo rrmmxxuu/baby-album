@@ -5,6 +5,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUN_DIR="$ROOT_DIR/tmp/run"
 CACHE_DIR="$ROOT_DIR/tmp/cache"
+R2_LOCAL_DIR="$ROOT_DIR/tmp/r2"
 LIBRARY_DIR="$ROOT_DIR/tmp/library"
 GO_BIN="${GO_BIN:-go}"
 API_PID_FILE="$RUN_DIR/api.pid"
@@ -15,7 +16,7 @@ PUBLIC_HOST="${1:-${DEV_HOST:-192.168.31.200}}"
 API_PORT="${DEV_API_PORT:-8080}"
 WEB_PORT="${DEV_WEB_PORT:-3000}"
 
-mkdir -p "$RUN_DIR" "$CACHE_DIR" "$LIBRARY_DIR"
+mkdir -p "$RUN_DIR" "$CACHE_DIR" "$R2_LOCAL_DIR" "$LIBRARY_DIR"
 
 is_running() {
   local pid_file="$1"
@@ -67,6 +68,7 @@ start_process \
   env \
   DATABASE_URL="$DATABASE_URL" \
   CACHE_ROOT="$CACHE_DIR" \
+  R2_LOCAL_ROOT="$R2_LOCAL_DIR" \
   API_ADDR=":$API_PORT" \
   ALLOWED_ORIGINS="http://$PUBLIC_HOST:$WEB_PORT,http://localhost:$WEB_PORT,http://127.0.0.1:$WEB_PORT" \
   "$GO_BIN" run ./cmd/server

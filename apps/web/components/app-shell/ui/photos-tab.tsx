@@ -17,9 +17,10 @@ interface PhotosTabProps {
   onAlbumChange: (albumId: string) => void;
   onEditEntry: (entryId: string) => void;
   onOpenLightbox: (entryId: string, mediaId: string) => void;
+  onPreviewRepair?: () => void;
 }
 
-export function PhotosTab({ activeTab, activeAlbum, activeBaby, albumOptions, timeline, timelineDays, currentUserId, onAlbumChange, onEditEntry, onOpenLightbox }: PhotosTabProps) {
+export function PhotosTab({ activeTab, activeAlbum, activeBaby, albumOptions, timeline, timelineDays, currentUserId, onAlbumChange, onEditEntry, onOpenLightbox, onPreviewRepair }: PhotosTabProps) {
   return (
     <section
       aria-hidden={!activeTab}
@@ -43,7 +44,7 @@ export function PhotosTab({ activeTab, activeAlbum, activeBaby, albumOptions, ti
             {timeline.timelineLoading && timelineDays.length === 0 ? <PhotosTimelineLoadingSkeleton ariaLabel="正在加载时间线" /> : null}
             {!timeline.timelineLoading && timelineDays.length === 0 ? <PanelMessage message="还没有媒体内容，先去上传一张照片吧。" /> : null}
             {timelineDays.map((day, index) => (
-              <TimelineDaySection activeAlbum={activeAlbum} currentUserId={currentUserId} day={day} key={day.day} onEditEntry={onEditEntry} onOpenLightbox={onOpenLightbox} priority={index < 2} timeline={timeline} />
+              <TimelineDaySection activeAlbum={activeAlbum} currentUserId={currentUserId} day={day} key={day.day} onEditEntry={onEditEntry} onOpenLightbox={onOpenLightbox} onPreviewRepair={onPreviewRepair} priority={index < 2} timeline={timeline} />
             ))}
             {timeline.timelineLoadingMore ? <div className="timelineFooterState"><div className="pullRefreshSpinner pullRefreshSpinnerSpinning" /><span>正在加载更多</span></div> : null}
             {!timeline.timelineHasMore && timeline.timelineEntries.length > 0 ? <div className="timelineFooterState timelineFooterStateDone"><span>已经到底了</span></div> : null}

@@ -10,6 +10,7 @@ import (
 
 	"babyalbum/api/internal/blob"
 	"babyalbum/api/internal/domain"
+	"babyalbum/api/internal/objectstore"
 	"babyalbum/api/internal/store"
 )
 
@@ -72,7 +73,8 @@ func TestRunMaintenanceRepairsMissingPreviewBlob(t *testing.T) {
 		},
 	}
 
-	controller := newMediaCacheController(repo, blobStorage, Options{})
+	objectStore := objectstore.NewLocalFS(t.TempDir())
+	controller := newMediaCacheController(repo, blobStorage, objectStore, Options{})
 	controller.runMaintenance()
 
 	if !markedMissing {

@@ -79,6 +79,8 @@ export interface MediaAsset {
   previewStatus: "pending" | "ready" | "unavailable";
   previewUrl?: string;
   previewBlobKey?: string;
+  screenPreviewStatus?: "pending" | "ready" | "unavailable";
+  screenPreviewUrl?: string;
   originalUrl?: string;
   originalAvailability?: "hot" | "warm" | "cold" | "restoring" | "unavailable";
   processedAt?: string;

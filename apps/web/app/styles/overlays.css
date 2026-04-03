@@ -629,12 +629,26 @@
   color: rgba(255, 255, 255, 0.72);
 }
 
+.lightboxBottomActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .lightboxClose {
   padding: 10px 14px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.12);
   color: white;
   transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), background-color 220ms ease;
+}
+
+.lightboxOriginalAction {
+  padding: 9px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  color: white;
+  white-space: nowrap;
 }
 
 .lightboxStage {

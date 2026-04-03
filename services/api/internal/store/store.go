@@ -191,19 +191,25 @@ type CreateTimelineCommentInput struct {
 }
 
 type UploadContentInput struct {
-	ByteSize       int64
-	BlobKey        string
-	ContentSHA256  string
-	Width          int
-	Height         int
-	PreviewStatus  domain.PreviewStatus
-	PreviewBlobKey string
+	ByteSize               int64
+	BlobKey                string
+	ContentSHA256          string
+	Width                  int
+	Height                 int
+	PreviewStatus          domain.PreviewStatus
+	PreviewBlobKey         string
+	ScreenPreviewStatus    domain.PreviewStatus
+	ScreenPreviewObjectKey string
 }
 
 type PreviewBlobAttachmentInput struct {
 	BlobKey string
 	Width   int
 	Height  int
+}
+
+type ScreenPreviewAttachmentInput struct {
+	ObjectKey string
 }
 
 type DuplicateMediaProbeItemInput struct {
@@ -246,13 +252,15 @@ type DuplicateMediaResolveResult struct {
 }
 
 type JobCompletionInput struct {
-	OriginalPath    string
-	PreviewBlobKey  string
-	RestoredBlobKey string
-	Width           int
-	Height          int
-	PreviewStatus   domain.PreviewStatus
-	ProcessedAt     time.Time
+	OriginalPath           string
+	PreviewBlobKey         string
+	ScreenPreviewStatus    domain.PreviewStatus
+	ScreenPreviewObjectKey string
+	RestoredBlobKey        string
+	Width                  int
+	Height                 int
+	PreviewStatus          domain.PreviewStatus
+	ProcessedAt            time.Time
 }
 
 type OriginalStatusInput struct {
@@ -446,6 +454,9 @@ type Repository interface {
 	AvatarBabies(limit int) ([]domain.BabyProfile, error)
 	MarkPreviewMissing(mediaID string) error
 	AttachPreviewBlob(mediaID string, input PreviewBlobAttachmentInput) error
+	MarkPreviewsPending(mediaID string) error
+	MarkScreenPreviewMissing(mediaID string) error
+	AttachScreenPreview(mediaID string, input ScreenPreviewAttachmentInput) error
 	MarkOriginalBlobMissing(mediaID string) error
 	ClearBabyAvatar(babyID string) error
 	FailUploadSessionByMedia(mediaID, reason string) error

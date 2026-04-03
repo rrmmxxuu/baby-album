@@ -20,7 +20,7 @@ type PostgresStore struct {
 	agentJobNotifier AgentJobNotifier
 }
 
-const mediaAssetColumns = `id, family_id, entry_id, upload_batch_id, uploaded_by, uploaded_by_name, file_name, media_type, captured_at, uploaded_at, timeline_day, status, source, width, height, byte_size, preview_status, preview_blob_key, original_blob_key, content_sha256, processed_at, original_path, original_local_state, original_r2_state, original_r2_key, original_restore_state, original_last_accessed_at, original_evicted_at`
+const mediaAssetColumns = `id, family_id, entry_id, upload_batch_id, uploaded_by, uploaded_by_name, file_name, media_type, captured_at, uploaded_at, timeline_day, status, source, width, height, byte_size, preview_status, preview_blob_key, screen_preview_status, screen_preview_object_key, original_blob_key, content_sha256, processed_at, original_path, original_local_state, original_r2_state, original_r2_key, original_restore_state, original_last_accessed_at, original_evicted_at`
 const feedingEntryColumns = `id, family_id, baby_id, category, occurred_at, ended_at, day_key, note, created_by, created_by_name, created_at, updated_at, milk_mode, amount_ml, breast_left_seconds, breast_right_seconds, food_name, has_stool`
 const feedingTimerSessionColumns = `id, family_id, baby_id, day_key, started_at, status, active_side, active_segment_started_at, left_elapsed_seconds, right_elapsed_seconds, version, updated_by, updated_by_name, updated_at, created_at`
 
@@ -111,7 +111,7 @@ func (s *PostgresStore) migrate() error {
 		`update feeding_entries set breast_right_seconds = null where breast_right_seconds is not null and breast_right_seconds < 0`,
 		`create table if not exists feeding_entry_items (id text primary key, entry_id text not null references feeding_entries(id) on delete cascade, name text not null, dose text not null default '', sort_order integer not null default 0, created_at timestamptz not null)`,
 		`create table if not exists feeding_timer_sessions (id text primary key, family_id text not null references families(id), baby_id text not null references babies(id), day_key text not null, started_at timestamptz not null, status text not null, active_side text, active_segment_started_at timestamptz, left_elapsed_seconds integer not null default 0, right_elapsed_seconds integer not null default 0, version integer not null default 1, updated_by text not null references users(id), updated_by_name text not null default '', updated_at timestamptz not null, created_at timestamptz not null)`,
-		`create table if not exists media_assets (id text primary key, family_id text not null references families(id), entry_id text not null default '', upload_batch_id text not null default '', uploaded_by text not null default '', uploaded_by_name text not null default '', file_name text not null, media_type text not null, captured_at timestamptz not null, uploaded_at timestamptz not null, timeline_day text not null, status text not null, source text not null, width integer not null default 0, height integer not null default 0, byte_size bigint not null default 0, preview_status text not null default 'pending', preview_blob_key text not null default '', original_blob_key text not null default '', content_sha256 text not null default '', processed_at timestamptz, original_path text not null default '', original_local_state text not null default 'pending', original_r2_state text not null default 'missing', original_r2_key text not null default '', original_restore_state text not null default 'idle', original_last_accessed_at timestamptz, original_evicted_at timestamptz)`,
+		`create table if not exists media_assets (id text primary key, family_id text not null references families(id), entry_id text not null default '', upload_batch_id text not null default '', uploaded_by text not null default '', uploaded_by_name text not null default '', file_name text not null, media_type text not null, captured_at timestamptz not null, uploaded_at timestamptz not null, timeline_day text not null, status text not null, source text not null, width integer not null default 0, height integer not null default 0, byte_size bigint not null default 0, preview_status text not null default 'pending', preview_blob_key text not null default '', screen_preview_status text not null default 'pending', screen_preview_object_key text not null default '', original_blob_key text not null default '', content_sha256 text not null default '', processed_at timestamptz, original_path text not null default '', original_local_state text not null default 'pending', original_r2_state text not null default 'missing', original_r2_key text not null default '', original_restore_state text not null default 'idle', original_last_accessed_at timestamptz, original_evicted_at timestamptz)`,
 		`create table if not exists media_placements (media_id text not null references media_assets(id), family_id text not null references families(id), node_id text not null references storage_nodes(id), kind text not null default 'primary', status text not null default 'pending', local_path text not null default '', created_at timestamptz not null, updated_at timestamptz not null, last_verified_at timestamptz, primary key (media_id, node_id))`,
 		`create index if not exists idx_media_placements_family_node_status on media_placements (family_id, node_id, status)`,
 		`create index if not exists idx_media_placements_media_kind on media_placements (media_id, kind)`,
@@ -120,6 +120,8 @@ func (s *PostgresStore) migrate() error {
 		`alter table media_assets add column if not exists uploaded_by text not null default ''`,
 		`alter table media_assets add column if not exists uploaded_by_name text not null default ''`,
 		`alter table media_assets add column if not exists byte_size bigint not null default 0`,
+		`alter table media_assets add column if not exists screen_preview_status text not null default 'pending'`,
+		`alter table media_assets add column if not exists screen_preview_object_key text not null default ''`,
 		`alter table media_assets add column if not exists original_blob_key text not null default ''`,
 		`alter table media_assets add column if not exists content_sha256 text not null default ''`,
 		`alter table media_assets add column if not exists original_local_state text not null default 'pending'`,
@@ -244,7 +246,7 @@ func (s *PostgresStore) seed() error {
 		}
 	}
 	for _, item := range seedMedia {
-		if _, err := tx.Exec(`insert into media_assets (id, family_id, entry_id, upload_batch_id, uploaded_by, uploaded_by_name, file_name, media_type, captured_at, uploaded_at, timeline_day, status, source, width, height, preview_status, preview_blob_key, original_blob_key, processed_at, original_path) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`, item.ID, item.FamilyID, item.EntryID, item.UploadBatchID, item.UploadedBy, item.UploadedByName, item.FileName, item.MediaType, item.CapturedAt, item.UploadedAt, item.TimelineDay, item.Status, item.Source, item.Width, item.Height, item.PreviewStatus, item.PreviewBlobKey, item.OriginalBlobKey, item.ProcessedAt, item.OriginalPath); err != nil {
+		if _, err := tx.Exec(`insert into media_assets (id, family_id, entry_id, upload_batch_id, uploaded_by, uploaded_by_name, file_name, media_type, captured_at, uploaded_at, timeline_day, status, source, width, height, preview_status, preview_blob_key, screen_preview_status, screen_preview_object_key, original_blob_key, processed_at, original_path) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`, item.ID, item.FamilyID, item.EntryID, item.UploadBatchID, item.UploadedBy, item.UploadedByName, item.FileName, item.MediaType, item.CapturedAt, item.UploadedAt, item.TimelineDay, item.Status, item.Source, item.Width, item.Height, item.PreviewStatus, item.PreviewBlobKey, item.ScreenPreviewStatus, item.ScreenPreviewObjectKey, item.OriginalBlobKey, item.ProcessedAt, item.OriginalPath); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(`insert into media_placements (media_id, family_id, node_id, kind, status, local_path, created_at, updated_at, last_verified_at) values ($1, $2, $3, 'primary', 'ready', $4, $5, $5, $5)`, item.ID, item.FamilyID, "node-demo", item.OriginalPath, item.UploadedAt); err != nil {
@@ -2061,7 +2063,7 @@ func (s *PostgresStore) CreateUploadSession(userID string, input UploadSessionIn
 		return domain.UploadSession{}, err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`insert into media_assets (id, family_id, entry_id, upload_batch_id, uploaded_by, uploaded_by_name, file_name, media_type, captured_at, uploaded_at, timeline_day, status, source, preview_status, original_blob_key) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`, mediaID, input.AlbumID, input.EntryID, uploadBatchID, user.ID, user.DisplayName, input.FileName, input.MediaType, capturedAt, now, capturedAt.Format("2006-01-02"), domain.MediaPending, "manual_upload", domain.PreviewPending, ""); err != nil {
+	if _, err := tx.Exec(`insert into media_assets (id, family_id, entry_id, upload_batch_id, uploaded_by, uploaded_by_name, file_name, media_type, captured_at, uploaded_at, timeline_day, status, source, preview_status, preview_blob_key, screen_preview_status, screen_preview_object_key, original_blob_key) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`, mediaID, input.AlbumID, input.EntryID, uploadBatchID, user.ID, user.DisplayName, input.FileName, input.MediaType, capturedAt, now, capturedAt.Format("2006-01-02"), domain.MediaPending, "manual_upload", domain.PreviewPending, "", domain.PreviewPending, "", ""); err != nil {
 		return domain.UploadSession{}, err
 	}
 	if _, err := tx.Exec(`insert into upload_sessions (id, family_id, entry_id, upload_batch_id, uploaded_by, uploaded_by_name, media_id, file_name, media_type, status, created_at, assigned_to, byte_size, blob_key) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`, uploadID, input.AlbumID, input.EntryID, uploadBatchID, user.ID, user.DisplayName, mediaID, input.FileName, input.MediaType, "created", now, node.ID, 0, ""); err != nil {
@@ -2112,7 +2114,7 @@ func (s *PostgresStore) AttachUploadContent(userID, sessionID string, input Uplo
 	if _, err := tx.Exec(`update upload_sessions set status = $1, byte_size = $2, blob_key = $3, failure_reason = '' where id = $4`, "uploaded", input.ByteSize, input.BlobKey, sessionID); err != nil {
 		return domain.UploadSession{}, err
 	}
-	if _, err := tx.Exec(`update media_assets set byte_size = $1, original_blob_key = $2, content_sha256 = $3, width = $4, height = $5, preview_status = $6, preview_blob_key = $7, original_local_state = 'online', original_restore_state = 'idle', original_last_accessed_at = $8 where id = $9`, input.ByteSize, input.BlobKey, strings.ToLower(strings.TrimSpace(input.ContentSHA256)), input.Width, input.Height, input.PreviewStatus, input.PreviewBlobKey, now, session.MediaID); err != nil {
+	if _, err := tx.Exec(`update media_assets set byte_size = $1, original_blob_key = $2, content_sha256 = $3, width = $4, height = $5, preview_status = $6, preview_blob_key = $7, screen_preview_status = $8, screen_preview_object_key = $9, original_local_state = 'online', original_restore_state = 'idle', original_last_accessed_at = $10 where id = $11`, input.ByteSize, input.BlobKey, strings.ToLower(strings.TrimSpace(input.ContentSHA256)), input.Width, input.Height, input.PreviewStatus, input.PreviewBlobKey, input.ScreenPreviewStatus, input.ScreenPreviewObjectKey, now, session.MediaID); err != nil {
 		return domain.UploadSession{}, err
 	}
 	if _, err := tx.Exec(`insert into agent_jobs (id, node_id, family_id, media_id, type, status, created_at, updated_at) values ($1,$2,$3,$4,$5,$6,$7,$8)`, jobID, session.AssignedTo, session.FamilyID, session.MediaID, "ingest_media", domain.JobPending, now, now); err != nil {
@@ -2432,7 +2434,7 @@ func (s *PostgresStore) CompleteJob(nodeID, token, jobID string, input JobComple
 			return domain.AgentJob{}, err
 		}
 	default:
-		if _, err := tx.Exec(`update media_assets set status = $1, width = case when $2 > 0 then $2 else width end, height = case when $3 > 0 then $3 else height end, preview_status = case when $5 <> '' then $4 when preview_status = 'pending' and $4 <> '' then $4 when preview_status = 'pending' then 'unavailable' else preview_status end, preview_blob_key = case when $5 <> '' then $5 else preview_blob_key end, processed_at = $6, original_path = $7, original_restore_state = 'idle' where id = $8`, domain.MediaReady, input.Width, input.Height, input.PreviewStatus, input.PreviewBlobKey, input.ProcessedAt, input.OriginalPath, job.MediaID); err != nil {
+		if _, err := tx.Exec(`update media_assets set status = $1, width = case when $2 > 0 then $2 else width end, height = case when $3 > 0 then $3 else height end, preview_status = case when $5 <> '' then $4 when preview_status = 'pending' and $4 <> '' then $4 when preview_status = 'pending' then 'unavailable' else preview_status end, preview_blob_key = case when $5 <> '' then $5 else preview_blob_key end, screen_preview_status = case when $7 <> '' then $6 when screen_preview_status = 'pending' and $6 <> '' then $6 when screen_preview_status = 'pending' then 'unavailable' else screen_preview_status end, screen_preview_object_key = case when $7 <> '' then $7 else screen_preview_object_key end, processed_at = $8, original_path = $9, original_restore_state = 'idle' where id = $10`, domain.MediaReady, input.Width, input.Height, input.PreviewStatus, input.PreviewBlobKey, input.ScreenPreviewStatus, input.ScreenPreviewObjectKey, input.ProcessedAt, input.OriginalPath, job.MediaID); err != nil {
 			return domain.AgentJob{}, err
 		}
 	}
@@ -3163,7 +3165,7 @@ func (s *PostgresStore) PreviewBlobAssets(limit int) ([]domain.MediaAsset, error
 	if limit <= 0 {
 		limit = 512
 	}
-	rows, err := s.db.Query(`select `+mediaAssetColumns+` from media_assets where (preview_blob_key <> '' or preview_status = $1) and (original_blob_key <> '' or original_r2_state = 'online') order by processed_at desc nulls last, uploaded_at desc, id asc limit $2`, domain.PreviewUnavailable, limit)
+	rows, err := s.db.Query(`select `+mediaAssetColumns+` from media_assets where ((preview_blob_key <> '' or preview_status = $1) or (screen_preview_object_key <> '' or screen_preview_status = $1)) and (original_blob_key <> '' or original_r2_state = 'online' or screen_preview_object_key <> '') order by processed_at desc nulls last, uploaded_at desc, id asc limit $2`, domain.PreviewUnavailable, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -3237,6 +3239,21 @@ func (s *PostgresStore) MarkPreviewMissing(mediaID string) error {
 
 func (s *PostgresStore) AttachPreviewBlob(mediaID string, input PreviewBlobAttachmentInput) error {
 	_, err := s.db.Exec(`update media_assets set preview_status = $1, preview_blob_key = $2, width = case when $3 > 0 then $3 else width end, height = case when $4 > 0 then $4 else height end where id = $5`, domain.PreviewReady, strings.TrimSpace(input.BlobKey), input.Width, input.Height, mediaID)
+	return err
+}
+
+func (s *PostgresStore) MarkPreviewsPending(mediaID string) error {
+	_, err := s.db.Exec(`update media_assets set preview_status = case when preview_status <> $1 then $2 else preview_status end, screen_preview_status = case when screen_preview_status <> $1 then $2 else screen_preview_status end where id = $3`, domain.PreviewReady, domain.PreviewPending, mediaID)
+	return err
+}
+
+func (s *PostgresStore) MarkScreenPreviewMissing(mediaID string) error {
+	_, err := s.db.Exec(`update media_assets set screen_preview_status = $1, screen_preview_object_key = '' where id = $2`, domain.PreviewUnavailable, mediaID)
+	return err
+}
+
+func (s *PostgresStore) AttachScreenPreview(mediaID string, input ScreenPreviewAttachmentInput) error {
+	_, err := s.db.Exec(`update media_assets set screen_preview_status = $1, screen_preview_object_key = $2 where id = $3`, domain.PreviewReady, strings.TrimSpace(input.ObjectKey), mediaID)
 	return err
 }
 
@@ -3404,7 +3421,7 @@ func scanMediaAsset(row scanner) (domain.MediaAsset, error) {
 	var processedAt sql.NullTime
 	var originalLastAccessedAt sql.NullTime
 	var originalEvictedAt sql.NullTime
-	err := row.Scan(&item.ID, &item.FamilyID, &item.EntryID, &item.UploadBatchID, &item.UploadedBy, &item.UploadedByName, &item.FileName, &item.MediaType, &item.CapturedAt, &item.UploadedAt, &item.TimelineDay, &item.Status, &item.Source, &item.Width, &item.Height, &item.ByteSize, &item.PreviewStatus, &item.PreviewBlobKey, &item.OriginalBlobKey, &item.ContentSHA256, &processedAt, &item.OriginalPath, &item.OriginalLocalState, &item.OriginalR2State, &item.OriginalR2Key, &item.OriginalRestoreState, &originalLastAccessedAt, &originalEvictedAt)
+	err := row.Scan(&item.ID, &item.FamilyID, &item.EntryID, &item.UploadBatchID, &item.UploadedBy, &item.UploadedByName, &item.FileName, &item.MediaType, &item.CapturedAt, &item.UploadedAt, &item.TimelineDay, &item.Status, &item.Source, &item.Width, &item.Height, &item.ByteSize, &item.PreviewStatus, &item.PreviewBlobKey, &item.ScreenPreviewStatus, &item.ScreenPreviewObjectKey, &item.OriginalBlobKey, &item.ContentSHA256, &processedAt, &item.OriginalPath, &item.OriginalLocalState, &item.OriginalR2State, &item.OriginalR2Key, &item.OriginalRestoreState, &originalLastAccessedAt, &originalEvictedAt)
 	if err != nil {
 		return domain.MediaAsset{}, err
 	}

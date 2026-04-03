@@ -84,10 +84,11 @@ start_process \
   "$ROOT_DIR/services/api" \
   "$API_PID_FILE" \
   "$RUN_DIR/e2e-api.log" \
-  env \
-  DATABASE_URL="postgres://baby_album:baby_album@localhost:$POSTGRES_PORT/baby_album?sslmode=disable" \
-  CACHE_ROOT="$ROOT_DIR/tmp/cache" \
-  API_ADDR=":$API_PORT" \
+    env \
+    DATABASE_URL="postgres://baby_album:baby_album@localhost:$POSTGRES_PORT/baby_album?sslmode=disable" \
+    CACHE_ROOT="$ROOT_DIR/tmp/cache" \
+    R2_LOCAL_ROOT="$ROOT_DIR/tmp/r2-e2e" \
+    API_ADDR=":$API_PORT" \
   ALLOWED_ORIGINS="http://$PUBLIC_HOST:$WEB_PORT,http://localhost:$WEB_PORT,http://127.0.0.1:$WEB_PORT" \
   "$GO_BIN" run ./cmd/server
 

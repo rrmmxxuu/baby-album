@@ -15,10 +15,11 @@ interface TimelineDaySectionProps {
   currentUserId?: string;
   onEditEntry: (entryId: string) => void;
   onOpenLightbox: (entryId: string, mediaId: string) => void;
+  onPreviewRepair?: () => void;
   priority?: boolean;
 }
 
-export function TimelineDaySection({ activeAlbum, day, timeline, currentUserId, onEditEntry, onOpenLightbox, priority }: TimelineDaySectionProps) {
+export function TimelineDaySection({ activeAlbum, day, timeline, currentUserId, onEditEntry, onOpenLightbox, onPreviewRepair, priority }: TimelineDaySectionProps) {
   const containerRef = useRef<HTMLElement | null>(null);
   const [shouldRenderBatches, setShouldRenderBatches] = useState(Boolean(priority));
   const placeholderHeight = useMemo(() => Math.max(320, Math.min(2200, day.batches.length * 280)), [day.batches.length]);
@@ -66,6 +67,7 @@ export function TimelineDaySection({ activeAlbum, day, timeline, currentUserId, 
               onCommentToggle={() => timeline.toggleCommentComposer(batch.entry.id)}
               onEdit={() => onEditEntry(batch.entry.id)}
               onOpen={(index) => onOpenLightbox(batch.entry.id, batch.items[index]?.id ?? batch.items[0].id)}
+              onPreviewRepair={onPreviewRepair}
             />
           ))}
         </div>

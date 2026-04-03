@@ -19,18 +19,19 @@ interface MomentCardProps {
   onCommentToggle: () => void;
   onEdit: () => void;
   onOpen: (index: number) => void;
+  onPreviewRepair?: () => void;
 }
 
-export function MomentCard({ albumId, batch, canEdit, commentComposerOpen, commentDraft, commentSubmitting, onCommentDraftChange, onCommentSubmit, onCommentToggle, onEdit, onOpen }: MomentCardProps) {
+export function MomentCard({ albumId, batch, canEdit, commentComposerOpen, commentDraft, commentSubmitting, onCommentDraftChange, onCommentSubmit, onCommentToggle, onEdit, onOpen, onPreviewRepair }: MomentCardProps) {
   const isVideoBatch = batch.items.length === 1 && batch.items[0].mediaType.startsWith("video/");
 
   return (
     <article className="momentCard surfaceCard">
       {isVideoBatch ? (
-        <MomentVideo albumId={albumId} item={batch.items[0]} onOpen={() => onOpen(0)} />
+        <MomentVideo albumId={albumId} item={batch.items[0]} onOpen={() => onOpen(0)} onPreviewRepair={onPreviewRepair} />
       ) : (
         <div className={`momentPhotoGrid momentPhotoGrid${Math.min(batch.items.length, 9)}`}>
-          {batch.items.map((item, index) => <MomentThumb albumId={albumId} item={item} key={item.id} onOpen={() => onOpen(index)} />)}
+          {batch.items.map((item, index) => <MomentThumb albumId={albumId} item={item} key={item.id} onOpen={() => onOpen(index)} onPreviewRepair={onPreviewRepair} />)}
         </div>
       )}
       {batch.caption ? <p className="momentCaption">{batch.caption}</p> : null}

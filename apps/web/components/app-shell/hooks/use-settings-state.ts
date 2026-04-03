@@ -134,12 +134,16 @@ export function useSettingsState({ activeTab, activeAlbum, currentUser, refreshA
     }
   }
 
-  async function handleRoleUpdate(memberUserId: string) {
+  async function handleRoleUpdate(memberUserId: string, explicitRole?: Role) {
     if (!activeAlbum) {
       return;
     }
     clearFeedback();
-    const nextRole = roleDrafts[memberUserId];
+    const nextRole = explicitRole ?? roleDrafts[memberUserId];
+    if (!nextRole) {
+      showWarning("未选择权限", "请先选择要保存的权限。");
+      return;
+    }
     setOptimisticRoleOverrides((current) => ({ ...current, [memberUserId]: nextRole }));
     try {
       await updateMemberRole(activeAlbum.album.id, memberUserId, nextRole);

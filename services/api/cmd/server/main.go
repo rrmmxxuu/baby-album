@@ -51,6 +51,7 @@ func main() {
 			SecretAccessKey: os.Getenv("R2_SECRET_ACCESS_KEY"),
 			Region:          firstNonEmpty(os.Getenv("R2_REGION"), "auto"),
 		},
+		R2LocalRoot:       firstNonEmpty(os.Getenv("R2_LOCAL_ROOT"), "tmp/r2"),
 		R2MaxBytes:        parseByteEnv("R2_MAX_GB", 8),
 		R2TargetBytes:     parseByteEnv("R2_TARGET_GB", 6),
 		R2ClassASoftLimit: int64(parseIntEnv("R2_CLASS_A_SOFT_LIMIT", 800000)),
@@ -91,7 +92,7 @@ func loadDotEnv(path string) {
 		}
 		value = strings.TrimSpace(value)
 		value = strings.Trim(value, `"'`)
-		if (key == "CACHE_ROOT" || key == "SPOOL_ROOT") && value != "" && !filepath.IsAbs(value) {
+		if (key == "CACHE_ROOT" || key == "SPOOL_ROOT" || key == "R2_LOCAL_ROOT") && value != "" && !filepath.IsAbs(value) {
 			value = filepath.Clean(filepath.Join(filepath.Dir(path), value))
 		}
 		if err := os.Setenv(key, value); err != nil {

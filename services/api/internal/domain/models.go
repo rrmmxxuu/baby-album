@@ -268,6 +268,9 @@ type MediaAsset struct {
 	PreviewStatus          PreviewStatus        `json:"previewStatus"`
 	PreviewURL             string               `json:"previewUrl,omitempty"`
 	PreviewBlobKey         string               `json:"previewBlobKey,omitempty"`
+	ScreenPreviewStatus    PreviewStatus        `json:"screenPreviewStatus,omitempty"`
+	ScreenPreviewURL       string               `json:"screenPreviewUrl,omitempty"`
+	ScreenPreviewObjectKey string               `json:"-"`
 	OriginalURL            string               `json:"originalUrl,omitempty"`
 	OriginalAvail          OriginalAvailability `json:"originalAvailability,omitempty"`
 	OriginalBlobKey        string               `json:"-"`

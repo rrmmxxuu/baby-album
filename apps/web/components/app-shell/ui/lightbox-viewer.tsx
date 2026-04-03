@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { getOriginalUrl, getPreviewUrl, loadOriginalStatus } from "../../../lib/api";
+import { getOriginalUrl, getPreviewUrl, getScreenPreviewUrl, loadOriginalStatus, repairMediaPreview } from "../../../lib/api";
 import { useLightboxOriginalImage } from "../hooks/use-lightbox-original-image";
 import { formatDateTime, formatRelativeUploadTime } from "../model/format";
 import type { LightboxState } from "../model/types";
@@ -71,19 +71,28 @@ export function LightboxViewer({ lightbox, closing, onClose, onNavigate }: Light
   const [videoOriginalUrl, setVideoOriginalUrl] = useState("");
   const [videoState, setVideoState] = useState<"idle" | "ready" | "restoring" | "unavailable">("idle");
   const [videoRefreshNonce, setVideoRefreshNonce] = useState(0);
+  const [originalRequestedMediaId, setOriginalRequestedMediaId] = useState("");
+  const [screenPreviewOverrideUrl, setScreenPreviewOverrideUrl] = useState("");
+  const [screenPreviewOverrideStatus, setScreenPreviewOverrideStatus] = useState<"pending" | "ready" | "unavailable" | "">("");
   const handledVideoRefreshNonceRef = useRef(0);
   const currentItem = lightbox.batch.items[lightbox.index];
   const isVideo = currentItem.mediaType.startsWith("video/");
-  const previewUrl = currentItem.previewUrl || getPreviewUrl(currentItem.id, lightbox.albumId, currentItem.processedAt ?? currentItem.uploadedAt);
+  const previewUrl = screenPreviewOverrideUrl
+    || currentItem.screenPreviewUrl
+    || currentItem.previewUrl
+    || getScreenPreviewUrl(currentItem.id, lightbox.albumId, currentItem.processedAt ?? currentItem.uploadedAt)
+    || getPreviewUrl(currentItem.id, lightbox.albumId, currentItem.processedAt ?? currentItem.uploadedAt);
   const hasMultiple = lightbox.batch.items.length > 1;
-  const originalImage = useLightboxOriginalImage({ albumId: lightbox.albumId, currentItem });
-  const hasPreview = currentItem.previewStatus === "ready";
+  const originalRequested = originalRequestedMediaId === currentItem.id;
+  const originalImage = useLightboxOriginalImage({ albumId: lightbox.albumId, currentItem, enabled: originalRequested && !isVideo });
+  const hasPreview = screenPreviewOverrideStatus === "ready" || currentItem.screenPreviewStatus === "ready" || currentItem.previewStatus === "ready";
   const hasPrevious = lightbox.index > 0;
   const hasNext = lightbox.index < lightbox.batch.items.length - 1;
   const originalImageVisible = Boolean(originalImage.objectUrl) && visibleOriginalUrl === originalImage.objectUrl;
   const showImageProgressBadge = !isVideo && (originalImage.status === "loading" || originalImage.status === "restoring");
   const showVideoRestoreBadge = isVideo && videoState === "restoring";
   const showUnavailableMessage = !isVideo && originalImage.status === "unavailable";
+  const canRequestOriginal = currentItem.originalAvailability !== "unavailable" || Boolean(currentItem.originalUrl);
 
   useEffect(() => {
     if (closing) {
@@ -96,6 +105,11 @@ export function LightboxViewer({ lightbox, closing, onClose, onNavigate }: Light
 
   useEffect(() => {
     if (!isVideo) {
+      setVideoOriginalUrl("");
+      setVideoState("idle");
+      return;
+    }
+    if (!originalRequested) {
       setVideoOriginalUrl("");
       setVideoState("idle");
       return;
@@ -161,7 +175,39 @@ export function LightboxViewer({ lightbox, closing, onClose, onNavigate }: Light
         clearTimeout(pollTimer);
       }
     };
-  }, [currentItem.id, currentItem.originalAvailability, currentItem.originalUrl, isVideo, lightbox.albumId, videoRefreshNonce]);
+  }, [currentItem.id, currentItem.originalAvailability, currentItem.originalUrl, isVideo, lightbox.albumId, originalRequested, videoRefreshNonce]);
+
+  useEffect(() => {
+    setOriginalRequestedMediaId("");
+    setScreenPreviewOverrideUrl("");
+    setScreenPreviewOverrideStatus("");
+  }, [currentItem.id]);
+
+  useEffect(() => {
+    if (currentItem.screenPreviewStatus === "ready") {
+      return;
+    }
+    let cancelled = false;
+    void repairMediaPreview(lightbox.albumId, currentItem.id).then((result) => {
+      if (cancelled) {
+        return;
+      }
+      setScreenPreviewOverrideStatus(result.media.screenPreviewStatus ?? "");
+      setScreenPreviewOverrideUrl(result.media.screenPreviewUrl ?? "");
+    }).catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [currentItem.id, currentItem.previewStatus, currentItem.screenPreviewStatus, lightbox.albumId]);
+
+  function handleRequestOriginal() {
+    setOriginalRequestedMediaId(currentItem.id);
+    if (!isVideo) {
+      originalImage.requestDownload();
+      return;
+    }
+    setVideoRefreshNonce((value) => value + 1);
+  }
 
   return (
     <div className={`lightboxOverlay${visible ? " lightboxOverlayOpen" : ""}${closing ? " lightboxOverlayClosing" : ""}`} onClick={onClose} role="dialog" aria-modal="true">
@@ -257,7 +303,14 @@ export function LightboxViewer({ lightbox, closing, onClose, onNavigate }: Light
 
         <div className="lightboxBottomBar">
           <p>{formatDateTime(currentItem.capturedAt)}</p>
-          <span>{lightbox.index + 1} / {lightbox.batch.items.length}</span>
+          <div className="lightboxBottomActions">
+            {canRequestOriginal && (!isVideo ? !originalImage.objectUrl : !videoOriginalUrl) ? (
+              <button className="lightboxOriginalAction" onClick={handleRequestOriginal} type="button">
+                {isVideo ? "加载原视频" : "加载原图"}
+              </button>
+            ) : null}
+            <span>{lightbox.index + 1} / {lightbox.batch.items.length}</span>
+          </div>
         </div>
       </div>
     </div>

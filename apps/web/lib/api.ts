@@ -91,6 +91,11 @@ export function getPreviewUrl(mediaId: string, albumId: string, version?: string
   return `${apiBaseUrl}/api/v1/media/${encodeURIComponent(mediaId)}/preview?albumId=${encodeURIComponent(albumId)}${suffix}`;
 }
 
+export function getScreenPreviewUrl(mediaId: string, albumId: string, version?: string) {
+  const suffix = version ? `&v=${encodeURIComponent(version)}` : "";
+  return `${apiBaseUrl}/api/v1/media/${encodeURIComponent(mediaId)}/screen-preview?albumId=${encodeURIComponent(albumId)}${suffix}`;
+}
+
 export function getOriginalUrl(mediaId: string, albumId: string) {
   return `${apiBaseUrl}/api/v1/media/${encodeURIComponent(mediaId)}/original?albumId=${encodeURIComponent(albumId)}`;
 }
@@ -109,6 +114,13 @@ export async function loadOriginalStatus(albumId: string, mediaId: string, optio
     cache: "no-store"
   });
   return parseResponse<{ originalAvailability: "hot" | "warm" | "cold" | "restoring" | "unavailable"; originalUrl?: string; media: import("./types").MediaAsset }>(response);
+}
+
+export async function repairMediaPreview(albumId: string, mediaId: string) {
+  const response = await fetch(`${apiBaseUrl}/api/v1/media/${encodeURIComponent(mediaId)}/preview-repair?albumId=${encodeURIComponent(albumId)}`, {
+    method: "POST"
+  });
+  return parseResponse<{ media: import("./types").MediaAsset }>(response);
 }
 
 export async function loadAppState(albumId?: string): Promise<AppStatePayload> {

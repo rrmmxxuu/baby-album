@@ -142,7 +142,7 @@ describe("useLightboxOriginalImage", () => {
 
   it("starts downloading the current image and reports progress until the blob URL is ready", async () => {
     const item = buildMedia("media-1");
-    const { result } = renderHook(({ currentItem }) => useLightboxOriginalImage({ albumId: "album-1", currentItem }), {
+    const { result } = renderHook(({ currentItem }) => useLightboxOriginalImage({ albumId: "album-1", currentItem, enabled: true }), {
       initialProps: { currentItem: item }
     });
 
@@ -164,7 +164,7 @@ describe("useLightboxOriginalImage", () => {
   it("keeps an earlier image download running while another image becomes current", async () => {
     const first = buildMedia("media-1");
     const second = buildMedia("media-2");
-    const { result, rerender } = renderHook(({ currentItem }) => useLightboxOriginalImage({ albumId: "album-1", currentItem }), {
+    const { result, rerender } = renderHook(({ currentItem }) => useLightboxOriginalImage({ albumId: "album-1", currentItem, enabled: true }), {
       initialProps: { currentItem: first }
     });
 
@@ -186,7 +186,7 @@ describe("useLightboxOriginalImage", () => {
   it("retries an image download after a failure when the user revisits that image", async () => {
     const first = buildMedia("media-1");
     const second = buildMedia("media-2");
-    const { result, rerender } = renderHook(({ currentItem }) => useLightboxOriginalImage({ albumId: "album-1", currentItem }), {
+    const { result, rerender } = renderHook(({ currentItem }) => useLightboxOriginalImage({ albumId: "album-1", currentItem, enabled: true }), {
       initialProps: { currentItem: first }
     });
 
@@ -205,7 +205,7 @@ describe("useLightboxOriginalImage", () => {
   it("refreshes the original URL after a 401 response instead of requiring a full app reload", async () => {
     const item = buildMedia("media-1");
     item.originalUrl = "https://album-api.example.com/api/v1/media/media-1/original?exp=1&sig=expired";
-    const { result } = renderHook(({ currentItem }) => useLightboxOriginalImage({ albumId: "album-1", currentItem }), {
+    const { result } = renderHook(({ currentItem }) => useLightboxOriginalImage({ albumId: "album-1", currentItem, enabled: true }), {
       initialProps: { currentItem: item }
     });
 
@@ -221,7 +221,7 @@ describe("useLightboxOriginalImage", () => {
   it("retries with a refreshed signed URL when the original request returns 401", async () => {
     const item = buildMedia("media-1");
     item.originalUrl = "https://album-api.example.com/api/v1/media/media-1/original?exp=9999999999&sig=stale";
-    const { result } = renderHook(({ currentItem }) => useLightboxOriginalImage({ albumId: "album-1", currentItem }), {
+    const { result } = renderHook(({ currentItem }) => useLightboxOriginalImage({ albumId: "album-1", currentItem, enabled: true }), {
       initialProps: { currentItem: item }
     });
 
@@ -241,7 +241,7 @@ describe("useLightboxOriginalImage", () => {
   it("aborts in-flight requests and revokes cached blob URLs on unmount", async () => {
     const first = buildMedia("media-1");
     const second = buildMedia("media-2");
-    const { rerender, unmount } = renderHook(({ currentItem }) => useLightboxOriginalImage({ albumId: "album-1", currentItem }), {
+    const { rerender, unmount } = renderHook(({ currentItem }) => useLightboxOriginalImage({ albumId: "album-1", currentItem, enabled: true }), {
       initialProps: { currentItem: first }
     });
 
@@ -260,7 +260,7 @@ describe("useLightboxOriginalImage", () => {
 
   it("evicts older loaded originals once the cache exceeds the allowed size", async () => {
     const items = [buildMedia("media-1"), buildMedia("media-2"), buildMedia("media-3"), buildMedia("media-4")];
-    const { rerender } = renderHook(({ currentItem }) => useLightboxOriginalImage({ albumId: "album-1", currentItem }), {
+    const { rerender } = renderHook(({ currentItem }) => useLightboxOriginalImage({ albumId: "album-1", currentItem, enabled: true }), {
       initialProps: { currentItem: items[0] }
     });
 

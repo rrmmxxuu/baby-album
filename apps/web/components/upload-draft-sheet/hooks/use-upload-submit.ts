@@ -67,7 +67,7 @@ export function useUploadSubmit({ albumId, disabled, disabledReason, drafts, sel
         setStatus("缺少需要保存的动态。");
         return;
       }
-      backgroundUpload.startUpload({
+      const started = backgroundUpload.startUpload({
         albumId,
         mode: "edit",
         drafts: [snapshotDraft(selectedDraft)],
@@ -75,15 +75,21 @@ export function useUploadSubmit({ albumId, disabled, disabledReason, drafts, sel
         originalMediaIds: Array.from(originalMediaIds),
         onUploaded
       });
+      if (started) {
+        onClose();
+      }
       return;
     }
-    backgroundUpload.startUpload({
+    const started = backgroundUpload.startUpload({
       albumId,
       mode: "create",
       drafts: drafts.map(snapshotDraft),
       originalMediaIds: [],
       onUploaded
     });
+    if (started) {
+      onClose();
+    }
   }
 
   async function handleDeleteEntry() {

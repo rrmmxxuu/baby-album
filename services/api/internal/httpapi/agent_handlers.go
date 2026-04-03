@@ -3,7 +3,6 @@ package httpapi
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -236,23 +235,6 @@ func (s *Server) handleAgentJobBlob(w http.ResponseWriter, r *http.Request, node
 			_ = s.mediaStore.MarkOriginalBlobMissing(job.MediaID)
 		}
 	}
-	if s.cacheController != nil && job.OriginalR2State == "online" && strings.TrimSpace(job.OriginalR2Key) != "" {
-		result, err := s.cacheController.OpenWarmOriginal(r.Context(), domain.MediaAsset{
-			ID:              job.MediaID,
-			FileName:        job.FileName,
-			MediaType:       job.MediaType,
-			OriginalR2State: job.OriginalR2State,
-			OriginalR2Key:   job.OriginalR2Key,
-		})
-		if err == nil {
-			defer result.Body.Close()
-			w.Header().Set("Content-Type", job.MediaType)
-			w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filepath.Base(job.FileName)))
-			w.WriteHeader(http.StatusOK)
-			_, _ = io.Copy(w, result.Body)
-			return
-		}
-	}
 	if job.Type == "ingest_media" || job.Type == "rehydrate_media" {
 		_ = s.store.FailAgentJob(jobID, "job blob not available")
 		_ = s.store.FailUploadSessionByMedia(job.MediaID, "job blob not available")
@@ -269,8 +251,7 @@ func (s *Server) handleAgentJobRestoreUpload(w http.ResponseWriter, r *http.Requ
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "nodeId is required"})
 		return
 	}
-	job, err := s.store.AgentJob(nodeID, nodeToken, jobID)
-	if err != nil {
+	if _, err := s.store.AgentJob(nodeID, nodeToken, jobID); err != nil {
 		writeStoreError(w, err)
 		return
 	}
@@ -293,13 +274,6 @@ func (s *Server) handleAgentJobRestoreUpload(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
-	}
-	if s.cacheController != nil && job.Type == "restore_original" && s.mediaStore != nil {
-		media, mediaErr := s.mediaStore.MediaByPublicID(job.MediaID)
-		if mediaErr == nil {
-			media.OriginalBlobKey = saved.Key
-			_ = s.cacheController.PromoteOriginalToWarmCache(r.Context(), media)
-		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"blobKey": saved.Key, "byteSize": saved.ByteSize})
 }

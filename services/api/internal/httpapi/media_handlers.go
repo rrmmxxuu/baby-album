@@ -232,7 +232,7 @@ func (s *Server) handleMediaPreviewRepair(w http.ResponseWriter, r *http.Request
 		writeStoreError(w, err)
 		return
 	}
-	if strings.TrimSpace(item.PreviewBlobKey) == "" && strings.TrimSpace(item.ScreenPreviewObjectKey) == "" && strings.TrimSpace(item.OriginalBlobKey) == "" && item.OriginalR2State != "online" && strings.TrimSpace(item.OriginalPath) != "" && item.OriginalRestoreState != "pending" {
+	if strings.TrimSpace(item.PreviewBlobKey) == "" && strings.TrimSpace(item.ScreenPreviewObjectKey) == "" && strings.TrimSpace(item.OriginalBlobKey) == "" && strings.TrimSpace(item.OriginalPath) != "" && item.OriginalRestoreState != "pending" {
 		if markErr := s.store.MarkPreviewsPending(mediaID); markErr != nil {
 			writeStoreError(w, markErr)
 			return
@@ -348,29 +348,10 @@ func (s *Server) serveOriginalAsset(w http.ResponseWriter, r *http.Request, item
 		} else {
 			item.OriginalLocalState = "pending"
 		}
-		if item.OriginalR2State == "online" && strings.TrimSpace(item.OriginalR2Key) != "" {
-			availability = domain.OriginalWarm
-		} else if item.OriginalPath != "" {
+		if item.OriginalPath != "" {
 			availability = domain.OriginalCold
 		} else {
 			availability = domain.OriginalUnavailable
-		}
-	}
-	if availability == domain.OriginalWarm {
-		if s.cacheController != nil {
-			restored, err := s.cacheController.RestoreLocalOriginalFromWarmCache(r.Context(), item)
-			if err == nil {
-				restored = s.decorateMediaAsset(restored)
-				if err := s.serveLocalOriginal(w, r, restored); err == nil {
-					return
-				}
-			}
-			warmResult, warmErr := s.cacheController.OpenWarmOriginal(r.Context(), item)
-			if warmErr == nil {
-				defer warmResult.Body.Close()
-				s.serveWarmOriginalStream(w, item, warmResult.Body)
-				return
-			}
 		}
 	}
 	status := http.StatusNotFound
@@ -412,13 +393,6 @@ func (s *Server) serveLocalOriginal(w http.ResponseWriter, r *http.Request, item
 	w.Header().Set("Last-Modified", lastModified.UTC().Format(http.TimeFormat))
 	http.ServeContent(w, r, filepath.Base(item.FileName), lastModified, file)
 	return nil
-}
-
-func (s *Server) serveWarmOriginalStream(w http.ResponseWriter, item domain.MediaAsset, result io.Reader) {
-	w.Header().Set("Cache-Control", "private, no-store")
-	w.Header().Set("Content-Type", item.MediaType)
-	w.WriteHeader(http.StatusOK)
-	_, _ = io.Copy(w, result)
 }
 
 func (s *Server) handleBabyAssets(w http.ResponseWriter, r *http.Request) {

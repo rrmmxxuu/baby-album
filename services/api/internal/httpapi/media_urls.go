@@ -72,7 +72,7 @@ func (s *Server) decorateMediaAsset(item domain.MediaAsset) domain.MediaAsset {
 		item.ScreenPreviewURL = s.signedMediaURL(mediaPublicPath("media", item.ID, "screen-preview"), screenPreviewURLKind, mediaVersion(item), s.previewURLExpiry())
 	}
 	item.OriginalAvail = mediaOriginalAvailability(item)
-	if item.OriginalAvail == domain.OriginalHot || item.OriginalAvail == domain.OriginalWarm {
+	if item.OriginalAvail == domain.OriginalHot {
 		item.OriginalURL = s.signedMediaURL(mediaPublicPath("media", item.ID, "original"), originalURLKind, mediaVersion(item), time.Now().UTC().Add(5*time.Minute))
 	}
 	return item
@@ -93,8 +93,6 @@ func mediaOriginalAvailability(item domain.MediaAsset) domain.OriginalAvailabili
 	switch {
 	case item.OriginalLocalState == "online" && strings.TrimSpace(item.OriginalBlobKey) != "":
 		return domain.OriginalHot
-	case item.OriginalR2State == "online" && strings.TrimSpace(item.OriginalR2Key) != "":
-		return domain.OriginalWarm
 	case item.OriginalRestoreState == "pending":
 		return domain.OriginalRestoring
 	case item.Status == domain.MediaReady && strings.TrimSpace(item.OriginalPath) != "":
@@ -167,7 +165,6 @@ func mediaETag(kind string, item domain.MediaAsset) string {
 		item.ID,
 		strings.TrimSpace(item.PreviewBlobKey),
 		strings.TrimSpace(item.OriginalBlobKey),
-		strings.TrimSpace(item.OriginalR2Key),
 		filepath.Base(strings.TrimSpace(item.FileName)),
 	}, "|")
 	sum := sha256.Sum256([]byte(base))

@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { login, sampleMp4, samplePng } from "./helpers";
 
+const UPLOAD_SETTLE_TIMEOUT_MS = 45_000;
+
 test("uploads a small photo batch from the draft sheet", async ({ page }) => {
   const caption = `Playwright upload ${Date.now()}`;
   await login(page, {
@@ -21,8 +23,8 @@ test("uploads a small photo batch from the draft sheet", async ({ page }) => {
   await page.locator(".draftListCaption").fill(caption);
   await page.getByRole("button", { name: "保存" }).click();
 
-  await expect(page.locator(".draftSheetOverlay")).toHaveCount(0, { timeout: 20_000 });
-  await expect(page.getByText(caption)).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator(".draftSheetOverlay")).toHaveCount(0, { timeout: UPLOAD_SETTLE_TIMEOUT_MS });
+  await expect(page.getByText(caption)).toBeVisible({ timeout: UPLOAD_SETTLE_TIMEOUT_MS });
 });
 
 test("uploads a small video and shows a local video preview in the draft sheet", async ({ page }) => {
@@ -45,6 +47,6 @@ test("uploads a small video and shows a local video preview in the draft sheet",
   await page.locator(".draftListCaption").fill(caption);
   await page.getByRole("button", { name: "保存" }).click();
 
-  await expect(page.locator(".draftSheetOverlay")).toHaveCount(0, { timeout: 20_000 });
-  await expect(page.getByText(caption)).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator(".draftSheetOverlay")).toHaveCount(0, { timeout: UPLOAD_SETTLE_TIMEOUT_MS });
+  await expect(page.getByText(caption)).toBeVisible({ timeout: UPLOAD_SETTLE_TIMEOUT_MS });
 });

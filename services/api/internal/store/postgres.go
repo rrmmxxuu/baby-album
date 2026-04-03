@@ -2693,7 +2693,7 @@ func (s *PostgresStore) bindNodeToFamilyTx(tx *sql.Tx, familyID, nodeID, created
 	if _, err := tx.Exec(`update media_placements set kind = 'primary', updated_at = $1 where family_id = $2 and node_id = $3`, now, familyID, nodeID); err != nil {
 		return err
 	}
-	rows, err := tx.Query(`select m.id from media_assets m left join media_placements mp on mp.media_id = m.id and mp.node_id = $3 where m.family_id = $1 and m.status = $2 and (m.original_blob_key <> '' or m.original_r2_state = 'online') and (mp.media_id is null or mp.status <> 'ready')`, familyID, domain.MediaReady, nodeID)
+	rows, err := tx.Query(`select m.id from media_assets m left join media_placements mp on mp.media_id = m.id and mp.node_id = $3 where m.family_id = $1 and m.status = $2 and m.original_blob_key <> '' and (mp.media_id is null or mp.status <> 'ready')`, familyID, domain.MediaReady, nodeID)
 	if err != nil {
 		return err
 	}
@@ -3183,7 +3183,7 @@ func (s *PostgresStore) ResolveOriginalStatus(userID, albumID, mediaID string, t
 	if err != nil {
 		return domain.MediaAsset{}, err
 	}
-	if !triggerRestore || item.OriginalPath == "" || item.OriginalBlobKey != "" || item.OriginalR2State == "online" || item.OriginalRestoreState == "pending" {
+	if !triggerRestore || item.OriginalPath == "" || item.OriginalBlobKey != "" || item.OriginalRestoreState == "pending" {
 		return item, nil
 	}
 	node, err := s.albumNode(albumID)
@@ -3222,7 +3222,7 @@ func (s *PostgresStore) PreviewBlobAssets(limit int) ([]domain.MediaAsset, error
 	if limit <= 0 {
 		limit = 512
 	}
-	rows, err := s.db.Query(`select `+mediaAssetColumns+` from media_assets where ((preview_blob_key <> '' or preview_status = $1) or (screen_preview_object_key <> '' or screen_preview_status = $1)) and (original_blob_key <> '' or original_r2_state = 'online' or screen_preview_object_key <> '') order by processed_at desc nulls last, uploaded_at desc, id asc limit $2`, domain.PreviewUnavailable, limit)
+	rows, err := s.db.Query(`select `+mediaAssetColumns+` from media_assets where ((preview_blob_key <> '' or preview_status = $1) or (screen_preview_object_key <> '' or screen_preview_status = $1)) and (original_blob_key <> '' or screen_preview_object_key <> '') order by processed_at desc nulls last, uploaded_at desc, id asc limit $2`, domain.PreviewUnavailable, limit)
 	if err != nil {
 		return nil, err
 	}

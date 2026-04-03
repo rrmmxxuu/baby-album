@@ -103,19 +103,34 @@ func (s *Server) ListenAndServe(addr string) error {
 
 func (s *Server) applyDeleteCleanup(cleanup store.DeleteCleanup) {
 	for _, key := range cleanup.LocalBlobKeys {
-		_ = s.blob.Delete(key)
+		if err := s.blob.Delete(key); err != nil {
+			logEvent("warn", "delete local blob failed", map[string]any{
+				"blob_key": key,
+				"error":    err.Error(),
+			})
+		}
 	}
 	for _, key := range cleanup.ScreenPreviewObjectKeys {
 		if s.screenPreviews == nil || !s.screenPreviews.Enabled() {
 			continue
 		}
-		_ = s.screenPreviews.Delete(context.Background(), key)
+		if err := s.screenPreviews.Delete(context.Background(), key); err != nil {
+			logEvent("warn", "delete screen preview failed", map[string]any{
+				"object_key": key,
+				"error":      err.Error(),
+			})
+		}
 	}
 	if s.cacheController == nil {
 		return
 	}
 	for _, key := range cleanup.WarmObjectKeys {
-		_ = s.cacheController.DeleteWarmObject(context.Background(), key)
+		if err := s.cacheController.DeleteWarmObject(context.Background(), key); err != nil {
+			logEvent("warn", "delete warm object failed", map[string]any{
+				"object_key": key,
+				"error":      err.Error(),
+			})
+		}
 	}
 	s.cacheController.RunNow()
 }

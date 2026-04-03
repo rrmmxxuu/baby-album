@@ -186,6 +186,25 @@ func writeStoreError(w http.ResponseWriter, err error) {
 	}
 }
 
+func writeLoggedError(r *http.Request, w http.ResponseWriter, status int, publicError, logMessage string, err error, fields map[string]any) {
+	if strings.TrimSpace(logMessage) != "" {
+		logFields := make(map[string]any, len(fields)+2)
+		for key, value := range fields {
+			logFields[key] = value
+		}
+		logFields["status"] = status
+		if err != nil {
+			logFields["error"] = err.Error()
+		}
+		level := "warn"
+		if status >= 500 {
+			level = "error"
+		}
+		logRequestEvent(r, level, logMessage, logFields)
+	}
+	writeJSON(w, status, map[string]string{"error": publicError})
+}
+
 func writeJSON(w http.ResponseWriter, status int, payload any) {
 	if w.Header().Get("Cache-Control") == "" {
 		w.Header().Set("Cache-Control", "private, no-store")

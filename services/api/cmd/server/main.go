@@ -17,6 +17,11 @@ import (
 
 func main() {
 	loadDotEnv(".env")
+	httpapi.ConfigureLogging(httpapi.LoggingOptions{
+		Format: os.Getenv("LOG_FORMAT"),
+		Color:  os.Getenv("LOG_COLOR"),
+		Level:  os.Getenv("LOG_LEVEL"),
+	})
 	addr := os.Getenv("API_ADDR")
 	if addr == "" {
 		addr = ":8080"
@@ -57,9 +62,18 @@ func main() {
 		R2ClassASoftLimit: int64(parseIntEnv("R2_CLASS_A_SOFT_LIMIT", 800000)),
 		R2ClassBSoftLimit: int64(parseIntEnv("R2_CLASS_B_SOFT_LIMIT", 8000000)),
 	})
-	log.Printf("baby album api listening on %s cache=%s max_upload_mb=%d allowed_origins=%s", addr, cacheRoot, maxUploadBytes>>20, strings.Join(allowedOrigins, ","))
+	httpapi.LogInfo("baby album api listening", map[string]any{
+		"addr":            addr,
+		"cache_root":      cacheRoot,
+		"max_upload_mb":   maxUploadBytes >> 20,
+		"allowed_origins": allowedOrigins,
+		"log_format":      firstNonEmpty(os.Getenv("LOG_FORMAT"), "pretty"),
+		"log_color":       firstNonEmpty(os.Getenv("LOG_COLOR"), "always"),
+		"log_level":       firstNonEmpty(os.Getenv("LOG_LEVEL"), "info"),
+	})
 	if err := server.ListenAndServe(addr); err != nil {
-		log.Fatal(err)
+		httpapi.LogError("api server exited", map[string]any{"error": err.Error()})
+		os.Exit(1)
 	}
 }
 
@@ -107,16 +121,18 @@ func loadDotEnv(path string) {
 func mustLoadRepository() (store.Repository, func()) {
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
-		log.Fatal("DATABASE_URL is required")
+		httpapi.LogError("DATABASE_URL is required", nil)
+		os.Exit(1)
 	}
 	postgresStore, err := store.NewPostgresStore(databaseURL)
 	if err != nil {
-		log.Fatalf("initialize postgres store: %v", err)
+		httpapi.LogError("initialize postgres store failed", map[string]any{"error": err.Error()})
+		os.Exit(1)
 	}
-	log.Print("using PostgreSQL store")
+	httpapi.LogInfo("using PostgreSQL store", nil)
 	return postgresStore, func() {
 		if err := postgresStore.Close(); err != nil {
-			log.Printf("close postgres store: %v", err)
+			httpapi.LogWarn("close postgres store failed", map[string]any{"error": err.Error()})
 		}
 	}
 }

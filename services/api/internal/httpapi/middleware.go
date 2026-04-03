@@ -18,16 +18,9 @@ func (s *Server) withMiddleware(next http.Handler) http.Handler {
 		defer func() {
 			durationMs := time.Since(start).Milliseconds()
 			if recovered := recover(); recovered != nil {
-				logEvent("error", "request panic", map[string]any{
-					"request_id":  meta.requestID,
-					"method":      r.Method,
-					"path":        r.URL.Path,
+				logRequestEvent(r, "error", "request panic", map[string]any{
 					"status":      http.StatusInternalServerError,
 					"duration_ms": durationMs,
-					"user_id":     meta.userID,
-					"album_id":    meta.albumID,
-					"client_ip":   clientAddr,
-					"remote_addr": r.RemoteAddr,
 					"panic":       recovered,
 					"stack":       string(debug.Stack()),
 				})
@@ -36,7 +29,7 @@ func (s *Server) withMiddleware(next http.Handler) http.Handler {
 				}
 				return
 			}
-			logEvent("info", "request completed", map[string]any{
+			logEvent(requestSummaryLevel(recorder.status), "request completed", map[string]any{
 				"request_id":  meta.requestID,
 				"method":      r.Method,
 				"path":        r.URL.Path,
@@ -44,6 +37,7 @@ func (s *Server) withMiddleware(next http.Handler) http.Handler {
 				"duration_ms": durationMs,
 				"user_id":     meta.userID,
 				"album_id":    meta.albumID,
+				"node_id":     meta.nodeID,
 				"client_ip":   clientAddr,
 				"remote_addr": r.RemoteAddr,
 			})
@@ -54,6 +48,9 @@ func (s *Server) withMiddleware(next http.Handler) http.Handler {
 			recorder.Header().Add("Vary", "Origin")
 			allowedOrigin, ok := s.allowedOrigin(origin)
 			if !ok {
+				logRequestEvent(r, "warn", "origin not allowed", map[string]any{
+					"origin": origin,
+				})
 				writeJSON(recorder, http.StatusForbidden, map[string]string{"error": "origin not allowed"})
 				return
 			}

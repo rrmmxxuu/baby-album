@@ -43,6 +43,8 @@ func (s *Server) generateUploadedMediaPreview(originalBlobKey, originalName, med
 		return result
 	}
 	sourcePath := filepath.Join(s.blob.Root(), sourceKey)
+	stillErr := error(nil)
+	videoErr := error(nil)
 
 	if width, height, thumbEncoded, err := generateBestStillImagePreview(sourcePath, mediaType, originalName, 480, 82); err == nil {
 		result.Width = width
@@ -50,17 +52,32 @@ func (s *Server) generateUploadedMediaPreview(originalBlobKey, originalName, med
 		if blobKey, saveErr := s.savePreviewBlob(sourceKey, originalName, thumbEncoded); saveErr == nil {
 			result.Status = domain.PreviewReady
 			result.BlobKey = blobKey
+		} else {
+			logEvent("error", "save preview blob failed", map[string]any{
+				"blob_key":  sourceKey,
+				"file_name": originalName,
+				"error":     saveErr.Error(),
+			})
 		}
 		if _, _, screenEncoded, screenErr := generateBestStillImagePreview(sourcePath, mediaType, originalName, 1600, 84); screenErr == nil {
 			if objectKey, saveErr := s.saveScreenPreviewObject(context.Background(), sourceKey, originalName, screenEncoded); saveErr == nil {
 				result.ScreenPreviewStatus = domain.PreviewReady
 				result.ScreenPreviewObjectKey = objectKey
+			} else {
+				logEvent("error", "save screen preview failed", map[string]any{
+					"blob_key":  sourceKey,
+					"file_name": originalName,
+					"error":     saveErr.Error(),
+				})
 			}
 		}
 		return result
 	} else if width > 0 && height > 0 {
 		result.Width = width
 		result.Height = height
+		stillErr = err
+	} else {
+		stillErr = err
 	}
 
 	if width, height, thumbEncoded, err := generateVideoPreview(sourcePath, 480, 82); err == nil {
@@ -69,17 +86,42 @@ func (s *Server) generateUploadedMediaPreview(originalBlobKey, originalName, med
 		if blobKey, saveErr := s.savePreviewBlob(sourceKey, originalName, thumbEncoded); saveErr == nil {
 			result.Status = domain.PreviewReady
 			result.BlobKey = blobKey
+		} else {
+			logEvent("error", "save preview blob failed", map[string]any{
+				"blob_key":  sourceKey,
+				"file_name": originalName,
+				"error":     saveErr.Error(),
+			})
 		}
 		if screenEncoded, screenErr := generateVideoPreviewBytes(sourcePath, 1600, 84); screenErr == nil {
 			if objectKey, saveErr := s.saveScreenPreviewObject(context.Background(), sourceKey, originalName, screenEncoded); saveErr == nil {
 				result.ScreenPreviewStatus = domain.PreviewReady
 				result.ScreenPreviewObjectKey = objectKey
+			} else {
+				logEvent("error", "save screen preview failed", map[string]any{
+					"blob_key":  sourceKey,
+					"file_name": originalName,
+					"error":     saveErr.Error(),
+				})
 			}
 		}
 		return result
 	} else if result.Width == 0 && result.Height == 0 && width > 0 && height > 0 {
 		result.Width = width
 		result.Height = height
+		videoErr = err
+	} else {
+		videoErr = err
+	}
+
+	if stillErr != nil || videoErr != nil {
+		logEvent("error", "generate uploaded media preview failed", map[string]any{
+			"blob_key":    sourceKey,
+			"file_name":   originalName,
+			"media_type":  mediaType,
+			"still_error": errorString(stillErr),
+			"video_error": errorString(videoErr),
+		})
 	}
 
 	return result
@@ -118,6 +160,13 @@ func (s *Server) saveScreenPreviewObject(ctx context.Context, sourceBlobKey, ori
 		return "", err
 	}
 	return saved.Key, nil
+}
+
+func errorString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }
 
 func previewFileName(originalName string) string {

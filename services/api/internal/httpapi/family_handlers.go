@@ -185,14 +185,22 @@ func (s *Server) handleBabyAvatarUpload(w http.ResponseWriter, r *http.Request, 
 			if !errors.Is(err, errInsufficientLocalStorage) {
 				status = http.StatusInternalServerError
 			}
-			writeJSON(w, status, map[string]string{"error": err.Error()})
+			writeLoggedError(r, w, status, err.Error(), "avatar upload rejected", err, map[string]any{
+				"baby_id":      babyID,
+				"file_name":    header.Filename,
+				"file_size":    header.Size,
+				"content_type": header.Header.Get("Content-Type"),
+			})
 			return
 		}
 	}
 
 	saved, err := s.saveAvatar(babyID, header.Filename, file)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeLoggedError(r, w, http.StatusInternalServerError, err.Error(), "avatar upload save failed", err, map[string]any{
+			"baby_id":   babyID,
+			"file_name": header.Filename,
+		})
 		return
 	}
 	baby, err := s.store.UpdateBabyAvatar(userID, store.UpdateBabyAvatarInput{

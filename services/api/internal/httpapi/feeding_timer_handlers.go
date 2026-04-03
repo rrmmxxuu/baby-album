@@ -107,7 +107,9 @@ func (s *Server) handleBabyFeedingTimerStream(w http.ResponseWriter, r *http.Req
 	}
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming unsupported"})
+		writeLoggedError(r, w, http.StatusInternalServerError, "streaming unsupported", "feeding timer stream unavailable", nil, map[string]any{
+			"baby_id": babyID,
+		})
 		return
 	}
 	userID, err := s.actorID(r)

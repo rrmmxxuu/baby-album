@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -627,6 +628,17 @@ func TestHandleAgentJobs(t *testing.T) {
 }
 
 func TestHandleAgentJobBlobMarksFailedWhenSourceMissing(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	restore := swapLoggerForTest(newLogger(LoggingOptions{
+		Format: "pretty",
+		Color:  "never",
+		Level:  "info",
+	}, stdout, stderr, func() time.Time {
+		return time.Date(2026, time.April, 3, 12, 0, 0, 0, time.UTC)
+	}))
+	defer restore()
+
 	jobFailed := false
 	uploadFailed := false
 	originalMarkedMissing := false
@@ -691,6 +703,10 @@ func TestHandleAgentJobBlobMarksFailedWhenSourceMissing(t *testing.T) {
 	}
 	if !originalMarkedMissing {
 		t.Fatal("expected original blob to be marked missing")
+	}
+	output := stdout.String() + stderr.String()
+	if !strings.Contains(output, "agent job blob not available") || !strings.Contains(output, "blob_key=missing-original.jpg") {
+		t.Fatalf("expected detailed agent job failure log, got %q", output)
 	}
 }
 

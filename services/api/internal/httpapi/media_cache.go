@@ -18,6 +18,8 @@ import (
 
 var errInsufficientLocalStorage = errors.New("insufficient local storage")
 
+const orphanBlobGracePeriod = 15 * time.Minute
+
 type mediaStateStore interface {
 	MediaByPublicID(mediaID string) (domain.MediaAsset, error)
 	BabyByPublicID(babyID string) (domain.BabyProfile, error)
@@ -115,7 +117,14 @@ func (c *mediaCacheController) EnsureSpace(expectedBytes int64) error {
 func (c *mediaCacheController) RepairMissingPreview(item domain.MediaAsset) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	_, _ = c.ensureMediaPreviewsLocked(context.Background(), item)
+	if _, err := c.ensureMediaPreviewsLocked(context.Background(), item); err != nil {
+		logEvent("error", "background preview repair failed", map[string]any{
+			"media_id":  item.ID,
+			"blob_key":  item.OriginalBlobKey,
+			"file_name": item.FileName,
+			"error":     err.Error(),
+		})
+	}
 }
 
 func (c *mediaCacheController) EnsureMediaPreviews(ctx context.Context, item domain.MediaAsset) (domain.MediaAsset, error) {
@@ -146,7 +155,16 @@ func (c *mediaCacheController) reconcileMissingBlobReferences() {
 			if item.PreviewStatus == domain.PreviewReady && c.localBlobExists(item.PreviewBlobKey) && item.ScreenPreviewStatus == domain.PreviewReady && c.screenPreviewExists(context.Background(), item.ScreenPreviewObjectKey) {
 				continue
 			}
-			_, _ = c.ensureMediaPreviewsLocked(context.Background(), item)
+			if _, err := c.ensureMediaPreviewsLocked(context.Background(), item); err != nil {
+				logEvent("error", "maintenance preview repair failed", map[string]any{
+					"media_id":              item.ID,
+					"preview_blob_key":      item.PreviewBlobKey,
+					"screen_preview_object": item.ScreenPreviewObjectKey,
+					"original_blob_key":     item.OriginalBlobKey,
+					"file_name":             item.FileName,
+					"error":                 err.Error(),
+				})
+			}
 		}
 	}
 
@@ -156,6 +174,11 @@ func (c *mediaCacheController) reconcileMissingBlobReferences() {
 			if c.localBlobExists(item.OriginalBlobKey) {
 				continue
 			}
+			logEvent("warn", "original blob missing during maintenance", map[string]any{
+				"media_id":  item.ID,
+				"blob_key":  item.OriginalBlobKey,
+				"file_name": item.FileName,
+			})
 			_ = c.store.MarkOriginalBlobMissing(item.ID)
 		}
 	}
@@ -206,6 +229,13 @@ func (c *mediaCacheController) attachScreenPreviewFromSourcePathLocked(ctx conte
 	if width, height, encoded, err := generateBestStillImagePreview(sourcePath, item.MediaType, item.FileName, 1600, 84); err == nil {
 		objectKey, saveErr := c.saveScreenPreviewObject(ctx, sourceBlobKey, item.FileName, encoded)
 		if saveErr != nil {
+			logEvent("error", "repair screen preview failed", map[string]any{
+				"media_id":    item.ID,
+				"blob_key":    sourceBlobKey,
+				"file_name":   item.FileName,
+				"source_path": sourcePath,
+				"error":       saveErr.Error(),
+			})
 			return item, saveErr
 		}
 		if err := c.store.AttachScreenPreview(item.ID, store.ScreenPreviewAttachmentInput{ObjectKey: objectKey}); err != nil {
@@ -224,6 +254,13 @@ func (c *mediaCacheController) attachScreenPreviewFromSourcePathLocked(ctx conte
 	if width, height, encoded, err := generateVideoPreview(sourcePath, 1600, 84); err == nil {
 		objectKey, saveErr := c.saveScreenPreviewObject(ctx, sourceBlobKey, item.FileName, encoded)
 		if saveErr != nil {
+			logEvent("error", "repair screen preview failed", map[string]any{
+				"media_id":    item.ID,
+				"blob_key":    sourceBlobKey,
+				"file_name":   item.FileName,
+				"source_path": sourcePath,
+				"error":       saveErr.Error(),
+			})
 			return item, saveErr
 		}
 		if err := c.store.AttachScreenPreview(item.ID, store.ScreenPreviewAttachmentInput{ObjectKey: objectKey}); err != nil {
@@ -410,6 +447,15 @@ func (c *mediaCacheController) cleanupOrphanBlobs() {
 	}
 	for _, entry := range entries {
 		if entry.IsDir() {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		// Fresh uploads are written to blob storage before their DB references commit.
+		// Give them a full maintenance cycle before considering them orphaned.
+		if time.Since(info.ModTime()) < orphanBlobGracePeriod {
 			continue
 		}
 		if _, ok := referenced[entry.Name()]; ok {

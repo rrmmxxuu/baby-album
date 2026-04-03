@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -13,15 +14,37 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"babyalbum/api/internal/blob"
 	"babyalbum/api/internal/domain"
+	"babyalbum/api/internal/objectstore"
 	"babyalbum/api/internal/store"
 )
 
 const sampleHEICBase64 = "AAAAHGZ0eXBoZWl4AAAAAG1pZjFoZWl4bWlhZgAAAXZtZXRhAAAAAAAAACFoZGxyAAAAAAAAAABwaWN0AAAAAAAAAAAAAAAAAAAAAA5waXRtAAAAAAABAAAAImlsb2MAAAAAREAAAQABAAAAAAGaAAEAAAAAAAAAIwAAACNpaW5mAAAAAAABAAAAFWluZmUCAAAAAAEAAGh2YzEAAAAA9mlwcnAAAADWaXBjbwAAAHFodmNDAQQIAAAAAAAAAAAAHvAA/Pz4+AAADwNgAAEAF0ABDAH//wQIAAADAJ/4AAADAAAeugJAYQABACZCAQEECAAAAwCf+AAAAwAAHsCCBBZbqrprmwIAAAMAAgAAAwACEGIAAQAGRAHBc8GJAAAAE2NvbHJuY2x4AAEADQAGgAAAABRpc3BlAAAAAAAAAEAAAABAAAAAKGNsYXAAAAAQAAAAAQAAABAAAAAB////0AAAAAL////QAAAAAgAAAA5waXhpAAAAAAEIAAAAGGlwbWEAAAAAAAAAAQABBYECAwWEAAAAK21kYXQAAAAfKAGuJkJKJOfXDf/+HwsXYVVzU7JsIGJEKRKAY/X0rg=="
+
+type failingObjectStore struct {
+	putErr error
+}
+
+func (s *failingObjectStore) Enabled() bool { return true }
+
+func (s *failingObjectStore) PutBytes(_ context.Context, _ string, _ []byte, _ string) (objectstore.PutResult, error) {
+	return objectstore.PutResult{}, s.putErr
+}
+
+func (s *failingObjectStore) PutFile(_ context.Context, _ string, _ string, _ string) (objectstore.PutResult, error) {
+	return objectstore.PutResult{}, s.putErr
+}
+
+func (s *failingObjectStore) Get(_ context.Context, _ string) (objectstore.GetResult, error) {
+	return objectstore.GetResult{}, objectstore.ErrNotFound
+}
+
+func (s *failingObjectStore) Delete(_ context.Context, _ string) error { return nil }
 
 func TestHandleUploadSessionContentGeneratesPreviewInAPI(t *testing.T) {
 	blobStorage := blob.New(t.TempDir())
@@ -283,6 +306,55 @@ func TestServeOriginalAssetMarksMissingLocalOriginal(t *testing.T) {
 	}
 	if recorder.Code != http.StatusAccepted {
 		t.Fatalf("expected 202, got %d", recorder.Code)
+	}
+}
+
+func TestGenerateUploadedMediaPreviewLogsScreenPreviewSaveFailure(t *testing.T) {
+	stderr := &bytes.Buffer{}
+	restore := swapLoggerForTest(newLogger(LoggingOptions{
+		Format: "pretty",
+		Color:  "never",
+		Level:  "info",
+	}, &bytes.Buffer{}, stderr, func() time.Time {
+		return time.Date(2026, time.April, 3, 11, 0, 0, 0, time.UTC)
+	}))
+	defer restore()
+
+	blobStorage := blob.New(t.TempDir())
+	source := image.NewRGBA(image.Rect(0, 0, 1200, 600))
+	for y := 0; y < 600; y++ {
+		for x := 0; x < 1200; x++ {
+			source.Set(x, y, color.RGBA{R: uint8(x % 255), G: uint8(y % 255), B: 120, A: 255})
+		}
+	}
+	var encoded bytes.Buffer
+	if err := jpeg.Encode(&encoded, source, &jpeg.Options{Quality: 90}); err != nil {
+		t.Fatalf("encode source jpeg: %v", err)
+	}
+	saved, err := blobStorage.SaveBytes("media-1", "moment.jpg", encoded.Bytes())
+	if err != nil {
+		t.Fatalf("seed original blob: %v", err)
+	}
+
+	server := NewServerWithOptions(&stubRepository{}, blobStorage, Options{
+		MaxUploadBytes: 8 << 20,
+		R2LocalRoot:    t.TempDir(),
+	})
+	failingStore := &failingObjectStore{putErr: errors.New("r2 put screen-previews/media-1-preview.jpg failed: 403 Forbidden")}
+	server.screenPreviews = failingStore
+	if server.cacheController != nil {
+		server.cacheController.screenPreviews = failingStore
+	}
+
+	preview := server.generateUploadedMediaPreview(saved.Key, "moment.jpg", "image/jpeg")
+	if preview.Status != domain.PreviewReady {
+		t.Fatalf("expected thumb preview ready, got %s", preview.Status)
+	}
+	if preview.ScreenPreviewStatus != domain.PreviewUnavailable {
+		t.Fatalf("expected screen preview unavailable, got %s", preview.ScreenPreviewStatus)
+	}
+	if !strings.Contains(stderr.String(), "save screen preview failed") || !strings.Contains(stderr.String(), "403 Forbidden") {
+		t.Fatalf("expected detailed screen preview failure log, got %q", stderr.String())
 	}
 }
 

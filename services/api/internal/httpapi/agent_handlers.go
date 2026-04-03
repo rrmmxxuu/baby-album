@@ -33,6 +33,7 @@ func (s *Server) handleNodeRegister(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
+	setRequestNodeID(r, input.NodeID)
 	result, err := s.store.RegisterStorageNode(store.StorageNodeRegisterInput{
 		NodeID:      input.NodeID,
 		NodeName:    input.Name,
@@ -69,6 +70,7 @@ func (s *Server) handleNodeHeartbeat(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
+	setRequestNodeID(r, input.NodeID)
 	node, err := s.store.HeartbeatStorageNode(input.NodeID, input.Token, store.StorageCapacityReport{
 		TotalBytes:     input.Capacity.TotalBytes,
 		FreeBytes:      input.Capacity.FreeBytes,
@@ -97,6 +99,7 @@ func (s *Server) handleNodeUnbind(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "nodeId is required"})
 		return
 	}
+	setRequestNodeID(r, input.NodeID)
 	if err := s.store.UnbindStorageNode(input.NodeID, r.Header.Get("X-Node-Token")); err != nil {
 		writeStoreError(w, err)
 		return
@@ -114,6 +117,7 @@ func (s *Server) handleAgentJobs(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "nodeId is required"})
 		return
 	}
+	setRequestNodeID(r, nodeID)
 	waitTimeout, err := parseAgentJobsWaitTimeout(r)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -196,6 +200,9 @@ func (s *Server) handleAgentJobActions(w http.ResponseWriter, r *http.Request) {
 	}
 	nodeToken := r.Header.Get("X-Node-Token")
 	nodeID := r.URL.Query().Get("nodeId")
+	if nodeID != "" {
+		setRequestNodeID(r, nodeID)
+	}
 	switch {
 	case strings.HasSuffix(path, "/blob"):
 		s.handleAgentJobBlob(w, r, nodeID, nodeToken, jobID)
@@ -231,6 +238,13 @@ func (s *Server) handleAgentJobBlob(w http.ResponseWriter, r *http.Request, node
 			http.ServeContent(w, r, job.FileName, time.Time{}, blobFile)
 			return
 		}
+		logRequestEvent(r, "warn", "agent job blob open failed", map[string]any{
+			"job_id":   jobID,
+			"media_id": job.MediaID,
+			"blob_key": job.BlobKey,
+			"status":   http.StatusNotFound,
+			"error":    err.Error(),
+		})
 		if s.mediaStore != nil {
 			_ = s.mediaStore.MarkOriginalBlobMissing(job.MediaID)
 		}
@@ -239,7 +253,12 @@ func (s *Server) handleAgentJobBlob(w http.ResponseWriter, r *http.Request, node
 		_ = s.store.FailAgentJob(jobID, "job blob not available")
 		_ = s.store.FailUploadSessionByMedia(job.MediaID, "job blob not available")
 	}
-	writeJSON(w, http.StatusNotFound, map[string]string{"error": "job blob not available"})
+	writeLoggedError(r, w, http.StatusNotFound, "job blob not available", "agent job blob not available", nil, map[string]any{
+		"job_id":   jobID,
+		"media_id": job.MediaID,
+		"blob_key": job.BlobKey,
+		"job_type": job.Type,
+	})
 }
 
 func (s *Server) handleAgentJobRestoreUpload(w http.ResponseWriter, r *http.Request, nodeID, nodeToken, jobID string) {
@@ -266,13 +285,20 @@ func (s *Server) handleAgentJobRestoreUpload(w http.ResponseWriter, r *http.Requ
 			if err != errInsufficientLocalStorage {
 				status = http.StatusInternalServerError
 			}
-			writeJSON(w, status, map[string]string{"error": err.Error()})
+			writeLoggedError(r, w, status, err.Error(), "agent restore upload rejected", err, map[string]any{
+				"job_id":    jobID,
+				"file_name": header.Filename,
+				"file_size": header.Size,
+			})
 			return
 		}
 	}
 	saved, err := s.blob.Save(jobID+"-restore", header.Filename, file)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeLoggedError(r, w, http.StatusInternalServerError, err.Error(), "agent restore upload save failed", err, map[string]any{
+			"job_id":    jobID,
+			"file_name": header.Filename,
+		})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"blobKey": saved.Key, "byteSize": saved.ByteSize})
@@ -298,6 +324,7 @@ func (s *Server) handleAgentJobComplete(w http.ResponseWriter, r *http.Request, 
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
+	setRequestNodeID(r, input.NodeID)
 	job, err := s.store.CompleteJob(input.NodeID, nodeToken, jobID, store.JobCompletionInput{
 		OriginalPath:    input.Report.OriginalPath,
 		PreviewBlobKey:  input.Report.PreviewBlobKey,

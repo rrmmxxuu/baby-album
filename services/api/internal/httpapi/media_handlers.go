@@ -87,13 +87,20 @@ func (s *Server) handleUploadSessionActions(w http.ResponseWriter, r *http.Reque
 			if !errors.Is(err, errInsufficientLocalStorage) {
 				status = http.StatusInternalServerError
 			}
-			writeJSON(w, status, map[string]string{"error": err.Error()})
+			writeLoggedError(r, w, status, err.Error(), "upload content rejected", err, map[string]any{
+				"session_id": sessionID,
+				"file_name":  header.Filename,
+				"file_size":  header.Size,
+			})
 			return
 		}
 	}
 	saved, err := s.blob.Save(sessionID, header.Filename, file)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeLoggedError(r, w, http.StatusInternalServerError, err.Error(), "upload content save failed", err, map[string]any{
+			"session_id": sessionID,
+			"file_name":  header.Filename,
+		})
 		return
 	}
 	sourcePath := filepath.Join(s.blob.Root(), saved.Key)
@@ -248,6 +255,15 @@ func (s *Server) handleMediaPreviewRepair(w http.ResponseWriter, r *http.Request
 	repaired, repairErr := s.cacheController.EnsureMediaPreviews(r.Context(), item)
 	if repairErr == nil {
 		item = repaired
+	} else {
+		logRequestEvent(r, "error", "media preview repair failed", map[string]any{
+			"media_id":               item.ID,
+			"preview_status":         item.PreviewStatus,
+			"screen_preview_status":  item.ScreenPreviewStatus,
+			"original_blob_key":      item.OriginalBlobKey,
+			"original_restore_state": item.OriginalRestoreState,
+			"error":                  repairErr.Error(),
+		})
 	}
 	item = s.decorateMediaAsset(item)
 	writeJSON(w, http.StatusOK, map[string]any{"media": item})
@@ -260,12 +276,23 @@ func (s *Server) servePreviewAsset(w http.ResponseWriter, r *http.Request, item 
 	}
 	file, err := s.blob.Open(item.PreviewBlobKey)
 	if err != nil {
+		logRequestEvent(r, "warn", "preview blob open failed", map[string]any{
+			"media_id":  item.ID,
+			"blob_key":  item.PreviewBlobKey,
+			"file_name": item.FileName,
+			"status":    http.StatusNotFound,
+			"error":     err.Error(),
+		})
 		if s.cacheController != nil {
 			go s.cacheController.RepairMissingPreview(item)
 		} else if s.mediaStore != nil {
 			_ = s.mediaStore.MarkPreviewMissing(item.ID)
 		}
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "preview blob not found"})
+		writeLoggedError(r, w, http.StatusNotFound, "preview blob not found", "preview blob not found", nil, map[string]any{
+			"media_id":  item.ID,
+			"blob_key":  item.PreviewBlobKey,
+			"file_name": item.FileName,
+		})
 		return
 	}
 	defer file.Close()
@@ -295,6 +322,13 @@ func (s *Server) serveScreenPreviewAsset(w http.ResponseWriter, r *http.Request,
 	}
 	result, err := s.screenPreviews.Get(r.Context(), item.ScreenPreviewObjectKey)
 	if err != nil {
+		logRequestEvent(r, "warn", "screen preview fetch failed", map[string]any{
+			"media_id":   item.ID,
+			"object_key": item.ScreenPreviewObjectKey,
+			"file_name":  item.FileName,
+			"status":     http.StatusNotFound,
+			"error":      err.Error(),
+		})
 		if s.cacheController != nil {
 			go func(media domain.MediaAsset) {
 				_, _ = s.cacheController.EnsureMediaPreviews(context.Background(), media)
@@ -302,7 +336,11 @@ func (s *Server) serveScreenPreviewAsset(w http.ResponseWriter, r *http.Request,
 		} else if s.mediaStore != nil {
 			_ = s.mediaStore.MarkScreenPreviewMissing(item.ID)
 		}
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "screen preview not available"})
+		writeLoggedError(r, w, http.StatusNotFound, "screen preview not available", "screen preview not available", nil, map[string]any{
+			"media_id":   item.ID,
+			"object_key": item.ScreenPreviewObjectKey,
+			"file_name":  item.FileName,
+		})
 		return
 	}
 	defer result.Body.Close()

@@ -90,7 +90,7 @@
   .appShell {
     padding-left: 10px;
     padding-right: 10px;
-    padding-bottom: calc(88px + env(safe-area-inset-bottom));
+    padding-bottom: var(--app-shell-bottom-padding);
   }
 
   .topBar {

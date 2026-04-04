@@ -21,9 +21,7 @@ export function AppPageFrame({ children, session, currentUser, activeAlbum, bloc
   const showAuthenticatedLayout = session.isAuthenticated && (authenticated || Boolean(activeAlbum));
   const reserveBottomNavSpace = hasBottomNav ?? showAuthenticatedLayout;
   const shellStyle = {
-    "--app-shell-bottom-padding": reserveBottomNavSpace
-      ? "calc(88px + env(safe-area-inset-bottom))"
-      : "calc(18px + env(safe-area-inset-bottom))",
+    "--app-shell-bottom-padding": "0px",
     "--app-bottom-nav-overlay-spacer": reserveBottomNavSpace
       ? "calc(56px + env(safe-area-inset-bottom))"
       : "0px"

@@ -39,6 +39,8 @@ import { errorMessageFromUnknown } from "../model/feedback";
 import { formatDate } from "../model/format";
 import { buildAuthPath, buildBabyFeedingPath, buildFeedingHubPath } from "../model/routes";
 import { BabyAvatar } from "../ui/baby-avatar";
+import { DateField } from "../ui/date-field";
+import { TimeField } from "../ui/time-field";
 import { PanelMessage } from "../../ui/panel-message";
 import { FeedingContentLoadingSkeleton } from "../ui/loading-skeletons";
 
@@ -225,6 +227,61 @@ function computeBreastEndedAt(occurredAt: string, leftMinutes: string, rightMinu
     return "";
   }
   return toDateTimeLocalValue(new Date(startedAt.getTime() + totalMinutes * 60000).toISOString());
+}
+
+function splitLocalDateTime(value: string) {
+  if (!value) {
+    return { date: "", time: "" };
+  }
+  const [date = "", time = ""] = value.split("T");
+  return {
+    date,
+    time: time.slice(0, 5)
+  };
+}
+
+function joinLocalDateTime(date: string, time: string) {
+  if (!date || !time) {
+    return "";
+  }
+  return `${date}T${time}`;
+}
+
+interface FeedingDateTimeFieldProps {
+  disabled?: boolean;
+  fallbackDate?: string;
+  fallbackTime?: string;
+  label: string;
+  onChange: (value: string) => void;
+  readOnly?: boolean;
+  value: string;
+}
+
+function FeedingDateTimeField({ disabled, fallbackDate = "", fallbackTime = "09:00", label, onChange, readOnly, value }: FeedingDateTimeFieldProps) {
+  const { date, time } = splitLocalDateTime(value);
+  const nextDateValue = date || fallbackDate;
+  const nextTimeFallback = time || fallbackTime;
+  const controlsDisabled = disabled || readOnly;
+
+  return (
+    <div className="feedingDateTimeGroup">
+      <span className="feedingFieldLabel">{label}</span>
+      <div className="feedingDateTimeInputs">
+        <DateField
+          disabled={controlsDisabled}
+          label="日期"
+          onChange={(nextDate) => onChange(joinLocalDateTime(nextDate, nextTimeFallback))}
+          value={nextDateValue}
+        />
+        <TimeField
+          disabled={controlsDisabled || !nextDateValue}
+          label="时间"
+          onChange={(nextTime) => onChange(joinLocalDateTime(nextDateValue, nextTime))}
+          value={time}
+        />
+      </div>
+    </div>
+  );
 }
 
 function createInitialDraft(category: FeedingCategory, selectedDay: string, isToday: boolean, preferredMilkMode: FeedingMilkMode, entry?: FeedingEntry | null): FeedingDraftState {
@@ -778,10 +835,13 @@ function FeedingEditorSheet({
                   </div>
                 ) : timedBreastEntryEditing ? (
                   <>
-                    <label>
-                      开始时间
-                      <input onChange={(event) => updateBreastOccurredAt(event.target.value)} type="datetime-local" value={draft.occurredAt} />
-                    </label>
+                    <FeedingDateTimeField
+                      fallbackDate={splitLocalDateTime(draft.occurredAt).date}
+                      fallbackTime={splitLocalDateTime(draft.occurredAt).time || "09:00"}
+                      label="开始时间"
+                      onChange={updateBreastOccurredAt}
+                      value={draft.occurredAt}
+                    />
 
                     <label>
                       左侧（分钟）
@@ -793,32 +853,46 @@ function FeedingEditorSheet({
                       <input inputMode="numeric" onChange={(event) => updateBreastMinutes("right", event.target.value)} placeholder="例如 8" value={draft.breastRightMinutes} />
                     </label>
 
-                    <label>
-                      结束时间
-                      <input disabled readOnly type="datetime-local" value={draft.endedAt} />
-                    </label>
+                    <FeedingDateTimeField
+                      disabled
+                      fallbackDate={splitLocalDateTime(draft.occurredAt).date}
+                      fallbackTime={splitLocalDateTime(draft.endedAt).time || splitLocalDateTime(draft.occurredAt).time || "09:00"}
+                      label="结束时间"
+                      onChange={() => {}}
+                      readOnly
+                      value={draft.endedAt}
+                    />
                   </>
                 ) : (
                   <>
-                    <label>
-                      记录时间
-                      <input onChange={(event) => onChange({ occurredAt: event.target.value })} type="datetime-local" value={draft.occurredAt} />
-                    </label>
+                    <FeedingDateTimeField
+                      fallbackDate={splitLocalDateTime(draft.occurredAt).date}
+                      fallbackTime={splitLocalDateTime(draft.occurredAt).time || "09:00"}
+                      label="记录时间"
+                      onChange={(value) => onChange({ occurredAt: value })}
+                      value={draft.occurredAt}
+                    />
 
                     {category === "milk" && draft.milkMode === "breast" ? (
-                      <label>
-                        结束时间
-                        <input onChange={(event) => onChange({ endedAt: event.target.value })} type="datetime-local" value={draft.endedAt} />
-                      </label>
+                      <FeedingDateTimeField
+                        fallbackDate={splitLocalDateTime(draft.endedAt).date || splitLocalDateTime(draft.occurredAt).date}
+                        fallbackTime={splitLocalDateTime(draft.endedAt).time || splitLocalDateTime(draft.occurredAt).time || "09:00"}
+                        label="结束时间"
+                        onChange={(value) => onChange({ endedAt: value })}
+                        value={draft.endedAt}
+                      />
                     ) : null}
                   </>
                 )}
 
                 {category === "sleep" ? (
-                  <label>
-                    睡醒时间
-                    <input onChange={(event) => onChange({ endedAt: event.target.value })} type="datetime-local" value={draft.endedAt} />
-                  </label>
+                  <FeedingDateTimeField
+                    fallbackDate={splitLocalDateTime(draft.endedAt).date || splitLocalDateTime(draft.occurredAt).date}
+                    fallbackTime={splitLocalDateTime(draft.endedAt).time || splitLocalDateTime(draft.occurredAt).time || "09:00"}
+                    label="睡醒时间"
+                    onChange={(value) => onChange({ endedAt: value })}
+                    value={draft.endedAt}
+                  />
                 ) : null}
 
                 {category === "milk" && draft.milkMode !== "breast" ? (

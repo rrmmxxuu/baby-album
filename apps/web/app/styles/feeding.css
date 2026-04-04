@@ -523,6 +523,22 @@
   gap: 14px;
 }
 
+.feedingDateTimeGroup {
+  display: grid;
+  gap: 8px;
+}
+
+.feedingDateTimeInputs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.feedingDateTimeInputs > * {
+  min-width: 0;
+}
+
 .feedingFieldLabel {
   color: #3a3a3c;
   font-size: 0.95rem;

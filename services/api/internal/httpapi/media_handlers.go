@@ -520,7 +520,7 @@ func (s *Server) resolveMediaAssetRequest(r *http.Request, mediaID, expectedKind
 		if err != nil {
 			return domain.MediaAsset{}, err
 		}
-		if version := strings.TrimSpace(r.URL.Query().Get("v")); version != "" && version != mediaVersion(item) {
+		if version := strings.TrimSpace(r.URL.Query().Get("v")); version != "" && version != mediaVersionForKind(item, expectedKind) {
 			return domain.MediaAsset{}, store.ErrNotFound
 		}
 		return item, nil

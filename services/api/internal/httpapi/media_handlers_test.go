@@ -172,6 +172,106 @@ func TestServePreviewAssetMarksMissingPreviewBlob(t *testing.T) {
 	}
 }
 
+func TestSignedPreviewURLSurvivesProcessedAtUpdate(t *testing.T) {
+	blobStorage := blob.New(t.TempDir())
+	saved, err := blobStorage.SaveBytes("preview", "moment.jpg", []byte("preview"))
+	if err != nil {
+		t.Fatalf("seed preview blob: %v", err)
+	}
+
+	uploadedAt := time.Date(2026, time.April, 4, 14, 25, 35, 0, time.UTC)
+	item := domain.MediaAsset{
+		ID:             "media-1",
+		FileName:       "moment.jpg",
+		UploadedAt:     uploadedAt,
+		PreviewStatus:  domain.PreviewReady,
+		PreviewBlobKey: saved.Key,
+	}
+	server := NewServer(&stubRepository{
+		mediaByPublicID: func(mediaID string) (domain.MediaAsset, error) {
+			if mediaID != item.ID {
+				t.Fatalf("unexpected media id %s", mediaID)
+			}
+			return item, nil
+		},
+	}, blobStorage, 8<<20, nil)
+
+	signedURL := server.signedMediaURL(
+		mediaPublicPath("media", item.ID, "preview"),
+		previewURLKind,
+		mediaVersionForKind(item, previewURLKind),
+		time.Now().UTC().Add(time.Hour),
+	)
+	processedAt := uploadedAt.Add(6 * time.Second)
+	item.ProcessedAt = &processedAt
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, signedURL, nil)
+
+	server.withMiddleware(server.mux).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	if recorder.Body.String() != "preview" {
+		t.Fatalf("unexpected preview body %q", recorder.Body.String())
+	}
+}
+
+func TestSignedScreenPreviewURLSurvivesProcessedAtUpdate(t *testing.T) {
+	blobStorage := blob.New(t.TempDir())
+	server := NewServerWithOptions(&stubRepository{}, blobStorage, Options{
+		MaxUploadBytes: 8 << 20,
+		R2LocalRoot:    t.TempDir(),
+	})
+	if server.screenPreviews == nil || !server.screenPreviews.Enabled() {
+		t.Fatal("expected screen preview store to be configured")
+	}
+	saved, err := server.screenPreviews.PutBytes(context.Background(), "screen-previews/media-1-preview.jpg", []byte("screen-preview"), "image/jpeg")
+	if err != nil {
+		t.Fatalf("seed screen preview object: %v", err)
+	}
+
+	uploadedAt := time.Date(2026, time.April, 4, 14, 25, 35, 0, time.UTC)
+	item := domain.MediaAsset{
+		ID:                     "media-1",
+		FileName:               "moment.jpg",
+		UploadedAt:             uploadedAt,
+		ScreenPreviewStatus:    domain.PreviewReady,
+		ScreenPreviewObjectKey: saved.Key,
+	}
+	server.store = &stubRepository{
+		mediaByPublicID: func(mediaID string) (domain.MediaAsset, error) {
+			if mediaID != item.ID {
+				t.Fatalf("unexpected media id %s", mediaID)
+			}
+			return item, nil
+		},
+	}
+	server.mediaStore = server.store.(mediaStateStore)
+
+	signedURL := server.signedMediaURL(
+		mediaPublicPath("media", item.ID, "screen-preview"),
+		screenPreviewURLKind,
+		mediaVersionForKind(item, screenPreviewURLKind),
+		time.Now().UTC().Add(time.Hour),
+	)
+	processedAt := uploadedAt.Add(6 * time.Second)
+	item.ProcessedAt = &processedAt
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, signedURL, nil)
+
+	server.withMiddleware(server.mux).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	if recorder.Body.String() != "screen-preview" {
+		t.Fatalf("unexpected screen preview body %q", recorder.Body.String())
+	}
+}
+
 func TestApplyDeleteCleanupRemovesScreenPreviewObject(t *testing.T) {
 	blobStorage := blob.New(t.TempDir())
 	server := NewServerWithOptions(&stubRepository{}, blobStorage, Options{

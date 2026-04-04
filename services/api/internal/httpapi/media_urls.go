@@ -66,14 +66,14 @@ func (s *Server) decorateTimelineEntries(items []domain.TimelineEntry) []domain.
 
 func (s *Server) decorateMediaAsset(item domain.MediaAsset) domain.MediaAsset {
 	if item.PreviewStatus == domain.PreviewReady && strings.TrimSpace(item.PreviewBlobKey) != "" {
-		item.PreviewURL = s.signedMediaURL(mediaPublicPath("media", item.ID, "preview"), previewURLKind, mediaVersion(item), s.previewURLExpiry())
+		item.PreviewURL = s.signedMediaURL(mediaPublicPath("media", item.ID, "preview"), previewURLKind, mediaVersionForKind(item, previewURLKind), s.previewURLExpiry())
 	}
 	if item.ScreenPreviewStatus == domain.PreviewReady && strings.TrimSpace(item.ScreenPreviewObjectKey) != "" {
-		item.ScreenPreviewURL = s.signedMediaURL(mediaPublicPath("media", item.ID, "screen-preview"), screenPreviewURLKind, mediaVersion(item), s.previewURLExpiry())
+		item.ScreenPreviewURL = s.signedMediaURL(mediaPublicPath("media", item.ID, "screen-preview"), screenPreviewURLKind, mediaVersionForKind(item, screenPreviewURLKind), s.previewURLExpiry())
 	}
 	item.OriginalAvail = mediaOriginalAvailability(item)
 	if item.OriginalAvail == domain.OriginalHot {
-		item.OriginalURL = s.signedMediaURL(mediaPublicPath("media", item.ID, "original"), originalURLKind, mediaVersion(item), time.Now().UTC().Add(5*time.Minute))
+		item.OriginalURL = s.signedMediaURL(mediaPublicPath("media", item.ID, "original"), originalURLKind, mediaVersionForKind(item, originalURLKind), time.Now().UTC().Add(5*time.Minute))
 	}
 	return item
 }
@@ -106,7 +106,21 @@ func mediaPublicPath(resource, id, action string) string {
 	return fmt.Sprintf("/api/v1/%s/%s/%s", resource, url.PathEscape(strings.TrimSpace(id)), action)
 }
 
-func mediaVersion(item domain.MediaAsset) string {
+func mediaVersionForKind(item domain.MediaAsset, kind string) string {
+	switch kind {
+	case previewURLKind:
+		if strings.TrimSpace(item.PreviewBlobKey) != "" {
+			return strings.TrimSpace(item.PreviewBlobKey)
+		}
+	case screenPreviewURLKind:
+		if strings.TrimSpace(item.ScreenPreviewObjectKey) != "" {
+			return strings.TrimSpace(item.ScreenPreviewObjectKey)
+		}
+	}
+	return mediaOriginalVersion(item)
+}
+
+func mediaOriginalVersion(item domain.MediaAsset) string {
 	switch {
 	case item.ProcessedAt != nil:
 		return item.ProcessedAt.UTC().Format(time.RFC3339Nano)

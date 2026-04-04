@@ -23,7 +23,10 @@ export function AppPageFrame({ children, session, currentUser, activeAlbum, bloc
   const shellStyle = {
     "--app-shell-bottom-padding": reserveBottomNavSpace
       ? "calc(88px + env(safe-area-inset-bottom))"
-      : "calc(18px + env(safe-area-inset-bottom))"
+      : "calc(18px + env(safe-area-inset-bottom))",
+    "--app-bottom-nav-overlay-spacer": reserveBottomNavSpace
+      ? "calc(56px + env(safe-area-inset-bottom))"
+      : "0px"
   } as CSSProperties;
 
   return (

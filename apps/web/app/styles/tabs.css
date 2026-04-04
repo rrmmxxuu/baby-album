@@ -36,6 +36,24 @@
   background: transparent;
 }
 
+@media (display-mode: standalone) {
+  .tabWorkspaceViewport > .pageStack::after,
+  .tabWorkspaceViewport > .settingsDetailPage.panelStack::after {
+    content: "";
+    display: block;
+    height: var(--app-bottom-nav-overlay-spacer, 0px);
+    pointer-events: none;
+  }
+}
+
+html[data-display-mode="standalone"] .tabWorkspaceViewport > .pageStack::after,
+html[data-display-mode="standalone"] .tabWorkspaceViewport > .settingsDetailPage.panelStack::after {
+  content: "";
+  display: block;
+  height: var(--app-bottom-nav-overlay-spacer, 0px);
+  pointer-events: none;
+}
+
 .tabViewport {
   position: relative;
   background: transparent;

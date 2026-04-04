@@ -26,6 +26,10 @@
   }
 }
 
+html[data-display-mode="standalone"] .appShell {
+  --app-shell-bottom-padding: calc(18px + env(safe-area-inset-bottom)) !important;
+}
+
 * {
   box-sizing: border-box;
 }

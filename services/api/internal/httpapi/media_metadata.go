@@ -16,31 +16,27 @@ type uploadedMediaMetadata struct {
 }
 
 func inspectUploadedMedia(sourcePath, originalName, clientMediaType string) uploadedMediaMetadata {
-	detectedMediaType := detectStoredMediaType(sourcePath, originalName, clientMediaType)
+	detectedMediaType := detectStoredMediaType(sourcePath, originalName)
+	_ = clientMediaType
 	return uploadedMediaMetadata{
 		DetectedMediaType:     detectedMediaType,
 		DetectedCapturedAtRaw: detectStoredCapturedAtRaw(sourcePath, detectedMediaType, originalName),
 	}
 }
 
-func detectStoredMediaType(sourcePath, originalName, clientMediaType string) string {
+func detectStoredMediaType(sourcePath, originalName string) string {
 	detected := normalizedMediaType(detectMediaTypeFromFile(sourcePath))
 	extType := normalizedMediaType(mediaTypeForFileExtension(originalName))
-	clientType := normalizedMediaType(clientMediaType)
 
 	switch {
 	case trustedMediaType(detected) && extType != "" && !sameMediaFamily(detected, extType):
 		return detected
-	case extType != "" && preferExtensionMediaType(extType):
-		return extType
 	case trustedMediaType(detected):
 		return detected
-	case extType != "":
+	case extType != "" && preferExtensionMediaType(extType) && allowsPreferredExtensionFallback(detected):
 		return extType
-	case trustedMediaType(clientType):
-		return clientType
 	default:
-		return clientType
+		return ""
 	}
 }
 
@@ -89,6 +85,15 @@ func preferExtensionMediaType(value string) bool {
 	return value == "image/heic" || value == "image/heif"
 }
 
+func allowsPreferredExtensionFallback(detected string) bool {
+	switch detected {
+	case "", "application/octet-stream":
+		return true
+	default:
+		return false
+	}
+}
+
 func mediaTypeForFileExtension(name string) string {
 	switch strings.ToLower(filepath.Ext(strings.TrimSpace(name))) {
 	case ".jpg", ".jpeg":
@@ -119,9 +124,9 @@ func detectStoredCapturedAtRaw(sourcePath, mediaType, originalName string) strin
 			return value
 		}
 		return detectFFprobeCapturedAtRaw(sourcePath)
-	case mediaType == "image/heic", mediaType == "image/heif", strings.EqualFold(filepath.Ext(strings.TrimSpace(originalName)), ".heic"), strings.EqualFold(filepath.Ext(strings.TrimSpace(originalName)), ".heif"):
+	case mediaType == "image/heic", mediaType == "image/heif":
 		return detectFFprobeCapturedAtRaw(sourcePath)
-	case strings.HasPrefix(mediaType, "video/"):
+	case isTrustedVideoMediaType(mediaType):
 		return detectFFprobeCapturedAtRaw(sourcePath)
 	default:
 		return ""
@@ -274,13 +279,11 @@ func detectFFprobeCapturedAtRaw(sourcePath string) string {
 		return ""
 	}
 
-	cmd := exec.Command(
-		"ffprobe",
-		"-v", "error",
+	cmd := exec.Command("ffprobe", buildFFprobeReadArgs(
+		sourcePath,
 		"-show_entries", "format_tags=creation_time,com.apple.quicktime.creationdate,date:stream_tags=creation_time,com.apple.quicktime.creationdate,date",
 		"-of", "default=noprint_wrappers=1:nokey=1",
-		sourcePath,
-	)
+	)...)
 	output, err := cmd.Output()
 	if err != nil {
 		return ""

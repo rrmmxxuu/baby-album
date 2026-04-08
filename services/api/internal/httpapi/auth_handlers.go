@@ -3,6 +3,8 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
+	"time"
 
 	"babyalbum/api/internal/store"
 )
@@ -19,6 +21,15 @@ func (s *Server) handleAuthRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	clientAddr := clientIP(r)
+	if allowed, retryAfter := s.requestLimits.allow(rateLimitScope("auth-register-ip", clientAddr), 20, time.Minute); !allowed {
+		writeRateLimitExceeded(w, retryAfter)
+		return
+	}
+	if allowed, retryAfter := s.requestLimits.allow(rateLimitScope("auth-register-email", strings.ToLower(strings.TrimSpace(input.Email))), 10, time.Minute); !allowed {
+		writeRateLimitExceeded(w, retryAfter)
 		return
 	}
 	result, err := s.store.RegisterUser(store.RegisterUserInput{
@@ -44,6 +55,10 @@ func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	if allowed, retryAfter := s.requestLimits.allow(rateLimitScope("auth-login", clientIP(r), strings.ToLower(strings.TrimSpace(input.Email))), 30, time.Minute); !allowed {
+		writeRateLimitExceeded(w, retryAfter)
 		return
 	}
 	result, err := s.store.Login(store.LoginInput{Email: input.Email, Password: input.Password})

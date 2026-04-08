@@ -322,11 +322,6 @@ export async function createStorageNodePairing(albumId: string): Promise<Storage
   return parseResponse<StorageNodePairing>(response);
 }
 
-export async function loadInvite(code: string): Promise<AlbumInvite> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/invites/${encodeURIComponent(code)}`, { cache: "no-store" });
-  return parseResponse<AlbumInvite>(response);
-}
-
 export async function acceptInvite(code: string, relation: string): Promise<AlbumInvite> {
   const response = await fetch(`${apiBaseUrl}/api/v1/invites/${encodeURIComponent(code)}/accept`, {
     method: "POST",

@@ -122,7 +122,7 @@ func TestHandleUploadSessionContentGeneratesPreviewInAPI(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/upload-sessions/session-1/content", &body)
 	request.Header.Set("Content-Type", writer.FormDataContentType())
-	request.Header.Set("X-User-ID", "user-1")
+	request.Header.Set("Authorization", "Bearer test-session")
 
 	server.withMiddleware(server.mux).ServeHTTP(recorder, request)
 
@@ -160,7 +160,7 @@ func TestServePreviewAssetMarksMissingPreviewBlob(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/media/media-1/preview?albumId=album-1", nil)
-	request.Header.Set("X-User-ID", "user-1")
+	request.Header.Set("Authorization", "Bearer test-session")
 
 	server.withMiddleware(server.mux).ServeHTTP(recorder, request)
 
@@ -397,7 +397,7 @@ func TestServeOriginalAssetMarksMissingLocalOriginal(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/media/media-1/original?albumId=album-1", nil)
-	request.Header.Set("X-User-ID", "user-1")
+	request.Header.Set("Authorization", "Bearer test-session")
 
 	server.withMiddleware(server.mux).ServeHTTP(recorder, request)
 
@@ -483,7 +483,7 @@ func TestServeAvatarMarksMissingAvatarBlob(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/babies/baby-1/avatar?albumId=album-1", nil)
-	request.Header.Set("X-User-ID", "user-1")
+	request.Header.Set("Authorization", "Bearer test-session")
 
 	server.withMiddleware(server.mux).ServeHTTP(recorder, request)
 

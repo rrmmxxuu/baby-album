@@ -17,6 +17,7 @@ import (
 )
 
 type stubRepository struct {
+	sessionUser              func(token string) (domain.User, error)
 	unbindStorageNode        func(nodeID, token string) error
 	attachUploadContent      func(userID, sessionID string, input store.UploadContentInput) (domain.UploadSession, error)
 	pendingJobs              func(nodeID, token string) ([]domain.AgentJob, error)
@@ -60,7 +61,13 @@ func (s *stubRepository) Login(input store.LoginInput) (store.AuthResult, error)
 }
 
 func (s *stubRepository) SessionUser(token string) (domain.User, error) {
-	return domain.User{}, nil
+	if s.sessionUser != nil {
+		return s.sessionUser(token)
+	}
+	if strings.TrimSpace(token) == "" {
+		return domain.User{}, store.ErrUnauthorized
+	}
+	return domain.User{ID: "user-1"}, nil
 }
 
 func (s *stubRepository) RevokeSession(token string) error { return nil }

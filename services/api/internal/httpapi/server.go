@@ -42,6 +42,7 @@ type Server struct {
 	cacheController *mediaCacheController
 	agentJobHub     *agentJobHub
 	timerHub        *feedingTimerHub
+	requestLimits   *requestRateLimiter
 	mux             *http.ServeMux
 }
 
@@ -50,7 +51,7 @@ func NewServer(repo store.Repository, blobStorage *blob.Storage, maxUploadBytes 
 		MaxUploadBytes:        maxUploadBytes,
 		AllowedOrigins:        allowedOrigins,
 		PublicBaseURL:         "http://localhost:8080",
-		MediaURLSigningSecret: "dev-media-secret",
+		MediaURLSigningSecret: "test-media-signing-secret",
 	})
 }
 
@@ -66,10 +67,11 @@ func NewServerWithOptions(repo store.Repository, blobStorage *blob.Storage, opti
 		signingSecret:  []byte(strings.TrimSpace(options.MediaURLSigningSecret)),
 		agentJobHub:    newAgentJobHub(),
 		timerHub:       newFeedingTimerHub(),
+		requestLimits:  newRequestRateLimiter(),
 		mux:            http.NewServeMux(),
 	}
 	if len(s.signingSecret) == 0 {
-		s.signingSecret = []byte("dev-media-secret")
+		s.signingSecret = []byte("test-media-signing-secret")
 	}
 	if s.publicBaseURL == "" {
 		s.publicBaseURL = "http://localhost:8080"

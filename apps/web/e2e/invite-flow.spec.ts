@@ -21,7 +21,7 @@ test("generates an invite code and joins an existing album", async ({ page }) =>
   await page.getByRole("button", { name: "生成邀请码" }).click();
   const invitePayload = await (await inviteResponse).json() as { code?: string };
   const inviteCode = invitePayload.code?.trim() ?? "";
-  expect(inviteCode).toMatch(/^[A-Z0-9]{6}$/);
+  expect(inviteCode).toMatch(/^[A-Z0-9]{12}$/);
 
   await logout(page);
 

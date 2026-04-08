@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"babyalbum/api/internal/domain"
+	"golang.org/x/crypto/bcrypt"
 )
 
 var (
@@ -29,6 +30,12 @@ var (
 const (
 	DefaultTimelinePageSize    = 10
 	MaxDuplicateMediaBatchSize = 500
+	InviteCodeLength           = 12
+	PairingCodeLength          = 12
+	InviteExpiry               = 7 * 24 * time.Hour
+	StoragePairingExpiry       = 10 * time.Minute
+	passwordSchemeSHA256V1     = "sha256_v1"
+	passwordSchemeBcrypt       = "bcrypt"
 )
 
 type TimelinePageInput struct {
@@ -764,26 +771,29 @@ func newID(prefix string) string {
 	return fmt.Sprintf("%s-%d-%s", prefix, time.Now().UTC().UnixNano(), strings.ToLower(hex.EncodeToString(buf)))
 }
 
-func newInviteCode() string {
+func newInviteCode() (string, error) {
 	const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-	buf := make([]byte, 6)
-	if _, err := rand.Read(buf); err != nil {
-		return fmt.Sprintf("%06d", time.Now().UTC().UnixNano()%1000000)
+	return newReadableCode(alphabet, InviteCodeLength)
+}
+
+func newPairingCode() (string, error) {
+	const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+	return newReadableCode(alphabet, PairingCodeLength)
+}
+
+func newReadableCode(alphabet string, length int) (string, error) {
+	if length <= 0 {
+		return "", fmt.Errorf("code length must be positive")
 	}
-	code := make([]byte, 6)
+	buf := make([]byte, length)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	code := make([]byte, length)
 	for index, value := range buf {
 		code[index] = alphabet[int(value)%len(alphabet)]
 	}
-	return string(code)
-}
-
-func newPairingCode() string {
-	buf := make([]byte, 4)
-	if _, err := rand.Read(buf); err != nil {
-		return fmt.Sprintf("%08d", time.Now().UTC().UnixNano()%100000000)
-	}
-	value := binaryUint32(buf) % 100000000
-	return fmt.Sprintf("%08d", value)
+	return string(code), nil
 }
 
 func binaryUint32(buf []byte) uint32 {
@@ -802,21 +812,56 @@ func newSessionToken() string {
 	return strings.ToLower(hex.EncodeToString(buf))
 }
 
-func passwordSaltAndHash(password string) (string, string, error) {
-	trimmed := strings.TrimSpace(password)
-	if len(trimmed) < 8 {
-		return "", "", fmt.Errorf("password must be at least 8 characters")
+func passwordHash(password string) (string, string, string, error) {
+	trimmed, err := normalizedPassword(password)
+	if err != nil {
+		return "", "", "", err
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(trimmed), bcrypt.DefaultCost)
+	if err != nil {
+		return "", "", "", err
+	}
+	return passwordSchemeBcrypt, "", string(hash), nil
+}
+
+func legacyPasswordSaltAndHash(password string) (string, string, string, error) {
+	trimmed, err := normalizedPassword(password)
+	if err != nil {
+		return "", "", "", err
 	}
 	saltBytes := make([]byte, 16)
 	if _, err := rand.Read(saltBytes); err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	salt := hex.EncodeToString(saltBytes)
 	hash := sha256.Sum256([]byte(salt + ":" + trimmed))
-	return salt, hex.EncodeToString(hash[:]), nil
+	return passwordSchemeSHA256V1, salt, hex.EncodeToString(hash[:]), nil
 }
 
-func verifyPassword(password, salt, expectedHash string) bool {
+func normalizedPassword(password string) (string, error) {
+	trimmed := strings.TrimSpace(password)
+	if len(trimmed) < 8 {
+		return "", fmt.Errorf("password must be at least 8 characters")
+	}
+	return trimmed, nil
+}
+
+func verifyPassword(password, scheme, salt, expectedHash string) bool {
+	switch strings.TrimSpace(scheme) {
+	case "", passwordSchemeSHA256V1:
+		return verifyLegacyPassword(password, salt, expectedHash)
+	case passwordSchemeBcrypt:
+		trimmed, err := normalizedPassword(password)
+		if err != nil {
+			return false
+		}
+		return bcrypt.CompareHashAndPassword([]byte(expectedHash), []byte(trimmed)) == nil
+	default:
+		return false
+	}
+}
+
+func verifyLegacyPassword(password, salt, expectedHash string) bool {
 	hash := sha256.Sum256([]byte(salt + ":" + strings.TrimSpace(password)))
 	actual := hex.EncodeToString(hash[:])
 	return subtle.ConstantTimeCompare([]byte(actual), []byte(expectedHash)) == 1

@@ -17,13 +17,13 @@ export function StorageFlowSection({ storageNode, activeStoragePairing, canManag
     <StorageSection action={canManageStorage ? <button onClick={() => void onCreateStoragePairing()} type="button">{storagePairingActionLabel}</button> : null} subtitle={storageFlowTitle} title="使用流程">
       <div className="storageStepList">
         <StorageStepCard
-          description={canManageStorage ? `创建者生成 8 位短码，用于${storagePairingModeLabel}。` : "由相册创建者生成 8 位短码后再继续。"}
+          description={canManageStorage ? `创建者生成 12 位配对码，用于${storagePairingModeLabel}。` : "由相册创建者生成 12 位配对码后再继续。"}
           index={1}
           state={activeStoragePairing ? "active" : storageNode ? "done" : "current"}
           title={storagePairingActionLabel}
         />
         <StorageStepCard
-          description={storageNode ? "让新设备使用这个短码接入；接入成功后它会成为当前主节点。" : "在 NAS 或小主机上启动 agent，并输入这个短码完成首次接入。"}
+          description={storageNode ? "让新设备使用这个配对码接入；接入成功后它会成为当前主节点。" : "在 NAS 或小主机上启动 agent，并输入这个配对码完成首次接入。"}
           index={2}
           state={activeStoragePairing ? "current" : storageNode ? "done" : undefined}
           title="在设备上完成配对"

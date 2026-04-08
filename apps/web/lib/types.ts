@@ -36,6 +36,7 @@ export interface AlbumInvite {
   createdByName?: string;
   albumName?: string;
   createdAt: string;
+  expiresAt?: string;
   acceptedAt?: string;
   acceptedBy?: string;
 }

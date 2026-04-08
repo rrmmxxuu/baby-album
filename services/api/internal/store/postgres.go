@@ -81,7 +81,7 @@ func (s *PostgresStore) migrate() error {
 	statements := []string{
 		`create table if not exists users (id text primary key, display_name text not null, email text not null, created_at timestamptz not null)`,
 		`create unique index if not exists idx_users_email on users (lower(email))`,
-		`create table if not exists auth_credentials (user_id text primary key references users(id), salt text not null, password_hash text not null)`,
+		`create table if not exists auth_credentials (user_id text primary key references users(id), password_scheme text not null default 'sha256_v1', salt text not null default '', password_hash text not null)`,
 		`create table if not exists auth_sessions (token text primary key, user_id text not null references users(id), created_at timestamptz not null, expires_at timestamptz not null)`,
 		`create index if not exists idx_auth_sessions_user on auth_sessions (user_id)`,
 		`create table if not exists families (id text primary key, name text not null, timezone text not null)`,
@@ -89,7 +89,13 @@ func (s *PostgresStore) migrate() error {
 		`create table if not exists babies (id text primary key, family_id text not null references families(id), name text not null, birth_date date, avatar_blob_key text not null default '', avatar_updated_at timestamptz, created_at timestamptz not null)`,
 		`alter table babies add column if not exists avatar_blob_key text not null default ''`,
 		`alter table babies add column if not exists avatar_updated_at timestamptz`,
-		`create table if not exists family_invites (id text primary key, family_id text not null references families(id), code text not null unique, role text not null, status text not null, created_by text not null references users(id), created_at timestamptz not null, accepted_at timestamptz, accepted_by text references users(id))`,
+		`create table if not exists family_invites (id text primary key, family_id text not null references families(id), code text not null unique, role text not null, status text not null, created_by text not null references users(id), created_at timestamptz not null, expires_at timestamptz, accepted_at timestamptz, accepted_by text references users(id))`,
+		`alter table auth_credentials add column if not exists password_scheme text not null default 'sha256_v1'`,
+		`alter table auth_credentials alter column salt set default ''`,
+		`update auth_credentials set password_scheme = 'sha256_v1' where trim(coalesce(password_scheme, '')) = ''`,
+		`alter table family_invites add column if not exists expires_at timestamptz`,
+		`update family_invites set expires_at = coalesce(expires_at, created_at + interval '7 days')`,
+		`update family_invites set status = 'revoked', expires_at = least(coalesce(expires_at, created_at + interval '7 days'), now() - interval '1 second') where status = 'pending' and char_length(code) < 12`,
 		`create table if not exists storage_nodes (id text primary key, family_id text not null references families(id), name text not null, status text not null, registration_token text not null, last_seen_at timestamptz not null)`,
 		`alter table storage_nodes add column if not exists total_bytes bigint not null default 0`,
 		`alter table storage_nodes add column if not exists free_bytes bigint not null default 0`,
@@ -99,6 +105,7 @@ func (s *PostgresStore) migrate() error {
 		`create unique index if not exists idx_storage_node_bindings_family_primary_active on storage_node_bindings (family_id) where mode = 'primary' and status = 'active'`,
 		`insert into storage_node_bindings (family_id, node_id, mode, status, created_at, updated_at) select items.family_id, items.id, 'primary', case when items.position = 1 then 'active' else 'draining' end, items.last_seen_at, items.last_seen_at from (select sn.family_id, sn.id, sn.last_seen_at, row_number() over (partition by sn.family_id order by sn.id asc) as position from storage_nodes sn) as items on conflict (family_id, node_id) do nothing`,
 		`create table if not exists storage_node_pairings (code text primary key, family_id text not null references families(id), created_by text not null references users(id), created_at timestamptz not null, expires_at timestamptz not null, used_at timestamptz)`,
+		`update storage_node_pairings set expires_at = least(expires_at, now() - interval '1 second') where used_at is null and char_length(code) < 12`,
 		`create table if not exists timeline_entries (id text primary key, family_id text not null references families(id), caption text not null default '', visibility text not null default 'members', time_mode text not null default 'captured_at', display_at timestamptz not null, timeline_day text not null, uploaded_by text not null default '', uploaded_by_name text not null default '', uploaded_at timestamptz not null, created_at timestamptz not null)`,
 		`create table if not exists timeline_comments (id text primary key, family_id text not null references families(id), entry_id text not null references timeline_entries(id), user_id text not null references users(id), display_name text not null, content text not null, created_at timestamptz not null)`,
 		`create table if not exists feeding_entries (id text primary key, family_id text not null references families(id), baby_id text not null references babies(id), category text not null, occurred_at timestamptz not null, ended_at timestamptz, day_key text not null, note text not null default '', created_by text not null references users(id), created_by_name text not null default '', created_at timestamptz not null, updated_at timestamptz not null, milk_mode text, amount_ml integer, food_name text not null default '', has_stool boolean)`,
@@ -204,11 +211,11 @@ func (s *PostgresStore) seed() error {
 		if _, err := tx.Exec(`insert into users (id, display_name, email, created_at) values ($1, $2, $3, $4)`, user.ID, user.DisplayName, user.Email, user.CreatedAt); err != nil {
 			return err
 		}
-		salt, hash, err := passwordSaltAndHash("demo12345")
+		scheme, salt, hash, err := passwordHash("demo12345")
 		if err != nil {
 			return err
 		}
-		if _, err := tx.Exec(`insert into auth_credentials (user_id, salt, password_hash) values ($1, $2, $3)`, user.ID, salt, hash); err != nil {
+		if _, err := tx.Exec(`insert into auth_credentials (user_id, password_scheme, salt, password_hash) values ($1, $2, $3, $4)`, user.ID, scheme, salt, hash); err != nil {
 			return err
 		}
 	}
@@ -262,7 +269,7 @@ func (s *PostgresStore) RegisterUser(input RegisterUserInput) (AuthResult, error
 	if displayName == "" || email == "" {
 		return AuthResult{}, fmt.Errorf("displayName and email are required")
 	}
-	salt, hash, err := passwordSaltAndHash(input.Password)
+	scheme, salt, hash, err := passwordHash(input.Password)
 	if err != nil {
 		return AuthResult{}, err
 	}
@@ -278,7 +285,7 @@ func (s *PostgresStore) RegisterUser(input RegisterUserInput) (AuthResult, error
 		}
 		return AuthResult{}, err
 	}
-	if _, err := tx.Exec(`insert into auth_credentials (user_id, salt, password_hash) values ($1, $2, $3)`, user.ID, salt, hash); err != nil {
+	if _, err := tx.Exec(`insert into auth_credentials (user_id, password_scheme, salt, password_hash) values ($1, $2, $3, $4)`, user.ID, scheme, salt, hash); err != nil {
 		return AuthResult{}, err
 	}
 	result, err := s.issueSessionTx(tx, user)
@@ -294,16 +301,17 @@ func (s *PostgresStore) RegisterUser(input RegisterUserInput) (AuthResult, error
 func (s *PostgresStore) Login(input LoginInput) (AuthResult, error) {
 	email := canonicalEmail(input.Email)
 	var user domain.User
+	var scheme string
 	var salt string
-	var passwordHash string
-	err := s.db.QueryRow(`select u.id, u.display_name, u.email, u.created_at, c.salt, c.password_hash from users u join auth_credentials c on c.user_id = u.id where lower(u.email) = $1`, email).Scan(&user.ID, &user.DisplayName, &user.Email, &user.CreatedAt, &salt, &passwordHash)
+	var storedPasswordHash string
+	err := s.db.QueryRow(`select u.id, u.display_name, u.email, u.created_at, c.password_scheme, c.salt, c.password_hash from users u join auth_credentials c on c.user_id = u.id where lower(u.email) = $1`, email).Scan(&user.ID, &user.DisplayName, &user.Email, &user.CreatedAt, &scheme, &salt, &storedPasswordHash)
 	if err == sql.ErrNoRows {
 		return AuthResult{}, ErrUnauthorized
 	}
 	if err != nil {
 		return AuthResult{}, err
 	}
-	if !verifyPassword(input.Password, salt, passwordHash) {
+	if !verifyPassword(input.Password, scheme, salt, storedPasswordHash) {
 		return AuthResult{}, ErrUnauthorized
 	}
 	tx, err := s.db.Begin()
@@ -314,6 +322,15 @@ func (s *PostgresStore) Login(input LoginInput) (AuthResult, error) {
 	result, err := s.issueSessionTx(tx, user)
 	if err != nil {
 		return AuthResult{}, err
+	}
+	if strings.TrimSpace(scheme) == "" || scheme == passwordSchemeSHA256V1 {
+		upgradedScheme, upgradedSalt, upgradedHash, upgradeErr := passwordHash(input.Password)
+		if upgradeErr != nil {
+			return AuthResult{}, upgradeErr
+		}
+		if _, err := tx.Exec(`update auth_credentials set password_scheme = $1, salt = $2, password_hash = $3 where user_id = $4`, upgradedScheme, upgradedSalt, upgradedHash, user.ID); err != nil {
+			return AuthResult{}, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return AuthResult{}, err
@@ -1950,8 +1967,22 @@ func (s *PostgresStore) CreateInvite(userID string, input CreateAlbumInviteInput
 	if actor.Role != domain.RoleOwner && actor.Role != domain.RoleAdmin {
 		return domain.AlbumInvite{}, ErrForbidden
 	}
-	invite := domain.AlbumInvite{ID: newID("invite"), FamilyID: input.AlbumID, Code: newInviteCode(), Role: domain.RoleViewer, Status: domain.InvitePending, CreatedBy: userID, CreatedAt: time.Now().UTC()}
-	if _, err := s.db.Exec(`insert into family_invites (id, family_id, code, role, status, created_by, created_at) values ($1, $2, $3, $4, $5, $6, $7)`, invite.ID, invite.FamilyID, invite.Code, invite.Role, invite.Status, invite.CreatedBy, invite.CreatedAt); err != nil {
+	code, err := newInviteCode()
+	if err != nil {
+		return domain.AlbumInvite{}, err
+	}
+	invite := domain.AlbumInvite{
+		ID:        newID("invite"),
+		FamilyID:  input.AlbumID,
+		Code:      code,
+		Role:      domain.RoleViewer,
+		Status:    domain.InvitePending,
+		CreatedBy: userID,
+		CreatedAt: time.Now().UTC(),
+	}
+	expiresAt := invite.CreatedAt.Add(InviteExpiry)
+	invite.ExpiresAt = &expiresAt
+	if _, err := s.db.Exec(`insert into family_invites (id, family_id, code, role, status, created_by, created_at, expires_at) values ($1, $2, $3, $4, $5, $6, $7, $8)`, invite.ID, invite.FamilyID, invite.Code, invite.Role, invite.Status, invite.CreatedBy, invite.CreatedAt, invite.ExpiresAt); err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "duplicate") {
 			return domain.AlbumInvite{}, ErrConflict
 		}
@@ -1964,7 +1995,7 @@ func (s *PostgresStore) Invites(albumID, userID string) ([]domain.AlbumInvite, e
 	if err := s.authorize(albumID, userID, domain.RoleAdmin); err != nil {
 		return nil, err
 	}
-	rows, err := s.db.Query(`select fi.id, fi.family_id, fi.code, fi.role, fi.status, fi.created_by, u.display_name, f.name, fi.created_at, fi.accepted_at, coalesce(fi.accepted_by, '') from family_invites fi join families f on f.id = fi.family_id join users u on u.id = fi.created_by where fi.family_id = $1 order by fi.created_at desc`, albumID)
+	rows, err := s.db.Query(`select fi.id, fi.family_id, fi.code, fi.role, fi.status, fi.created_by, u.display_name, f.name, fi.created_at, fi.expires_at, fi.accepted_at, coalesce(fi.accepted_by, '') from family_invites fi join families f on f.id = fi.family_id join users u on u.id = fi.created_by where fi.family_id = $1 order by fi.created_at desc`, albumID)
 	if err != nil {
 		return nil, err
 	}
@@ -1981,7 +2012,7 @@ func (s *PostgresStore) Invites(albumID, userID string) ([]domain.AlbumInvite, e
 }
 
 func (s *PostgresStore) InviteByCode(code string) (domain.AlbumInvite, error) {
-	row := s.db.QueryRow(`select fi.id, fi.family_id, fi.code, fi.role, fi.status, fi.created_by, u.display_name, f.name, fi.created_at, fi.accepted_at, coalesce(fi.accepted_by, '') from family_invites fi join families f on f.id = fi.family_id join users u on u.id = fi.created_by where fi.code = $1`, code)
+	row := s.db.QueryRow(`select fi.id, fi.family_id, fi.code, fi.role, fi.status, fi.created_by, u.display_name, f.name, fi.created_at, fi.expires_at, fi.accepted_at, coalesce(fi.accepted_by, '') from family_invites fi join families f on f.id = fi.family_id join users u on u.id = fi.created_by where fi.code = $1`, code)
 	item, err := scanInvite(row)
 	if err == sql.ErrNoRows {
 		return domain.AlbumInvite{}, ErrNotFound
@@ -2005,9 +2036,10 @@ func (s *PostgresStore) AcceptInvite(userID string, input AcceptInviteInput) (do
 	var invite domain.AlbumInvite
 	var role string
 	var status string
+	var expiresAt sql.NullTime
 	var acceptedAt sql.NullTime
 	var acceptedBy sql.NullString
-	err = tx.QueryRow(`select id, family_id, code, role, status, created_by, created_at, accepted_at, accepted_by from family_invites where code = $1 for update`, input.Code).Scan(&invite.ID, &invite.FamilyID, &invite.Code, &role, &status, &invite.CreatedBy, &invite.CreatedAt, &acceptedAt, &acceptedBy)
+	err = tx.QueryRow(`select id, family_id, code, role, status, created_by, created_at, expires_at, accepted_at, accepted_by from family_invites where code = $1 for update`, input.Code).Scan(&invite.ID, &invite.FamilyID, &invite.Code, &role, &status, &invite.CreatedBy, &invite.CreatedAt, &expiresAt, &acceptedAt, &acceptedBy)
 	if err == sql.ErrNoRows {
 		return domain.AlbumInvite{}, ErrNotFound
 	}
@@ -2018,6 +2050,13 @@ func (s *PostgresStore) AcceptInvite(userID string, input AcceptInviteInput) (do
 	invite.Status = domain.InviteStatus(status)
 	if invite.Status != domain.InvitePending {
 		return domain.AlbumInvite{}, ErrConflict
+	}
+	if expiresAt.Valid {
+		ts := expiresAt.Time
+		invite.ExpiresAt = &ts
+		if ts.Before(time.Now().UTC()) {
+			return domain.AlbumInvite{}, ErrNotFound
+		}
 	}
 	user, err := s.userByID(userID)
 	if err != nil {
@@ -2161,12 +2200,17 @@ func (s *PostgresStore) CreateStorageNodePairing(userID string, input CreateStor
 	if err := s.authorize(input.AlbumID, userID, domain.RoleOwner); err != nil {
 		return domain.StorageNodePairing{}, err
 	}
+	code, err := newPairingCode()
+	if err != nil {
+		return domain.StorageNodePairing{}, err
+	}
+	now := time.Now().UTC()
 	pairing := domain.StorageNodePairing{
-		Code:      newPairingCode(),
+		Code:      code,
 		FamilyID:  input.AlbumID,
 		CreatedBy: userID,
-		CreatedAt: time.Now().UTC(),
-		ExpiresAt: time.Now().UTC().Add(24 * time.Hour),
+		CreatedAt: now,
+		ExpiresAt: now.Add(StoragePairingExpiry),
 	}
 	if _, err := s.db.Exec(`insert into storage_node_pairings (code, family_id, created_by, created_at, expires_at) values ($1, $2, $3, $4, $5)`, pairing.Code, pairing.FamilyID, pairing.CreatedBy, pairing.CreatedAt, pairing.ExpiresAt); err != nil {
 		return domain.StorageNodePairing{}, err
@@ -3591,12 +3635,17 @@ func scanInvite(row scanner) (domain.AlbumInvite, error) {
 	var item domain.AlbumInvite
 	var role string
 	var status string
+	var expiresAt sql.NullTime
 	var acceptedAt sql.NullTime
-	if err := row.Scan(&item.ID, &item.FamilyID, &item.Code, &role, &status, &item.CreatedBy, &item.CreatedByName, &item.FamilyName, &item.CreatedAt, &acceptedAt, &item.AcceptedBy); err != nil {
+	if err := row.Scan(&item.ID, &item.FamilyID, &item.Code, &role, &status, &item.CreatedBy, &item.CreatedByName, &item.FamilyName, &item.CreatedAt, &expiresAt, &acceptedAt, &item.AcceptedBy); err != nil {
 		return domain.AlbumInvite{}, err
 	}
 	item.Role = domain.Role(role)
 	item.Status = domain.InviteStatus(status)
+	if expiresAt.Valid {
+		ts := expiresAt.Time
+		item.ExpiresAt = &ts
+	}
 	if acceptedAt.Valid {
 		ts := acceptedAt.Time
 		item.AcceptedAt = &ts

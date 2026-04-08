@@ -3,9 +3,11 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"mime/multipart"
 	"net"
 	"net/http"
+	"net/netip"
 	"strings"
 	"time"
 
@@ -13,32 +15,25 @@ import (
 )
 
 func (s *Server) actorID(r *http.Request) (string, error) {
-	if token := bearerToken(r); token != "" {
-		user, err := s.store.SessionUser(token)
-		if err != nil {
-			return "", err
-		}
-		setRequestUserID(r, user.ID)
-		return user.ID, nil
+	token := bearerToken(r)
+	if token == "" {
+		return "", store.ErrUnauthorized
 	}
-	if value := r.Header.Get("X-User-ID"); value != "" {
-		setRequestUserID(r, value)
-		return value, nil
+	user, err := s.store.SessionUser(token)
+	if err != nil {
+		return "", err
 	}
-	if value := r.URL.Query().Get("userId"); value != "" {
-		setRequestUserID(r, value)
-		return value, nil
+	if strings.TrimSpace(user.ID) == "" {
+		return "", store.ErrUnauthorized
 	}
-	return "", store.ErrUnauthorized
+	setRequestUserID(r, user.ID)
+	return user.ID, nil
 }
 
 func bearerToken(r *http.Request) string {
 	value := strings.TrimSpace(r.Header.Get("Authorization"))
 	if strings.HasPrefix(strings.ToLower(value), "bearer ") {
 		return strings.TrimSpace(value[7:])
-	}
-	if query := strings.TrimSpace(r.URL.Query().Get("token")); query != "" {
-		return query
 	}
 	return ""
 }
@@ -58,19 +53,42 @@ func trimAPIPrefix(path, prefix string) string {
 }
 
 func clientIP(r *http.Request) string {
-	if value := firstForwardedFor(r.Header.Get("X-Forwarded-For")); value != "" {
-		return value
-	}
-	if value := strings.TrimSpace(r.Header.Get("X-Real-IP")); value != "" {
-		return value
+	if trustedProxy(r.RemoteAddr) {
+		if value := firstForwardedFor(r.Header.Get("X-Forwarded-For")); value != "" {
+			return value
+		}
+		if value := strings.TrimSpace(r.Header.Get("X-Real-IP")); value != "" {
+			return value
+		}
 	}
 	return remoteHost(r.RemoteAddr)
 }
 
+func trustedProxy(remoteAddr string) bool {
+	host := remoteHost(remoteAddr)
+	if host == "" {
+		return false
+	}
+	ip, err := netip.ParseAddr(host)
+	if err != nil {
+		return false
+	}
+	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast()
+}
+
 func firstForwardedFor(value string) string {
 	for _, item := range strings.Split(value, ",") {
-		if candidate := strings.TrimSpace(item); candidate != "" {
+		candidate := strings.TrimSpace(item)
+		if candidate == "" {
+			continue
+		}
+		if ip, err := netip.ParseAddr(candidate); err == nil && ip.IsValid() {
 			return candidate
+		}
+		if host := remoteHost(candidate); host != "" {
+			if ip, err := netip.ParseAddr(host); err == nil && ip.IsValid() {
+				return host
+			}
 		}
 	}
 	return ""
@@ -86,13 +104,6 @@ func remoteHost(value string) string {
 		return host
 	}
 	return trimmed
-}
-
-func splitPath(path string) []string {
-	if path == "" {
-		return nil
-	}
-	return strings.Split(path, "/")
 }
 
 func contentTypeForFileName(name string) string {
@@ -128,6 +139,58 @@ func parseRequiredRFC3339(value string, fieldName string) (time.Time, error) {
 	return parsed, nil
 }
 
+func detectMultipartContentType(file multipartFile) (string, error) {
+	header := make([]byte, 512)
+	n, err := io.ReadFull(file, header)
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+		return "", err
+	}
+	if _, seekErr := file.Seek(0, io.SeekStart); seekErr != nil {
+		return "", seekErr
+	}
+	if n <= 0 {
+		return "", nil
+	}
+	return normalizedMediaType(http.DetectContentType(header[:n])), nil
+}
+
+func validateUploadType(file multipartFile, fileName string, allowed func(string, string) bool, publicError string) error {
+	detected, err := detectMultipartContentType(file)
+	if err != nil {
+		return err
+	}
+	if allowed(detected, fileName) {
+		return nil
+	}
+	if publicError == "" {
+		publicError = "unsupported file type"
+	}
+	return errors.New(publicError)
+}
+
+func allowAvatarUploadType(detected, _ string) bool {
+	switch detected {
+	case "image/jpeg", "image/png", "image/gif":
+		return true
+	default:
+		return false
+	}
+}
+
+func allowMediaUploadType(detected, fileName string) bool {
+	switch detected {
+	case "image/jpeg", "image/png", "image/gif", "image/webp", "video/mp4", "video/quicktime":
+		return true
+	}
+	extensionType := normalizedMediaType(mediaTypeForFileExtension(fileName))
+	switch extensionType {
+	case "image/heic", "image/heif":
+		return detected == "" || detected == "application/octet-stream"
+	default:
+		return false
+	}
+}
+
 func normalizeOrigins(items []string) []string {
 	seen := make(map[string]struct{}, len(items))
 	origins := make([]string, 0, len(items))
@@ -149,14 +212,18 @@ func normalizeOrigins(items []string) []string {
 func (s *Server) allowedOrigin(origin string) (string, bool) {
 	normalized := strings.TrimRight(strings.TrimSpace(origin), "/")
 	for _, item := range s.allowedOrigins {
-		if item == "*" {
-			return "*", true
-		}
 		if strings.EqualFold(item, normalized) {
 			return origin, true
 		}
 	}
 	return "", false
+}
+
+func splitPath(path string) []string {
+	if path == "" {
+		return nil
+	}
+	return strings.Split(path, "/")
 }
 
 func writeMethodNotAllowed(w http.ResponseWriter) {

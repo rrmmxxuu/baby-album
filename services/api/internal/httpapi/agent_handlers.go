@@ -18,6 +18,10 @@ func (s *Server) handleNodeRegister(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w)
 		return
 	}
+	if allowed, retryAfter := s.requestLimits.allow(rateLimitScope("node-register", clientIP(r)), 20, time.Minute); !allowed {
+		writeRateLimitExceeded(w, retryAfter)
+		return
+	}
 	var input struct {
 		NodeID      string `json:"nodeId"`
 		Name        string `json:"name"`
@@ -279,6 +283,10 @@ func (s *Server) handleAgentJobRestoreUpload(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	defer file.Close()
+	if err := validateUploadType(file, header.Filename, allowMediaUploadType, "unsupported media file type"); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
 	if s.cacheController != nil {
 		if err := s.cacheController.EnsureSpace(header.Size); err != nil {
 			status := http.StatusInsufficientStorage

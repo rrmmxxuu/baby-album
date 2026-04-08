@@ -70,6 +70,7 @@ export AGENT_NODE_TOKEN="${AGENT_NODE_TOKEN:-demo-registration-token}"
 export AGENT_NODE_NAME="${AGENT_NODE_NAME:-Local NAS}"
 export DEV_WEB_PORT="$WEB_PORT"
 export DEV_API_PORT="$API_PORT"
+export MEDIA_URL_SIGNING_SECRET="${MEDIA_URL_SIGNING_SECRET:-$(LC_ALL=C od -An -N32 -tx1 /dev/urandom | tr -d ' \n')}"
 
 echo "==> starting isolated postgres ($COMPOSE_PROJECT_NAME on :$POSTGRES_PORT)"
 POSTGRES_PORT="$POSTGRES_PORT" "${COMPOSE_CMD[@]}" up -d postgres >/dev/null
@@ -89,6 +90,7 @@ start_process \
     CACHE_ROOT="$ROOT_DIR/tmp/cache" \
     R2_LOCAL_ROOT="$ROOT_DIR/tmp/r2-e2e" \
     API_ADDR=":$API_PORT" \
+    MEDIA_URL_SIGNING_SECRET="$MEDIA_URL_SIGNING_SECRET" \
   ALLOWED_ORIGINS="http://$PUBLIC_HOST:$WEB_PORT,http://localhost:$WEB_PORT,http://127.0.0.1:$WEB_PORT" \
   "$GO_BIN" run ./cmd/server
 

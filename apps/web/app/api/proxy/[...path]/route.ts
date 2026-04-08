@@ -24,6 +24,17 @@ function upstreamHeaders(upstream: Response) {
   return headers;
 }
 
+function forwardClientIPHeaders(source: Headers, target: Headers) {
+  const forwardedFor = source.get("x-forwarded-for");
+  const realIP = source.get("x-real-ip");
+  if (forwardedFor) {
+    target.set("X-Forwarded-For", forwardedFor);
+  }
+  if (realIP) {
+    target.set("X-Real-IP", realIP);
+  }
+}
+
 async function readBody(request: NextRequest) {
   if (request.method === "GET" || request.method === "HEAD") {
     return undefined;
@@ -66,6 +77,7 @@ async function proxyRequest(request: NextRequest, path: string[]) {
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
   }
+  forwardClientIPHeaders(request.headers, headers)
 
   const upstream = await fetch(url, {
     method: request.method,

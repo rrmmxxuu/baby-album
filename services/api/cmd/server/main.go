@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -39,11 +40,20 @@ func main() {
 		}
 	}
 	allowedOrigins := parseAllowedOrigins(os.Getenv("ALLOWED_ORIGINS"))
+	if err := validateAllowedOrigins(allowedOrigins); err != nil {
+		httpapi.LogError("ALLOWED_ORIGINS is invalid", map[string]any{"error": err.Error()})
+		os.Exit(1)
+	}
+	signingSecret, err := requiredMediaURLSigningSecret()
+	if err != nil {
+		httpapi.LogError("MEDIA_URL_SIGNING_SECRET is invalid", map[string]any{"error": err.Error()})
+		os.Exit(1)
+	}
 	server := httpapi.NewServerWithOptions(repository, blob.New(cacheRoot), httpapi.Options{
 		MaxUploadBytes:            maxUploadBytes,
 		AllowedOrigins:            allowedOrigins,
 		PublicBaseURL:             firstNonEmpty(os.Getenv("PUBLIC_API_BASE_URL"), "http://localhost:8080"),
-		MediaURLSigningSecret:     firstNonEmpty(os.Getenv("MEDIA_URL_SIGNING_SECRET"), "dev-media-secret"),
+		MediaURLSigningSecret:     signingSecret,
 		LocalStorageMaxBytes:      parseByteEnv("BLOB_STORAGE_MAX_GB", 50),
 		LocalStorageTargetBytes:   parseByteEnv("BLOB_STORAGE_TARGET_GB", 35),
 		LocalOriginalMinRetention: time.Duration(parseIntEnv("ORIGINAL_HOT_MIN_RETENTION_DAYS", 30)) * 24 * time.Hour,
@@ -152,6 +162,30 @@ func parseAllowedOrigins(raw string) []string {
 		return []string{"http://localhost:3000", "http://127.0.0.1:3000"}
 	}
 	return origins
+}
+
+func validateAllowedOrigins(origins []string) error {
+	if len(origins) == 0 {
+		return nil
+	}
+	for _, origin := range origins {
+		if strings.TrimSpace(origin) == "*" {
+			return fmt.Errorf("wildcard origins are not allowed")
+		}
+	}
+	return nil
+}
+
+func requiredMediaURLSigningSecret() (string, error) {
+	value := strings.TrimSpace(os.Getenv("MEDIA_URL_SIGNING_SECRET"))
+	if value == "" {
+		return "", fmt.Errorf("MEDIA_URL_SIGNING_SECRET is required")
+	}
+	switch strings.ToLower(value) {
+	case "dev-media-secret", "replace-me", "replace-with-a-long-random-secret", "replace-me-with-a-long-random-secret", "replace_with_a_long_random_secret":
+		return "", fmt.Errorf("MEDIA_URL_SIGNING_SECRET must be replaced with a long random value")
+	}
+	return value, nil
 }
 
 func parseIntEnv(key string, fallback int) int {

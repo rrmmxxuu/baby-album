@@ -38,7 +38,6 @@ export function SettingsMemberDetailScene({ className, activeAlbum, currentUser,
               <>
           <p><strong>{member.displayName}</strong></p>
           <p className="helperText">与宝宝的关系：{memberRelationLabel(member)}</p>
-          <p className="helperText">用户 ID：{member.userId}</p>
           <p className="helperText">当前权限：{roleLabel(currentRole)}</p>
           {Boolean(activeAlbum.membership.role === "owner" && currentUser && member.userId !== currentUser.id && currentRole !== "owner") ? (
             <div className="memberActions">

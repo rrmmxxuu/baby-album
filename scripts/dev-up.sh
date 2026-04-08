@@ -15,6 +15,7 @@ DATABASE_URL="postgres://baby_album:baby_album@localhost:5432/baby_album?sslmode
 PUBLIC_HOST="${1:-${DEV_HOST:-192.168.31.200}}"
 API_PORT="${DEV_API_PORT:-8080}"
 WEB_PORT="${DEV_WEB_PORT:-3000}"
+MEDIA_URL_SIGNING_SECRET="${MEDIA_URL_SIGNING_SECRET:-$(LC_ALL=C od -An -N32 -tx1 /dev/urandom | tr -d ' \n')}"
 
 mkdir -p "$RUN_DIR" "$CACHE_DIR" "$R2_LOCAL_DIR" "$LIBRARY_DIR"
 
@@ -70,6 +71,7 @@ start_process \
   CACHE_ROOT="$CACHE_DIR" \
   R2_LOCAL_ROOT="$R2_LOCAL_DIR" \
   API_ADDR=":$API_PORT" \
+  MEDIA_URL_SIGNING_SECRET="$MEDIA_URL_SIGNING_SECRET" \
   ALLOWED_ORIGINS="http://$PUBLIC_HOST:$WEB_PORT,http://localhost:$WEB_PORT,http://127.0.0.1:$WEB_PORT" \
   "$GO_BIN" run ./cmd/server
 

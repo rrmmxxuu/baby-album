@@ -29,7 +29,7 @@ test("refreshes baby manage data when re-entering settings screens", async ({ br
     await ownerPage.getByRole("button", { name: "生成邀请码" }).click();
     const invitePayload = await (await inviteResponse).json() as { code?: string };
     const inviteCode = invitePayload.code?.trim() ?? "";
-    expect(inviteCode).toMatch(/^[A-Z0-9]{6}$/);
+    expect(inviteCode).toMatch(/^[A-Z0-9]{12}$/);
 
     await register(joinerPage, {
       displayName: joinerName,

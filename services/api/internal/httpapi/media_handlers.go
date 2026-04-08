@@ -81,6 +81,10 @@ func (s *Server) handleUploadSessionActions(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	defer file.Close()
+	if err := validateUploadType(file, header.Filename, allowMediaUploadType, "unsupported media file type"); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
 	if s.cacheController != nil {
 		if err := s.cacheController.EnsureSpace(header.Size); err != nil {
 			status := http.StatusInsufficientStorage
@@ -498,7 +502,7 @@ func (s *Server) handleBabyAvatarAsset(w http.ResponseWriter, r *http.Request, b
 		return
 	}
 	w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
-	w.Header().Set("Content-Type", contentTypeForFileName(baby.AvatarKey))
+	w.Header().Set("Content-Type", "image/jpeg")
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Last-Modified", lastModified.UTC().Format(http.TimeFormat))
 	http.ServeContent(w, r, filepath.Base(baby.AvatarKey), lastModified, file)

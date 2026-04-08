@@ -179,6 +179,10 @@ func (s *Server) handleBabyAvatarUpload(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	defer file.Close()
+	if err := validateUploadType(file, header.Filename, allowAvatarUploadType, "unsupported avatar file type"); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
 	if s.cacheController != nil {
 		if err := s.cacheController.EnsureSpace(header.Size); err != nil {
 			status := http.StatusInsufficientStorage
@@ -353,16 +357,7 @@ func (s *Server) handleInviteActions(w http.ResponseWriter, r *http.Request) {
 	}
 	code := parts[0]
 	if len(parts) == 1 {
-		if r.Method != http.MethodGet {
-			writeMethodNotAllowed(w)
-			return
-		}
-		invite, err := s.store.InviteByCode(code)
-		if err != nil {
-			writeStoreError(w, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, invite)
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
 	}
 	if len(parts) == 2 && parts[1] == "accept" {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type clientErrorPayload struct {
@@ -24,6 +25,10 @@ func (s *Server) handleClientErrors(w http.ResponseWriter, r *http.Request) {
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
+	if allowed, retryAfter := s.requestLimits.allow(rateLimitScope("client-errors", clientIP(r)), 20, time.Minute); !allowed {
+		writeRateLimitExceeded(w, retryAfter)
+		return
+	}
 	var input clientErrorPayload
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})

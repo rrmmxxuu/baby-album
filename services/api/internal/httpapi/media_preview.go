@@ -43,10 +43,24 @@ func (s *Server) generateUploadedMediaPreview(originalBlobKey, originalName, med
 		return result
 	}
 	sourcePath := filepath.Join(s.blob.Root(), sourceKey)
-	stillErr := error(nil)
-	videoErr := error(nil)
+	normalizedType := normalizedMediaType(mediaType)
 
-	if width, height, thumbEncoded, err := generateBestStillImagePreview(sourcePath, mediaType, originalName, 480, 82); err == nil {
+	switch {
+	case isTrustedStillImageMediaType(normalizedType):
+		width, height, thumbEncoded, err := generateBestStillImagePreview(sourcePath, normalizedType, originalName, 480, 82)
+		if err != nil {
+			if width > 0 && height > 0 {
+				result.Width = width
+				result.Height = height
+			}
+			logEvent("error", "generate uploaded media preview failed", map[string]any{
+				"blob_key":   sourceKey,
+				"file_name":  originalName,
+				"media_type": normalizedType,
+				"error":      err.Error(),
+			})
+			return result
+		}
 		result.Width = width
 		result.Height = height
 		if blobKey, saveErr := s.savePreviewBlob(sourceKey, originalName, thumbEncoded); saveErr == nil {
@@ -59,7 +73,7 @@ func (s *Server) generateUploadedMediaPreview(originalBlobKey, originalName, med
 				"error":     saveErr.Error(),
 			})
 		}
-		if _, _, screenEncoded, screenErr := generateBestStillImagePreview(sourcePath, mediaType, originalName, 1600, 84); screenErr == nil {
+		if _, _, screenEncoded, screenErr := generateBestStillImagePreview(sourcePath, normalizedType, originalName, 1600, 84); screenErr == nil {
 			if objectKey, saveErr := s.saveScreenPreviewObject(context.Background(), sourceKey, originalName, screenEncoded); saveErr == nil {
 				result.ScreenPreviewStatus = domain.PreviewReady
 				result.ScreenPreviewObjectKey = objectKey
@@ -71,16 +85,21 @@ func (s *Server) generateUploadedMediaPreview(originalBlobKey, originalName, med
 				})
 			}
 		}
-		return result
-	} else if width > 0 && height > 0 {
-		result.Width = width
-		result.Height = height
-		stillErr = err
-	} else {
-		stillErr = err
-	}
-
-	if width, height, thumbEncoded, err := generateVideoPreview(sourcePath, 480, 82); err == nil {
+	case isTrustedVideoMediaType(normalizedType):
+		width, height, thumbEncoded, err := generateVideoPreview(sourcePath, 480, 82)
+		if err != nil {
+			if width > 0 && height > 0 {
+				result.Width = width
+				result.Height = height
+			}
+			logEvent("error", "generate uploaded media preview failed", map[string]any{
+				"blob_key":   sourceKey,
+				"file_name":  originalName,
+				"media_type": normalizedType,
+				"error":      err.Error(),
+			})
+			return result
+		}
 		result.Width = width
 		result.Height = height
 		if blobKey, saveErr := s.savePreviewBlob(sourceKey, originalName, thumbEncoded); saveErr == nil {
@@ -105,22 +124,11 @@ func (s *Server) generateUploadedMediaPreview(originalBlobKey, originalName, med
 				})
 			}
 		}
-		return result
-	} else if result.Width == 0 && result.Height == 0 && width > 0 && height > 0 {
-		result.Width = width
-		result.Height = height
-		videoErr = err
-	} else {
-		videoErr = err
-	}
-
-	if stillErr != nil || videoErr != nil {
-		logEvent("error", "generate uploaded media preview failed", map[string]any{
-			"blob_key":    sourceKey,
-			"file_name":   originalName,
-			"media_type":  mediaType,
-			"still_error": errorString(stillErr),
-			"video_error": errorString(videoErr),
+	default:
+		logEvent("warn", "skip preview for unsupported uploaded media type", map[string]any{
+			"blob_key":   sourceKey,
+			"file_name":  originalName,
+			"media_type": normalizedType,
 		})
 	}
 
@@ -160,13 +168,6 @@ func (s *Server) saveScreenPreviewObject(ctx context.Context, sourceBlobKey, ori
 		return "", err
 	}
 	return saved.Key, nil
-}
-
-func errorString(err error) string {
-	if err == nil {
-		return ""
-	}
-	return err.Error()
 }
 
 func previewFileName(originalName string) string {
@@ -223,12 +224,17 @@ func generateImagePreviewBytes(sourcePath string, maxEdge, quality int) ([]byte,
 
 func GenerateMediaPreviewArtifacts(sourcePath, mediaType, originalName string) (GeneratedMediaPreviewArtifacts, error) {
 	result := GeneratedMediaPreviewArtifacts{}
+	normalizedType := normalizedMediaType(mediaType)
 
-	if width, height, preview, err := generateBestStillImagePreview(sourcePath, mediaType, originalName, 480, 82); err == nil {
+	if isTrustedStillImageMediaType(normalizedType) {
+		width, height, preview, err := generateBestStillImagePreview(sourcePath, normalizedType, originalName, 480, 82)
+		if err != nil {
+			return result, err
+		}
 		result.Width = width
 		result.Height = height
 		result.PreviewJPEG = preview
-		if screenWidth, screenHeight, screenPreview, screenErr := generateBestStillImagePreview(sourcePath, mediaType, originalName, 1600, 84); screenErr == nil {
+		if screenWidth, screenHeight, screenPreview, screenErr := generateBestStillImagePreview(sourcePath, normalizedType, originalName, 1600, 84); screenErr == nil {
 			if screenWidth > 0 {
 				result.Width = screenWidth
 			}
@@ -240,18 +246,22 @@ func GenerateMediaPreviewArtifacts(sourcePath, mediaType, originalName string) (
 		return result, nil
 	}
 
-	width, height, preview, err := generateVideoPreview(sourcePath, 480, 82)
-	if err != nil {
-		return result, err
+	if isTrustedVideoMediaType(normalizedType) {
+		width, height, preview, err := generateVideoPreview(sourcePath, 480, 82)
+		if err != nil {
+			return result, err
+		}
+		result.Width = width
+		result.Height = height
+		result.PreviewJPEG = preview
+		screenPreview, screenErr := generateVideoPreviewBytes(sourcePath, 1600, 84)
+		if screenErr == nil {
+			result.ScreenPreviewJPEG = screenPreview
+		}
+		return result, nil
 	}
-	result.Width = width
-	result.Height = height
-	result.PreviewJPEG = preview
-	screenPreview, screenErr := generateVideoPreviewBytes(sourcePath, 1600, 84)
-	if screenErr == nil {
-		result.ScreenPreviewJPEG = screenPreview
-	}
-	return result, nil
+
+	return result, fmt.Errorf("unsupported preview media type")
 }
 
 func generateBestStillImagePreview(sourcePath, mediaType, originalName string, maxEdge, quality int) (int, int, []byte, error) {
@@ -270,12 +280,8 @@ func allowsStillImageFFmpegFallback(mediaType, originalName string) bool {
 	switch mediaType {
 	case "image/heic", "image/heif":
 		return true
-	}
-
-	switch strings.ToLower(filepath.Ext(strings.TrimSpace(originalName))) {
-	case ".heic", ".heif":
-		return true
 	default:
+		_ = originalName
 		return false
 	}
 }
@@ -296,15 +302,13 @@ func generateFFmpegStillImagePreview(sourcePath string, maxEdge, quality int) (i
 	defer os.RemoveAll(tempDir)
 
 	thumbPath := filepath.Join(tempDir, "thumb.jpg")
-	cmd := exec.Command(
-		"ffmpeg",
-		"-y",
-		"-i", sourcePath,
+	cmd := exec.Command("ffmpeg", buildFFmpegReadArgs(
+		sourcePath,
 		"-vf", fmt.Sprintf("scale=%d:-1:force_original_aspect_ratio=decrease", maxEdge),
 		"-frames:v", "1",
 		"-q:v", strconv.Itoa(maxInt(2, 31-((quality*29)/100))),
 		thumbPath,
-	)
+	)...)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		if width > 0 && height > 0 {
 			return width, height, nil, fmt.Errorf("ffmpeg still preview failed: %v (%s)", err, strings.TrimSpace(string(output)))
@@ -339,15 +343,13 @@ func generateVideoPreview(sourcePath string, maxEdge, quality int) (int, int, []
 	defer os.RemoveAll(tempDir)
 
 	thumbPath := filepath.Join(tempDir, "thumb.jpg")
-	cmd := exec.Command(
-		"ffmpeg",
-		"-y",
-		"-i", sourcePath,
+	cmd := exec.Command("ffmpeg", buildFFmpegReadArgs(
+		sourcePath,
 		"-vf", fmt.Sprintf("thumbnail,scale=%d:-1:force_original_aspect_ratio=decrease", maxEdge),
 		"-frames:v", "1",
 		"-q:v", strconv.Itoa(maxInt(2, 31-((quality*29)/100))),
 		thumbPath,
-	)
+	)...)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		if width > 0 && height > 0 {
 			return width, height, nil, fmt.Errorf("ffmpeg thumbnail failed: %v (%s)", err, strings.TrimSpace(string(output)))
@@ -406,6 +408,9 @@ func probeImageSize(path string) (int, int, error) {
 }
 
 func probeVideoSize(path string) (int, int, error) {
+	if !isTrustedVideoMediaPath(path) {
+		return 0, 0, fmt.Errorf("unsupported video media path")
+	}
 	return probeVisualSize(path)
 }
 
@@ -413,14 +418,12 @@ func probeVisualSize(path string) (int, int, error) {
 	if _, err := exec.LookPath("ffprobe"); err != nil {
 		return 0, 0, err
 	}
-	cmd := exec.Command(
-		"ffprobe",
-		"-v", "error",
+	cmd := exec.Command("ffprobe", buildFFprobeReadArgs(
+		path,
 		"-select_streams", "v:0",
 		"-show_entries", "stream=width,height",
 		"-of", "csv=p=0:s=x",
-		path,
-	)
+	)...)
 	output, err := cmd.Output()
 	if err != nil {
 		return 0, 0, err
@@ -438,6 +441,57 @@ func probeVisualSize(path string) (int, int, error) {
 		return 0, 0, err
 	}
 	return width, height, nil
+}
+
+func isTrustedStillImageMediaType(mediaType string) bool {
+	switch normalizedMediaType(mediaType) {
+	case "image/jpeg", "image/png", "image/gif", "image/webp", "image/heic", "image/heif":
+		return true
+	default:
+		return false
+	}
+}
+
+func isTrustedVideoMediaType(mediaType string) bool {
+	switch normalizedMediaType(mediaType) {
+	case "video/mp4", "video/quicktime":
+		return true
+	default:
+		return false
+	}
+}
+
+func isTrustedVideoMediaPath(sourcePath string) bool {
+	switch strings.ToLower(filepath.Ext(strings.TrimSpace(sourcePath))) {
+	case ".mp4", ".m4v", ".mov":
+		return true
+	default:
+		return false
+	}
+}
+
+func restrictedFFmpegInputArgs() []string {
+	return []string{
+		"-nostdin",
+		"-protocol_whitelist", "file,pipe,data",
+		"-protocol_blacklist", "async,bluray,cache,concat,concatf,crypto,ftp,gopher,gophers,http,https,icecast,ipfs,mmsh,mmst,rtmp,rtmpe,rtmps,rtmpt,rtmpte,rtmpts,rtp,rtsp,sap,sctp,srt,srtp,subfile,tcp,tls,udp,unix,amqp,rist,zmq",
+	}
+}
+
+func buildFFprobeReadArgs(sourcePath string, extra ...string) []string {
+	args := []string{"-v", "error"}
+	args = append(args, restrictedFFmpegInputArgs()...)
+	args = append(args, extra...)
+	args = append(args, sourcePath)
+	return args
+}
+
+func buildFFmpegReadArgs(sourcePath string, extra ...string) []string {
+	args := []string{"-y"}
+	args = append(args, restrictedFFmpegInputArgs()...)
+	args = append(args, "-i", sourcePath)
+	args = append(args, extra...)
+	return args
 }
 
 func fitWithin(width, height, maxSide int) (int, int) {

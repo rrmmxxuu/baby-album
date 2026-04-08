@@ -13,6 +13,7 @@ func (s *Server) withMiddleware(next http.Handler) http.Handler {
 		clientAddr := clientIP(r)
 		recorder := newStatusRecorder(w)
 		recorder.Header().Set("X-Request-ID", meta.requestID)
+		recorder.Header().Set("X-Content-Type-Options", "nosniff")
 
 		start := time.Now()
 		defer func() {
@@ -55,7 +56,7 @@ func (s *Server) withMiddleware(next http.Handler) http.Handler {
 				return
 			}
 			recorder.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
-			recorder.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-User-ID, X-Node-Token")
+			recorder.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 			recorder.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 			recorder.Header().Set("Access-Control-Max-Age", "600")
 		}

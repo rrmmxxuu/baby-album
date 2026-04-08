@@ -10,10 +10,23 @@ function requestHeaders(upstream: Response) {
   return headers;
 }
 
+function upstreamRequestHeaders(source: Headers) {
+  const headers = new Headers({ "Content-Type": "application/json" });
+  const forwardedFor = source.get("x-forwarded-for");
+  const realIP = source.get("x-real-ip");
+  if (forwardedFor) {
+    headers.set("X-Forwarded-For", forwardedFor);
+  }
+  if (realIP) {
+    headers.set("X-Real-IP", realIP);
+  }
+  return headers;
+}
+
 export async function POST(request: Request) {
   const upstream = await fetch(`${getBackendApiBaseUrl()}/api/v1/auth/register`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: upstreamRequestHeaders(request.headers),
     body: await request.text(),
     cache: "no-store"
   });

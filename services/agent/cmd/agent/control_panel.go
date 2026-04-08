@@ -1608,7 +1608,7 @@ var panelTemplate = template.Must(template.New("panel").Funcs(template.FuncMap{
         <form action="/setup" method="post">
           <label class="stack"><span>API Base URL</span><input name="apiBaseURL" value="{{.Config.APIBaseURL}}" placeholder="https://album-api.example.com" required /></label>
           <label class="stack"><span>Node Name</span><input name="nodeName" value="{{.Config.NodeName}}" placeholder="Living Room NAS" required /></label>
-          <label class="stack"><span>Pairing Code</span><input name="pairingCode" value="{{.Config.PairingCode}}" placeholder="8 位短码" required /></label>
+          <label class="stack"><span>Pairing Code</span><input name="pairingCode" value="{{.Config.PairingCode}}" placeholder="12 位配对码" required /></label>
           <details class="stack" style="border:1px solid #edf1f4; border-radius:14px; padding:12px 14px;">
             <summary style="cursor:pointer; font-weight:600;">高级设置（可选）</summary>
             <div class="grid two" style="margin-top:12px;">

@@ -66,6 +66,7 @@ type FamilyInvite struct {
 	CreatedByName string       `json:"createdByName,omitempty"`
 	FamilyName    string       `json:"albumName,omitempty"`
 	CreatedAt     time.Time    `json:"createdAt"`
+	ExpiresAt     *time.Time   `json:"expiresAt,omitempty"`
 	AcceptedAt    *time.Time   `json:"acceptedAt,omitempty"`
 	AcceptedBy    string       `json:"acceptedBy,omitempty"`
 }

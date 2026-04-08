@@ -236,7 +236,7 @@ export function useSettingsState({ activeTab, activeAlbum, currentUser, refreshA
       setStoragePairingBaseNodeId(activeAlbum.storageNode?.id ?? "");
       showSuccess(
         activeAlbum.storageNode ? "替换配对码已生成" : "储存节点配对码已生成",
-        activeAlbum.storageNode ? "已生成替换配对码。新设备接入后会切换为当前主节点。" : "已生成储存节点配对码。请在 24 小时内用于首次部署 agent。"
+        activeAlbum.storageNode ? "已生成替换配对码。新设备接入后会切换为当前主节点。" : "已生成储存节点配对码。请在 10 分钟内用于首次部署 agent。"
       );
     } catch (err) {
       showError("生成失败", errorMessageFromUnknown(err, "生成储存节点配对码失败。"));

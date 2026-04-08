@@ -10,7 +10,11 @@ export async function POST(request: NextRequest) {
     try {
       const upstream = await fetch(`${getBackendApiBaseUrl()}/api/v1/auth/logout`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          ...(request.headers.get("x-forwarded-for") ? { "X-Forwarded-For": request.headers.get("x-forwarded-for") ?? "" } : {}),
+          ...(request.headers.get("x-real-ip") ? { "X-Real-IP": request.headers.get("x-real-ip") ?? "" } : {})
+        },
         cache: "no-store"
       });
       requestId = upstream.headers.get("X-Request-ID") ?? "";

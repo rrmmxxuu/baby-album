@@ -64,6 +64,12 @@ function buildHeaders(extra?: HeadersInit): HeadersInit {
   };
 }
 
+type OriginalStatusPayload = {
+  originalAvailability: "hot" | "warm" | "cold" | "restoring" | "unavailable";
+  originalUrl?: string;
+  media: import("./types").MediaAsset;
+};
+
 export function getApiBaseUrl() {
   return apiBaseUrl;
 }
@@ -105,15 +111,19 @@ export function getBabyAvatarUrl(babyId: string, albumId: string, version?: stri
   return `${apiBaseUrl}/api/v1/babies/${encodeURIComponent(babyId)}/avatar?albumId=${encodeURIComponent(albumId)}${suffix}`;
 }
 
-export async function loadOriginalStatus(albumId: string, mediaId: string, options?: { triggerRestore?: boolean }) {
+export async function loadOriginalStatus(albumId: string, mediaId: string) {
   const query = new URLSearchParams({ albumId });
-  if (options?.triggerRestore) {
-    query.set("triggerRestore", "true");
-  }
   const response = await fetch(`${apiBaseUrl}/api/v1/media/${encodeURIComponent(mediaId)}/original-status?${query.toString()}`, {
     cache: "no-store"
   });
-  return parseResponse<{ originalAvailability: "hot" | "warm" | "cold" | "restoring" | "unavailable"; originalUrl?: string; media: import("./types").MediaAsset }>(response);
+  return parseResponse<OriginalStatusPayload>(response);
+}
+
+export async function requestOriginalRestore(albumId: string, mediaId: string) {
+  const response = await fetch(`${apiBaseUrl}/api/v1/media/${encodeURIComponent(mediaId)}/original-restore?albumId=${encodeURIComponent(albumId)}`, {
+    method: "POST"
+  });
+  return parseResponse<OriginalStatusPayload>(response);
 }
 
 export async function repairMediaPreview(albumId: string, mediaId: string) {

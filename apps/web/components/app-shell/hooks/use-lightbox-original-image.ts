@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { loadOriginalStatus } from "../../../lib/api";
+import { loadOriginalStatus, requestOriginalRestore } from "../../../lib/api";
 import type { MediaAsset } from "../../../lib/types";
 
 const MAX_RECENT_COMPLETED_ORIGINALS = 2;
@@ -269,7 +269,9 @@ export function useLightboxOriginalImage({ albumId, currentItem, enabled }: UseL
     task.status = triggerRestore || item.originalAvailability === "restoring" ? "restoring" : "loading";
     publish();
     try {
-      const result = await loadOriginalStatus(albumId, item.id, { triggerRestore });
+      const result = triggerRestore
+        ? await requestOriginalRestore(albumId, item.id)
+        : await loadOriginalStatus(albumId, item.id);
       if (!mountedRef.current || currentMediaIdRef.current !== item.id) {
         return;
       }

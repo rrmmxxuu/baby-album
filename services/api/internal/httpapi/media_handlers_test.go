@@ -172,6 +172,71 @@ func TestServePreviewAssetMarksMissingPreviewBlob(t *testing.T) {
 	}
 }
 
+func TestHandleMediaOriginalStatusIsReadOnly(t *testing.T) {
+	triggerRestore := false
+	server := NewServer(&stubRepository{
+		resolveOriginal: func(userID, albumID, mediaID string, requested bool) (domain.MediaAsset, error) {
+			triggerRestore = requested
+			return domain.MediaAsset{
+				ID:                 mediaID,
+				FamilyID:           albumID,
+				FileName:           "moment.jpg",
+				MediaType:          "image/jpeg",
+				UploadedAt:         time.Now().UTC(),
+				Status:             domain.MediaReady,
+				OriginalPath:       "/library/family/media-1/moment.jpg",
+				OriginalLocalState: "evicted",
+			}, nil
+		},
+	}, blob.New(t.TempDir()), 8<<20, nil)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/media/media-1/original-status?albumId=album-1", nil)
+	request.Header.Set("Authorization", "Bearer test-session")
+
+	server.withMiddleware(server.mux).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	if triggerRestore {
+		t.Fatal("expected original status lookup to stay read-only")
+	}
+}
+
+func TestHandleMediaOriginalRestoreUsesExplicitPost(t *testing.T) {
+	triggerRestore := false
+	server := NewServer(&stubRepository{
+		resolveOriginal: func(userID, albumID, mediaID string, requested bool) (domain.MediaAsset, error) {
+			triggerRestore = requested
+			return domain.MediaAsset{
+				ID:                   mediaID,
+				FamilyID:             albumID,
+				FileName:             "moment.jpg",
+				MediaType:            "image/jpeg",
+				UploadedAt:           time.Now().UTC(),
+				Status:               domain.MediaReady,
+				OriginalPath:         "/library/family/media-1/moment.jpg",
+				OriginalLocalState:   "evicted",
+				OriginalRestoreState: "pending",
+			}, nil
+		},
+	}, blob.New(t.TempDir()), 8<<20, nil)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/media/media-1/original-restore?albumId=album-1", nil)
+	request.Header.Set("Authorization", "Bearer test-session")
+
+	server.withMiddleware(server.mux).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	if !triggerRestore {
+		t.Fatal("expected explicit restore endpoint to request restore")
+	}
+}
+
 func TestSignedPreviewURLSurvivesProcessedAtUpdate(t *testing.T) {
 	blobStorage := blob.New(t.TempDir())
 	saved, err := blobStorage.SaveBytes("preview", "moment.jpg", []byte("preview"))

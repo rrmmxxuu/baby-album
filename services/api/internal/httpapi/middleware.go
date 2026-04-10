@@ -10,6 +10,7 @@ import (
 func (s *Server) withMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r, meta := withRequestMetadata(r)
+		r = withTrustedProxyCIDRs(r, s.trustedProxies)
 		clientAddr := clientIP(r)
 		recorder := newStatusRecorder(w)
 		recorder.Header().Set("X-Request-ID", meta.requestID)

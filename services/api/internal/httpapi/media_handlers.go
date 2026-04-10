@@ -140,6 +140,8 @@ func (s *Server) handleMediaActions(w http.ResponseWriter, r *http.Request) {
 		s.handleMediaBinary(w, r, path)
 	case strings.HasSuffix(path, "/original-status"):
 		s.handleMediaOriginalStatus(w, r, path)
+	case strings.HasSuffix(path, "/original-restore"):
+		s.handleMediaOriginalRestore(w, r, path)
 	case strings.HasSuffix(path, "/preview-repair"):
 		s.handleMediaPreviewRepair(w, r, path)
 	default:
@@ -204,14 +206,45 @@ func (s *Server) handleMediaOriginalStatus(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "media id and albumId are required"})
 		return
 	}
-	triggerRestore := r.URL.Query().Get("triggerRestore") == "true"
-	item, err := s.mediaStore.ResolveOriginalStatus(userID, albumID(r), mediaID, triggerRestore)
+	item, err := s.mediaStore.ResolveOriginalStatus(userID, albumID(r), mediaID, false)
 	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
 	item = s.decorateMediaAsset(item)
 	writeJSON(w, http.StatusOK, map[string]any{
+		"media":                item,
+		"originalAvailability": item.OriginalAvail,
+		"originalUrl":          item.OriginalURL,
+	})
+}
+
+func (s *Server) handleMediaOriginalRestore(w http.ResponseWriter, r *http.Request, path string) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w)
+		return
+	}
+	if s.mediaStore == nil {
+		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "media state store unavailable"})
+		return
+	}
+	userID, err := s.actorID(r)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	mediaID := strings.TrimSuffix(strings.TrimSuffix(path, "/original-restore"), "/")
+	if mediaID == "" || albumID(r) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "media id and albumId are required"})
+		return
+	}
+	item, err := s.mediaStore.ResolveOriginalStatus(userID, albumID(r), mediaID, true)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	item = s.decorateMediaAsset(item)
+	writeJSON(w, http.StatusAccepted, map[string]any{
 		"media":                item,
 		"originalAvailability": item.OriginalAvail,
 		"originalUrl":          item.OriginalURL,

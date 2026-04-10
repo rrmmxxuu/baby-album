@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -13,6 +14,8 @@ import (
 
 	"babyalbum/api/internal/store"
 )
+
+type trustedProxyCIDRsContextKey struct{}
 
 func (s *Server) actorID(r *http.Request) (string, error) {
 	token := bearerToken(r)
@@ -53,7 +56,7 @@ func trimAPIPrefix(path, prefix string) string {
 }
 
 func clientIP(r *http.Request) string {
-	if trustedProxy(r.RemoteAddr) {
+	if trustedProxy(r.RemoteAddr, trustedProxyCIDRsFromContext(r)) {
 		if value := firstForwardedFor(r.Header.Get("X-Forwarded-For")); value != "" {
 			return value
 		}
@@ -64,7 +67,22 @@ func clientIP(r *http.Request) string {
 	return remoteHost(r.RemoteAddr)
 }
 
-func trustedProxy(remoteAddr string) bool {
+func withTrustedProxyCIDRs(r *http.Request, prefixes []netip.Prefix) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), trustedProxyCIDRsContextKey{}, prefixes))
+}
+
+func trustedProxyCIDRsFromContext(r *http.Request) []netip.Prefix {
+	if r == nil {
+		return nil
+	}
+	value, _ := r.Context().Value(trustedProxyCIDRsContextKey{}).([]netip.Prefix)
+	return value
+}
+
+func trustedProxy(remoteAddr string, prefixes []netip.Prefix) bool {
+	if len(prefixes) == 0 {
+		return false
+	}
 	host := remoteHost(remoteAddr)
 	if host == "" {
 		return false
@@ -73,7 +91,12 @@ func trustedProxy(remoteAddr string) bool {
 	if err != nil {
 		return false
 	}
-	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast()
+	for _, prefix := range prefixes {
+		if prefix.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 func firstForwardedFor(value string) string {
@@ -207,6 +230,22 @@ func normalizeOrigins(items []string) []string {
 		origins = append(origins, normalized)
 	}
 	return origins
+}
+
+func parseTrustedProxyCIDRs(items []string) []netip.Prefix {
+	prefixes := make([]netip.Prefix, 0, len(items))
+	for _, item := range items {
+		value := strings.TrimSpace(item)
+		if value == "" {
+			continue
+		}
+		prefix, err := netip.ParsePrefix(value)
+		if err != nil {
+			continue
+		}
+		prefixes = append(prefixes, prefix)
+	}
+	return prefixes
 }
 
 func (s *Server) allowedOrigin(origin string) (string, bool) {

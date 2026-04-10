@@ -41,14 +41,12 @@ func NewPostgresStore(databaseURL string) (*PostgresStore, error) {
 		_ = db.Close()
 		return nil, err
 	}
-	if err := store.seed(); err != nil {
-		_ = db.Close()
-		return nil, err
-	}
 	return store, nil
 }
 
 func (s *PostgresStore) Close() error { return s.db.Close() }
+
+func (s *PostgresStore) SeedDemoData() error { return s.seed() }
 
 func (s *PostgresStore) SetAgentJobNotifier(notifier AgentJobNotifier) {
 	s.mu.Lock()
@@ -84,6 +82,7 @@ func (s *PostgresStore) migrate() error {
 		`create table if not exists auth_credentials (user_id text primary key references users(id), password_scheme text not null default 'sha256_v1', salt text not null default '', password_hash text not null)`,
 		`create table if not exists auth_sessions (token text primary key, user_id text not null references users(id), created_at timestamptz not null, expires_at timestamptz not null)`,
 		`create index if not exists idx_auth_sessions_user on auth_sessions (user_id)`,
+		`create index if not exists idx_auth_sessions_expires_at on auth_sessions (expires_at)`,
 		`create table if not exists families (id text primary key, name text not null, timezone text not null)`,
 		`create table if not exists family_members (user_id text not null references users(id), family_id text not null references families(id), role text not null, display_name text not null, relation text not null default '', primary key (family_id, user_id))`,
 		`create table if not exists babies (id text primary key, family_id text not null references families(id), name text not null, birth_date date, avatar_blob_key text not null default '', avatar_updated_at timestamptz, created_at timestamptz not null)`,
@@ -306,6 +305,7 @@ func (s *PostgresStore) Login(input LoginInput) (AuthResult, error) {
 	var storedPasswordHash string
 	err := s.db.QueryRow(`select u.id, u.display_name, u.email, u.created_at, c.password_scheme, c.salt, c.password_hash from users u join auth_credentials c on c.user_id = u.id where lower(u.email) = $1`, email).Scan(&user.ID, &user.DisplayName, &user.Email, &user.CreatedAt, &scheme, &salt, &storedPasswordHash)
 	if err == sql.ErrNoRows {
+		burnPasswordCheck(input.Password)
 		return AuthResult{}, ErrUnauthorized
 	}
 	if err != nil {
@@ -2537,6 +2537,9 @@ func (s *PostgresStore) issueSessionTx(tx *sql.Tx, user domain.User) (AuthResult
 	token := newSessionToken()
 	now := time.Now().UTC()
 	expiresAt := now.Add(30 * 24 * time.Hour)
+	if _, err := tx.Exec(`delete from auth_sessions where expires_at <= $1`, now); err != nil {
+		return AuthResult{}, err
+	}
 	if _, err := tx.Exec(`insert into auth_sessions (token, user_id, created_at, expires_at) values ($1, $2, $3, $4)`, token, user.ID, now, expiresAt); err != nil {
 		return AuthResult{}, err
 	}

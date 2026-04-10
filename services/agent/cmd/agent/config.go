@@ -146,6 +146,9 @@ func loadPersistentConfig(path string) (persistentConfig, error) {
 		return persistentConfig{}, err
 	}
 	defer file.Close()
+	if err := tightenPrivateFile(path); err != nil {
+		return persistentConfig{}, err
+	}
 	var item persistentConfig
 	if err := json.NewDecoder(file).Decode(&item); err != nil {
 		return persistentConfig{}, err
@@ -154,10 +157,7 @@ func loadPersistentConfig(path string) (persistentConfig, error) {
 }
 
 func savePersistentConfig(path string, item persistentConfig) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	file, err := os.Create(path)
+	file, err := openPrivateFile(path)
 	if err != nil {
 		return err
 	}

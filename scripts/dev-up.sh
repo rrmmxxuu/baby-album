@@ -71,6 +71,7 @@ start_process \
   CACHE_ROOT="$CACHE_DIR" \
   R2_LOCAL_ROOT="$R2_LOCAL_DIR" \
   API_ADDR=":$API_PORT" \
+  SEED_DEMO_DATA="true" \
   MEDIA_URL_SIGNING_SECRET="$MEDIA_URL_SIGNING_SECRET" \
   ALLOWED_ORIGINS="http://$PUBLIC_HOST:$WEB_PORT,http://localhost:$WEB_PORT,http://127.0.0.1:$WEB_PORT" \
   "$GO_BIN" run ./cmd/server

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -20,11 +21,14 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 const (
 	panelSessionCookieName = "agent_panel_session"
 	panelSessionTTL        = 24 * time.Hour
+	bootstrapSecretTTL     = 10 * time.Minute
 	recentJobLimit         = 20
 	logTailLineCount       = 200
 	migrationMarkerName    = ".agent-library-migration.json"
@@ -104,11 +108,15 @@ type fileLogSink struct {
 }
 
 func newFileLogSink(path string) (*fileLogSink, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := ensurePrivateDir(filepath.Dir(path)); err != nil {
 		return nil, err
 	}
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, privateFileMode)
 	if err != nil {
+		return nil, err
+	}
+	if err := file.Chmod(privateFileMode); err != nil {
+		_ = file.Close()
 		return nil, err
 	}
 	info, err := file.Stat()
@@ -147,8 +155,12 @@ func (s *fileLogSink) Reset() error {
 	for index := 1; index < logFileCount; index += 1 {
 		_ = os.Remove(fmt.Sprintf("%s.%d", s.path, index))
 	}
-	file, err := os.OpenFile(s.path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+	file, err := os.OpenFile(s.path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, privateFileMode)
 	if err != nil {
+		return err
+	}
+	if err := file.Chmod(privateFileMode); err != nil {
+		_ = file.Close()
 		return err
 	}
 	s.file = file
@@ -196,8 +208,12 @@ func (s *fileLogSink) rotateLocked() error {
 	if err := os.Rename(s.path, fmt.Sprintf("%s.1", s.path)); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	file, err := os.OpenFile(s.path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+	file, err := os.OpenFile(s.path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, privateFileMode)
 	if err != nil {
+		return err
+	}
+	if err := file.Chmod(privateFileMode); err != nil {
+		_ = file.Close()
 		return err
 	}
 	s.file = file
@@ -220,6 +236,7 @@ type agentController struct {
 	auth              panelAuthState
 	runtime           runtimeState
 	sessions          map[string]panelSession
+	csrfKey           []byte
 	controlClient     *http.Client
 	transferClient    *http.Client
 	logSink           *fileLogSink
@@ -233,12 +250,18 @@ func newAgentController(cfg config) (*agentController, error) {
 	if err != nil {
 		return nil, err
 	}
+	csrfKey := make([]byte, 32)
+	if _, err := rand.Read(csrfKey); err != nil {
+		_ = logSink.Close()
+		return nil, err
+	}
 	log.SetOutput(io.MultiWriter(os.Stdout, logSink))
 	log.SetFlags(log.LstdFlags)
 
 	controller := &agentController{
 		cfg:            cfg,
 		sessions:       make(map[string]panelSession),
+		csrfKey:        csrfKey,
 		controlClient:  &http.Client{Timeout: 60 * time.Second},
 		transferClient: &http.Client{},
 		logSink:        logSink,
@@ -262,10 +285,8 @@ func newAgentController(cfg config) (*agentController, error) {
 		controller.runtime.RecentJobs = []runtimeJob{}
 	}
 	if controller.passwordConfiguredLocked() {
-		controller.auth.BootstrapHash = ""
-		controller.auth.BootstrapSalt = ""
-		controller.auth.BootstrapIssuedAt = nil
-	} else {
+		controller.clearBootstrapLocked()
+	} else if !controller.bootstrapSecretConfiguredLocked() || controller.bootstrapExpiredLocked(time.Now().UTC()) {
 		secret, secretErr := controller.issueBootstrapSecretLocked()
 		if secretErr != nil {
 			return nil, secretErr
@@ -307,8 +328,12 @@ func (c *agentController) Run(ctx context.Context) error {
 	mux.HandleFunc("/actions/migration/start", c.handleStartMigration)
 
 	server := &http.Server{
-		Addr:    c.cfg.panelAddr,
-		Handler: mux,
+		Addr:              c.cfg.panelAddr,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 	c.httpServer = server
 
@@ -565,7 +590,24 @@ func (c *agentController) setupRequiredLocked() bool {
 }
 
 func (c *agentController) passwordConfiguredLocked() bool {
-	return strings.TrimSpace(c.auth.PasswordHash) != "" && strings.TrimSpace(c.auth.PasswordSalt) != ""
+	return strings.TrimSpace(c.auth.PasswordHash) != ""
+}
+
+func (c *agentController) bootstrapSecretConfiguredLocked() bool {
+	return strings.TrimSpace(c.auth.BootstrapHash) != "" && c.auth.BootstrapIssuedAt != nil
+}
+
+func (c *agentController) bootstrapExpiredLocked(now time.Time) bool {
+	if c.auth.BootstrapIssuedAt == nil || c.auth.BootstrapIssuedAt.IsZero() {
+		return true
+	}
+	return now.After(c.auth.BootstrapIssuedAt.Add(bootstrapSecretTTL))
+}
+
+func (c *agentController) clearBootstrapLocked() {
+	c.auth.BootstrapSalt = ""
+	c.auth.BootstrapHash = ""
+	c.auth.BootstrapIssuedAt = nil
 }
 
 func (c *agentController) issueBootstrapSecretLocked() (string, error) {
@@ -573,13 +615,13 @@ func (c *agentController) issueBootstrapSecretLocked() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	salt, err := randomSecret(16)
+	hashValue, err := hashSecret(secret)
 	if err != nil {
 		return "", err
 	}
 	now := time.Now().UTC()
-	c.auth.BootstrapSalt = salt
-	c.auth.BootstrapHash = hashSecret(salt, secret)
+	c.auth.BootstrapSalt = ""
+	c.auth.BootstrapHash = hashValue
 	c.auth.BootstrapIssuedAt = &now
 	if err := c.persistAuthLocked(); err != nil {
 		return "", err
@@ -601,22 +643,18 @@ func loadJSONFile(path string, target any) error {
 		return err
 	}
 	defer file.Close()
+	if err := tightenPrivateFile(path); err != nil {
+		return err
+	}
 	return json.NewDecoder(file).Decode(target)
 }
 
 func saveJSONFile(path string, value any) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	tmpPath := path + ".tmp"
 	body, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(tmpPath, append(body, '\n'), 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmpPath, path)
+	return writePrivateFile(path, append(body, '\n'))
 }
 
 func (c *agentController) cleanupExpiredSessionsLocked(now time.Time) {
@@ -707,17 +745,79 @@ func randomSecret(byteLength int) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(buffer), nil
 }
 
-func hashSecret(salt, secret string) string {
+func hashSecret(secret string) (string, error) {
+	hash, err := bcrypt.GenerateFromPassword([]byte(secret), bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+	return string(hash), nil
+}
+
+func legacyHashSecret(salt, secret string) string {
 	sum := sha256.Sum256([]byte(salt + ":" + secret))
 	return base64.RawStdEncoding.EncodeToString(sum[:])
 }
 
-func verifySecret(salt, hashValue, raw string) bool {
-	if salt == "" || hashValue == "" || raw == "" {
+func verifyStoredSecret(salt, hashValue, raw string) (bool, bool) {
+	hashValue = strings.TrimSpace(hashValue)
+	raw = strings.TrimSpace(raw)
+	if hashValue == "" || raw == "" {
+		return false, false
+	}
+	if strings.HasPrefix(hashValue, "$2") {
+		return bcrypt.CompareHashAndPassword([]byte(hashValue), []byte(raw)) == nil, false
+	}
+	if strings.TrimSpace(salt) == "" {
+		return false, false
+	}
+	computed := legacyHashSecret(salt, raw)
+	return subtle.ConstantTimeCompare([]byte(computed), []byte(hashValue)) == 1, true
+}
+
+func (c *agentController) csrfToken(actionPath, sessionToken string) string {
+	if strings.TrimSpace(actionPath) == "" {
+		return ""
+	}
+	if strings.TrimSpace(sessionToken) == "" {
+		sessionToken = "anonymous"
+	}
+	mac := hmac.New(sha256.New, c.csrfKey)
+	mac.Write([]byte(sessionToken))
+	mac.Write([]byte{'\n'})
+	mac.Write([]byte(actionPath))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
+func (c *agentController) validPanelPost(r *http.Request, actionPath, sessionToken string) bool {
+	if strings.TrimSpace(actionPath) == "" {
 		return false
 	}
-	computed := hashSecret(salt, raw)
-	return subtle.ConstantTimeCompare([]byte(computed), []byte(hashValue)) == 1
+	expected := c.csrfToken(actionPath, sessionToken)
+	actual := strings.TrimSpace(r.FormValue("csrf"))
+	if expected == "" || actual == "" || subtle.ConstantTimeCompare([]byte(expected), []byte(actual)) != 1 {
+		return false
+	}
+	host := strings.TrimSpace(r.Host)
+	if host == "" {
+		return false
+	}
+	if origin := strings.TrimSpace(r.Header.Get("Origin")); origin != "" {
+		parsed, err := url.Parse(origin)
+		if err != nil || !strings.EqualFold(strings.TrimSpace(parsed.Host), host) {
+			return false
+		}
+		return true
+	}
+	referer := strings.TrimSpace(r.Header.Get("Referer"))
+	if referer == "" {
+		return false
+	}
+	parsed, err := url.Parse(referer)
+	return err == nil && strings.EqualFold(strings.TrimSpace(parsed.Host), host)
+}
+
+func rejectInvalidPanelPost(w http.ResponseWriter, r *http.Request) {
+	redirectWithNotice(w, r, "error", "请求校验失败，请刷新页面后重试。")
 }
 
 func (c *agentController) renderPage(w http.ResponseWriter, r *http.Request) {
@@ -729,6 +829,10 @@ func (c *agentController) renderPage(w http.ResponseWriter, r *http.Request) {
 	setupRequired := c.setupRequiredLocked()
 	bound := c.cfg.nodeID != "" && c.cfg.nodeToken != ""
 	authenticatedPasswordSession := authenticated && !session.Bootstrap
+	sessionToken := ""
+	if authenticated {
+		sessionToken = session.Token
+	}
 	lines, _ := c.logSink.ReadLastLines(logTailLineCount)
 	data := panelPageData{
 		Authenticated:      authenticatedPasswordSession,
@@ -754,6 +858,17 @@ func (c *agentController) renderPage(w http.ResponseWriter, r *http.Request) {
 		Runtime:       c.runtime,
 		LogLines:      lines,
 		TargetMounted: isMountedPath(c.cfg.migrationTarget),
+		CSRF: panelCSRFData{
+			BootstrapLogin: c.csrfToken("/auth/bootstrap", ""),
+			SetPassword:    c.csrfToken("/auth/set-password", sessionToken),
+			PasswordLogin:  c.csrfToken("/auth/login", ""),
+			Logout:         c.csrfToken("/auth/logout", sessionToken),
+			Setup:          c.csrfToken("/setup", sessionToken),
+			Maintenance:    c.csrfToken("/actions/maintenance", sessionToken),
+			Unbind:         c.csrfToken("/actions/unbind", sessionToken),
+			Clear:          c.csrfToken("/actions/clear", sessionToken),
+			MigrationStart: c.csrfToken("/actions/migration/start", sessionToken),
+		},
 	}
 	if data.NoticeKind == "" && data.Notice != "" {
 		data.NoticeKind = "info"
@@ -780,10 +895,30 @@ func (c *agentController) handleBootstrapLogin(w http.ResponseWriter, r *http.Re
 		redirectWithNotice(w, r, "error", "表单解析失败。")
 		return
 	}
+	if !c.validPanelPost(r, "/auth/bootstrap", "") {
+		rejectInvalidPanelPost(w, r)
+		return
+	}
 	secret := strings.TrimSpace(r.FormValue("secret"))
-	c.mu.RLock()
-	valid := !c.passwordConfiguredLocked() && verifySecret(c.auth.BootstrapSalt, c.auth.BootstrapHash, secret)
-	c.mu.RUnlock()
+	c.mu.Lock()
+	if c.passwordConfiguredLocked() {
+		c.mu.Unlock()
+		redirectWithNotice(w, r, "error", "本地管理密码已配置，请直接使用密码登录。")
+		return
+	}
+	if c.bootstrapExpiredLocked(time.Now().UTC()) {
+		rotated, err := c.issueBootstrapSecretLocked()
+		c.mu.Unlock()
+		if err != nil {
+			redirectWithNotice(w, r, "error", "临时密钥已过期，重新生成失败。")
+			return
+		}
+		log.Printf("panel bootstrap secret=%s", rotated)
+		redirectWithNotice(w, r, "error", "临时密钥已过期，请使用日志中的最新密钥。")
+		return
+	}
+	valid, _ := verifyStoredSecret(c.auth.BootstrapSalt, c.auth.BootstrapHash, secret)
+	c.mu.Unlock()
 	if !valid {
 		redirectWithNotice(w, r, "error", "临时密钥不正确。")
 		return
@@ -811,24 +946,38 @@ func (c *agentController) handleSetPassword(w http.ResponseWriter, r *http.Reque
 		redirectWithNotice(w, r, "error", "表单解析失败。")
 		return
 	}
+	if !c.validPanelPost(r, "/auth/set-password", session.Token) {
+		rejectInvalidPanelPost(w, r)
+		return
+	}
+	c.mu.RLock()
+	passwordAlreadyConfigured := c.passwordConfiguredLocked()
+	c.mu.RUnlock()
+	if passwordAlreadyConfigured {
+		redirectWithNotice(w, r, "error", "本地管理密码已经设置。")
+		return
+	}
 	password := strings.TrimSpace(r.FormValue("password"))
 	if len(password) < 8 {
 		redirectWithNotice(w, r, "error", "管理密码至少 8 位。")
 		return
 	}
-	salt, err := randomSecret(16)
+	hashValue, err := hashSecret(password)
 	if err != nil {
 		redirectWithNotice(w, r, "error", "生成密码摘要失败。")
 		return
 	}
 	now := time.Now().UTC()
 	c.mu.Lock()
-	c.auth.PasswordSalt = salt
-	c.auth.PasswordHash = hashSecret(salt, password)
+	c.auth.PasswordSalt = ""
+	c.auth.PasswordHash = hashValue
 	c.auth.PasswordSetAt = &now
-	c.auth.BootstrapSalt = ""
-	c.auth.BootstrapHash = ""
-	c.auth.BootstrapIssuedAt = nil
+	c.clearBootstrapLocked()
+	for token, item := range c.sessions {
+		if item.Bootstrap {
+			delete(c.sessions, token)
+		}
+	}
 	if err := c.persistAuthLocked(); err != nil {
 		c.mu.Unlock()
 		redirectWithNotice(w, r, "error", "保存密码失败。")
@@ -853,13 +1002,31 @@ func (c *agentController) handlePasswordLogin(w http.ResponseWriter, r *http.Req
 		redirectWithNotice(w, r, "error", "表单解析失败。")
 		return
 	}
+	if !c.validPanelPost(r, "/auth/login", "") {
+		rejectInvalidPanelPost(w, r)
+		return
+	}
 	password := strings.TrimSpace(r.FormValue("password"))
 	c.mu.RLock()
-	valid := c.passwordConfiguredLocked() && verifySecret(c.auth.PasswordSalt, c.auth.PasswordHash, password)
+	valid, legacy := verifyStoredSecret(c.auth.PasswordSalt, c.auth.PasswordHash, password)
+	passwordConfigured := c.passwordConfiguredLocked()
 	c.mu.RUnlock()
-	if !valid {
+	if !passwordConfigured || !valid {
 		redirectWithNotice(w, r, "error", "管理密码不正确。")
 		return
+	}
+	if legacy {
+		hashValue, err := hashSecret(password)
+		if err == nil {
+			c.mu.Lock()
+			if currentValid, currentLegacy := verifyStoredSecret(c.auth.PasswordSalt, c.auth.PasswordHash, password); currentValid && currentLegacy {
+				c.auth.PasswordSalt = ""
+				c.auth.PasswordHash = hashValue
+				c.auth.PasswordSetAt = timePointer(time.Now().UTC())
+				_ = c.persistAuthLocked()
+			}
+			c.mu.Unlock()
+		}
 	}
 	token, err := c.createSession(false)
 	if err != nil {
@@ -875,18 +1042,35 @@ func (c *agentController) handleLogout(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if err := r.ParseForm(); err != nil {
+		redirectWithNotice(w, r, "error", "表单解析失败。")
+		return
+	}
+	session, ok := c.currentSession(r)
+	if !ok {
+		rejectInvalidPanelPost(w, r)
+		return
+	}
+	if !c.validPanelPost(r, "/auth/logout", session.Token) {
+		rejectInvalidPanelPost(w, r)
+		return
+	}
 	c.destroySession(r)
 	clearSessionCookie(w)
 	redirectWithNotice(w, r, "success", "已退出登录。")
 }
 
-func (c *agentController) requirePasswordSession(w http.ResponseWriter, r *http.Request) bool {
+func timePointer(value time.Time) *time.Time {
+	return &value
+}
+
+func (c *agentController) requirePasswordSession(w http.ResponseWriter, r *http.Request) (panelSession, bool) {
 	session, ok := c.currentSession(r)
 	if !ok || session.Bootstrap {
 		redirectWithNotice(w, r, "error", "请先登录本地控制台。")
-		return false
+		return panelSession{}, false
 	}
-	return true
+	return session, true
 }
 
 func (c *agentController) handleSetupSubmit(w http.ResponseWriter, r *http.Request) {
@@ -894,11 +1078,16 @@ func (c *agentController) handleSetupSubmit(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if !c.requirePasswordSession(w, r) {
+	session, ok := c.requirePasswordSession(w, r)
+	if !ok {
 		return
 	}
 	if err := r.ParseForm(); err != nil {
 		redirectWithNotice(w, r, "error", "表单解析失败。")
+		return
+	}
+	if !c.validPanelPost(r, "/setup", session.Token) {
+		rejectInvalidPanelPost(w, r)
 		return
 	}
 	apiBaseURL := strings.TrimRight(strings.TrimSpace(r.FormValue("apiBaseURL")), "/")
@@ -983,11 +1172,16 @@ func (c *agentController) handleMaintenanceToggle(w http.ResponseWriter, r *http
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if !c.requirePasswordSession(w, r) {
+	session, ok := c.requirePasswordSession(w, r)
+	if !ok {
 		return
 	}
 	if err := r.ParseForm(); err != nil {
 		redirectWithNotice(w, r, "error", "表单解析失败。")
+		return
+	}
+	if !c.validPanelPost(r, "/actions/maintenance", session.Token) {
+		rejectInvalidPanelPost(w, r)
 		return
 	}
 	enabled := r.FormValue("enabled") == "true"
@@ -1008,7 +1202,16 @@ func (c *agentController) handleUnbind(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if !c.requirePasswordSession(w, r) {
+	session, ok := c.requirePasswordSession(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		redirectWithNotice(w, r, "error", "表单解析失败。")
+		return
+	}
+	if !c.validPanelPost(r, "/actions/unbind", session.Token) {
+		rejectInvalidPanelPost(w, r)
 		return
 	}
 	c.mu.Lock()
@@ -1070,7 +1273,16 @@ func (c *agentController) handleClearLocalData(w http.ResponseWriter, r *http.Re
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if !c.requirePasswordSession(w, r) {
+	session, ok := c.requirePasswordSession(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		redirectWithNotice(w, r, "error", "表单解析失败。")
+		return
+	}
+	if !c.validPanelPost(r, "/actions/clear", session.Token) {
+		rejectInvalidPanelPost(w, r)
 		return
 	}
 	c.mu.Lock()
@@ -1112,7 +1324,16 @@ func (c *agentController) handleStartMigration(w http.ResponseWriter, r *http.Re
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if !c.requirePasswordSession(w, r) {
+	session, ok := c.requirePasswordSession(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		redirectWithNotice(w, r, "error", "表单解析失败。")
+		return
+	}
+	if !c.validPanelPost(r, "/actions/migration/start", session.Token) {
+		rejectInvalidPanelPost(w, r)
 		return
 	}
 	c.mu.Lock()
@@ -1486,6 +1707,19 @@ type panelPageData struct {
 	Runtime            runtimeState
 	LogLines           []string
 	TargetMounted      bool
+	CSRF               panelCSRFData
+}
+
+type panelCSRFData struct {
+	BootstrapLogin string
+	SetPassword    string
+	PasswordLogin  string
+	Logout         string
+	Setup          string
+	Maintenance    string
+	Unbind         string
+	Clear          string
+	MigrationStart string
 }
 
 var panelTemplate = template.Must(template.New("panel").Funcs(template.FuncMap{
@@ -1563,6 +1797,7 @@ var panelTemplate = template.Must(template.New("panel").Funcs(template.FuncMap{
           <h2>设置本地管理密码</h2>
           <p class="muted">首次登录后请先设置一个本地管理密码。以后访问这个局域网页面都使用这个密码登录。</p>
           <form action="/auth/set-password" method="post">
+            <input name="csrf" type="hidden" value="{{.CSRF.SetPassword}}" />
             <label class="stack">
               <span>新密码</span>
               <input name="password" type="password" minlength="8" placeholder="至少 8 位" required />
@@ -1575,6 +1810,7 @@ var panelTemplate = template.Must(template.New("panel").Funcs(template.FuncMap{
           <h2>首次登录</h2>
           <p class="muted">请打开容器日志，找到启动时打印的 bootstrap secret，然后输入到下面完成首次验证。</p>
           <form action="/auth/bootstrap" method="post">
+            <input name="csrf" type="hidden" value="{{.CSRF.BootstrapLogin}}" />
             <label class="stack">
               <span>临时密钥</span>
               <input name="secret" type="password" placeholder="从 docker logs 中复制" required />
@@ -1587,6 +1823,7 @@ var panelTemplate = template.Must(template.New("panel").Funcs(template.FuncMap{
       <section class="card stack">
         <h2>登录本地控制台</h2>
         <form action="/auth/login" method="post">
+          <input name="csrf" type="hidden" value="{{.CSRF.PasswordLogin}}" />
           <label class="stack">
             <span>管理密码</span>
             <input name="password" type="password" placeholder="输入本地管理密码" required />
@@ -1602,10 +1839,12 @@ var panelTemplate = template.Must(template.New("panel").Funcs(template.FuncMap{
             <p class="muted">先完成本地控制面的首次配置。这个页面不会自动刷新，填完后再进入主界面。</p>
           </div>
           <form action="/auth/logout" method="post">
+            <input name="csrf" type="hidden" value="{{.CSRF.Logout}}" />
             <button class="secondary" type="submit">退出登录</button>
           </form>
         </div>
         <form action="/setup" method="post">
+          <input name="csrf" type="hidden" value="{{.CSRF.Setup}}" />
           <label class="stack"><span>API Base URL</span><input name="apiBaseURL" value="{{.Config.APIBaseURL}}" placeholder="https://album-api.example.com" required /></label>
           <label class="stack"><span>Node Name</span><input name="nodeName" value="{{.Config.NodeName}}" placeholder="Living Room NAS" required /></label>
           <label class="stack"><span>Pairing Code</span><input name="pairingCode" value="{{.Config.PairingCode}}" placeholder="12 位配对码" required /></label>
@@ -1627,6 +1866,7 @@ var panelTemplate = template.Must(template.New("panel").Funcs(template.FuncMap{
             <p class="muted">模式：<strong>{{.Runtime.Mode}}</strong>{{if .Config.NodeName}} · 节点名称：<strong>{{.Config.NodeName}}</strong>{{end}}{{if .Bound}} · 当前 nodeId：<code>{{.Config.NodeID}}</code>{{end}}</p>
           </div>
           <form action="/auth/logout" method="post">
+            <input name="csrf" type="hidden" value="{{.CSRF.Logout}}" />
             <button class="secondary" type="submit">退出登录</button>
           </form>
         </div>
@@ -1699,13 +1939,16 @@ var panelTemplate = template.Must(template.New("panel").Funcs(template.FuncMap{
         <h2>危险操作</h2>
         <div class="row">
           <form action="/actions/maintenance" method="post">
+            <input name="csrf" type="hidden" value="{{.CSRF.Maintenance}}" />
             <input type="hidden" name="enabled" value="{{if .Runtime.Maintenance}}false{{else}}true{{end}}" />
             <button class="secondary" type="submit">{{if .Runtime.Maintenance}}退出维护模式{{else}}进入维护模式{{end}}</button>
           </form>
           <form action="/actions/unbind" method="post">
+            <input name="csrf" type="hidden" value="{{.CSRF.Unbind}}" />
             <button class="warn" type="submit">解绑主控</button>
           </form>
           <form action="/actions/clear" method="post">
+            <input name="csrf" type="hidden" value="{{.CSRF.Clear}}" />
             <button class="warn" type="submit">一键清空本地资料</button>
           </form>
         </div>
@@ -1716,6 +1959,7 @@ var panelTemplate = template.Must(template.New("panel").Funcs(template.FuncMap{
         <h2>迁移到新盘</h2>
         <p class="muted">请先用 migration compose 把目标盘临时挂到 <code>{{.Config.MigrationTarget}}</code>，确认页面显示“已挂载”后再开始迁移。迁移会自动进入维护模式，等待当前任务结束后复制媒体文件并做校验。完成后请把正式 library 挂载改到新盘，再重启容器完成切换。</p>
         <form action="/actions/migration/start" method="post">
+          <input name="csrf" type="hidden" value="{{.CSRF.MigrationStart}}" />
           <button type="submit">开始迁移到新盘</button>
         </form>
         {{if .Runtime.Migration.Phase}}

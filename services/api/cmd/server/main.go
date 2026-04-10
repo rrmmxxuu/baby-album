@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"log"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -52,6 +53,7 @@ func main() {
 	server := httpapi.NewServerWithOptions(repository, blob.New(cacheRoot), httpapi.Options{
 		MaxUploadBytes:            maxUploadBytes,
 		AllowedOrigins:            allowedOrigins,
+		TrustedProxyCIDRs:         trustedProxyCIDRs(),
 		PublicBaseURL:             firstNonEmpty(os.Getenv("PUBLIC_API_BASE_URL"), "http://localhost:8080"),
 		MediaURLSigningSecret:     signingSecret,
 		LocalStorageMaxBytes:      parseByteEnv("BLOB_STORAGE_MAX_GB", 50),
@@ -139,6 +141,13 @@ func mustLoadRepository() (store.Repository, func()) {
 		httpapi.LogError("initialize postgres store failed", map[string]any{"error": err.Error()})
 		os.Exit(1)
 	}
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("SEED_DEMO_DATA")), "true") {
+		if err := postgresStore.SeedDemoData(); err != nil {
+			httpapi.LogError("seed demo data failed", map[string]any{"error": err.Error()})
+			_ = postgresStore.Close()
+			os.Exit(1)
+		}
+	}
 	httpapi.LogInfo("using PostgreSQL store", nil)
 	return postgresStore, func() {
 		if err := postgresStore.Close(); err != nil {
@@ -162,6 +171,31 @@ func parseAllowedOrigins(raw string) []string {
 		return []string{"http://localhost:3000", "http://127.0.0.1:3000"}
 	}
 	return origins
+}
+
+func trustedProxyCIDRs() []string {
+	raw := strings.TrimSpace(os.Getenv("TRUSTED_PROXY_CIDRS"))
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	cidrs := make([]string, 0, len(parts))
+	for _, part := range parts {
+		value := strings.TrimSpace(part)
+		if value == "" {
+			continue
+		}
+		prefix, err := netip.ParsePrefix(value)
+		if err != nil {
+			httpapi.LogError("TRUSTED_PROXY_CIDRS is invalid", map[string]any{
+				"value": value,
+				"error": err.Error(),
+			})
+			os.Exit(1)
+		}
+		cidrs = append(cidrs, prefix.String())
+	}
+	return cidrs
 }
 
 func validateAllowedOrigins(origins []string) error {

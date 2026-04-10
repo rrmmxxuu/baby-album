@@ -11,16 +11,7 @@ function requestHeaders(upstream: Response) {
 }
 
 function upstreamRequestHeaders(source: Headers) {
-  const headers = new Headers({ "Content-Type": "application/json" });
-  const forwardedFor = source.get("x-forwarded-for");
-  const realIP = source.get("x-real-ip");
-  if (forwardedFor) {
-    headers.set("X-Forwarded-For", forwardedFor);
-  }
-  if (realIP) {
-    headers.set("X-Real-IP", realIP);
-  }
-  return headers;
+  return new Headers({ "Content-Type": "application/json" });
 }
 
 export async function POST(request: Request) {

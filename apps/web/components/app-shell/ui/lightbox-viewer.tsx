@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { getOriginalUrl, getPreviewUrl, getScreenPreviewUrl, loadOriginalStatus, repairMediaPreview } from "../../../lib/api";
+import { getOriginalUrl, getPreviewUrl, getScreenPreviewUrl, loadOriginalStatus, repairMediaPreview, requestOriginalRestore } from "../../../lib/api";
 import type { MediaAsset } from "../../../lib/types";
 import { useLightboxOriginalImage } from "../hooks/use-lightbox-original-image";
 import { formatDateTime, formatRelativeUploadTime } from "../model/format";
@@ -122,7 +122,9 @@ export function LightboxViewer({ lightbox, closing, onClose, onNavigate, onPrevi
 
     async function refreshVideoUrl(triggerRestore: boolean) {
       try {
-        const result = await loadOriginalStatus(lightbox.albumId, currentItem.id, { triggerRestore });
+        const result = triggerRestore
+          ? await requestOriginalRestore(lightbox.albumId, currentItem.id)
+          : await loadOriginalStatus(lightbox.albumId, currentItem.id);
         if (cancelled) {
           return;
         }

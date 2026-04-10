@@ -38,6 +38,8 @@ const (
 	passwordSchemeBcrypt       = "bcrypt"
 )
 
+const dummyPasswordHash = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"
+
 type TimelinePageInput struct {
 	Cursor string
 	Limit  int
@@ -865,4 +867,8 @@ func verifyLegacyPassword(password, salt, expectedHash string) bool {
 	hash := sha256.Sum256([]byte(salt + ":" + strings.TrimSpace(password)))
 	actual := hex.EncodeToString(hash[:])
 	return subtle.ConstantTimeCompare([]byte(actual), []byte(expectedHash)) == 1
+}
+
+func burnPasswordCheck(password string) {
+	_ = bcrypt.CompareHashAndPassword([]byte(dummyPasswordHash), []byte(strings.TrimSpace(password)))
 }

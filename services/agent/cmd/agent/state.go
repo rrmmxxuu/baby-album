@@ -31,6 +31,9 @@ func loadAgentState(statePath string) (agentState, error) {
 		return agentState{}, err
 	}
 	defer file.Close()
+	if err := tightenPrivateFile(statePath); err != nil {
+		return agentState{}, err
+	}
 	var state agentState
 	if err := json.NewDecoder(file).Decode(&state); err != nil {
 		return agentState{}, err
@@ -46,10 +49,7 @@ func loadLegacyAgentState(libraryRoot string) (agentState, error) {
 }
 
 func saveAgentState(statePath string, state agentState) error {
-	if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
-		return err
-	}
-	file, err := os.Create(statePath)
+	file, err := openPrivateFile(statePath)
 	if err != nil {
 		return err
 	}

@@ -1,14 +1,15 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MediaAsset } from "../../../lib/types";
-import { loadOriginalStatus } from "../../../lib/api";
+import { loadOriginalStatus, requestOriginalRestore } from "../../../lib/api";
 import { useLightboxOriginalImage } from "./use-lightbox-original-image";
 
 vi.mock("../../../lib/api", async () => {
   const actual = await vi.importActual<typeof import("../../../lib/api")>("../../../lib/api");
   return {
     ...actual,
-    loadOriginalStatus: vi.fn()
+    loadOriginalStatus: vi.fn(),
+    requestOriginalRestore: vi.fn()
   };
 });
 
@@ -74,6 +75,7 @@ const originalRevokeObjectURL = URL.revokeObjectURL;
 const createObjectURL = vi.fn<(blob: Blob) => string>();
 const revokeObjectURL = vi.fn<(url: string) => void>();
 const mockedLoadOriginalStatus = vi.mocked(loadOriginalStatus);
+const mockedRequestOriginalRestore = vi.mocked(requestOriginalRestore);
 
 function buildMedia(id: string): MediaAsset {
   return {
@@ -106,9 +108,14 @@ describe("useLightboxOriginalImage", () => {
     FakeXMLHttpRequest.reset();
     globalThis.XMLHttpRequest = FakeXMLHttpRequest as unknown as typeof XMLHttpRequest;
     mockedLoadOriginalStatus.mockReset();
+    mockedRequestOriginalRestore.mockReset();
     mockedLoadOriginalStatus.mockResolvedValue({
       originalAvailability: "hot",
       originalUrl: "https://album-api.example.com/api/v1/media/media-1/original?sig=refreshed",
+      media: buildMedia("media-1")
+    });
+    mockedRequestOriginalRestore.mockResolvedValue({
+      originalAvailability: "restoring",
       media: buildMedia("media-1")
     });
     createObjectURL.mockReset();
@@ -216,6 +223,19 @@ describe("useLightboxOriginalImage", () => {
     act(() => FakeXMLHttpRequest.instances[0].succeed(new Blob(["fresh-original"])));
     expect(result.current.status).toBe("loaded");
     expect(result.current.objectUrl).toBe("blob:1");
+  });
+
+  it("uses the explicit restore endpoint when the original is cold", async () => {
+    const item = buildMedia("media-1");
+    item.originalAvailability = "cold";
+    item.originalUrl = undefined;
+    const { result } = renderHook(({ currentItem }) => useLightboxOriginalImage({ albumId: "album-1", currentItem, enabled: true }), {
+      initialProps: { currentItem: item }
+    });
+
+    await waitFor(() => expect(mockedRequestOriginalRestore).toHaveBeenCalledWith("album-1", "media-1"));
+    expect(mockedLoadOriginalStatus).not.toHaveBeenCalled();
+    expect(result.current.status).toBe("restoring");
   });
 
   it("retries with a refreshed signed URL when the original request returns 401", async () => {

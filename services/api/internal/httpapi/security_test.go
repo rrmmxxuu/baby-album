@@ -34,6 +34,28 @@ func TestBearerTokenIgnoresQueryString(t *testing.T) {
 	}
 }
 
+func TestClientIPIgnoresForwardedHeadersWithoutTrustedProxyConfig(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/auth/app", nil)
+	request.RemoteAddr = "10.20.30.40:1234"
+	request.Header.Set("X-Forwarded-For", "203.0.113.9")
+	request.Header.Set("X-Real-IP", "198.51.100.7")
+
+	if ip := clientIP(request); ip != "10.20.30.40" {
+		t.Fatalf("expected remote host, got %q", ip)
+	}
+}
+
+func TestClientIPUsesForwardedHeadersOnlyForTrustedProxyCIDRs(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/auth/app", nil)
+	request.RemoteAddr = "10.20.30.40:1234"
+	request.Header.Set("X-Forwarded-For", "203.0.113.9")
+	request = withTrustedProxyCIDRs(request, parseTrustedProxyCIDRs([]string{"10.0.0.0/8"}))
+
+	if ip := clientIP(request); ip != "203.0.113.9" {
+		t.Fatalf("expected forwarded client ip, got %q", ip)
+	}
+}
+
 func TestInvitePreviewEndpointReturnsNotFound(t *testing.T) {
 	server := NewServer(&stubRepository{}, blob.New(t.TempDir()), 1024, nil)
 	recorder := httptest.NewRecorder()

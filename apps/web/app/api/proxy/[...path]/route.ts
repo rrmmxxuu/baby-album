@@ -24,27 +24,11 @@ function upstreamHeaders(upstream: Response) {
   return headers;
 }
 
-function forwardClientIPHeaders(source: Headers, target: Headers) {
-  const forwardedFor = source.get("x-forwarded-for");
-  const realIP = source.get("x-real-ip");
-  if (forwardedFor) {
-    target.set("X-Forwarded-For", forwardedFor);
-  }
-  if (realIP) {
-    target.set("X-Real-IP", realIP);
-  }
-}
-
-async function readBody(request: NextRequest) {
+function requestBody(request: NextRequest) {
   if (request.method === "GET" || request.method === "HEAD") {
     return undefined;
   }
-  const contentType = request.headers.get("Content-Type") ?? "";
-  if (contentType.includes("multipart/form-data")) {
-    return request.formData();
-  }
-  const text = await request.text();
-  return text || undefined;
+  return request.body;
 }
 
 async function proxyRequest(request: NextRequest, path: string[]) {
@@ -71,20 +55,21 @@ async function proxyRequest(request: NextRequest, path: string[]) {
   if (ifModifiedSince) {
     headers.set("If-Modified-Since", ifModifiedSince);
   }
-  if (contentType && !contentType.includes("multipart/form-data")) {
+  if (contentType) {
     headers.set("Content-Type", contentType);
   }
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
   }
-  forwardClientIPHeaders(request.headers, headers)
+  const body = requestBody(request);
 
   const upstream = await fetch(url, {
     method: request.method,
     headers,
-    body: await readBody(request),
+    body,
     cache: "no-store",
-    redirect: "manual"
+    redirect: "manual",
+    ...(body ? { duplex: "half" as const } : {})
   });
   const response = new NextResponse(upstream.body, {
     status: upstream.status,

@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"net/http"
+	"net/netip"
 	"path/filepath"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 type Options struct {
 	MaxUploadBytes            int64
 	AllowedOrigins            []string
+	TrustedProxyCIDRs         []string
 	PublicBaseURL             string
 	MediaURLSigningSecret     string
 	LocalStorageMaxBytes      int64
@@ -36,6 +38,7 @@ type Server struct {
 	blob            *blob.Storage
 	maxUploadBytes  int64
 	allowedOrigins  []string
+	trustedProxies  []netip.Prefix
 	publicBaseURL   string
 	signingSecret   []byte
 	screenPreviews  objectstore.Store
@@ -63,6 +66,7 @@ func NewServerWithOptions(repo store.Repository, blobStorage *blob.Storage, opti
 		blob:           blobStorage,
 		maxUploadBytes: options.MaxUploadBytes,
 		allowedOrigins: normalizeOrigins(options.AllowedOrigins),
+		trustedProxies: parseTrustedProxyCIDRs(options.TrustedProxyCIDRs),
 		publicBaseURL:  strings.TrimRight(strings.TrimSpace(options.PublicBaseURL), "/"),
 		signingSecret:  []byte(strings.TrimSpace(options.MediaURLSigningSecret)),
 		agentJobHub:    newAgentJobHub(),
@@ -100,7 +104,16 @@ func (s *Server) ListenAndServe(addr string) error {
 	if s.cacheController != nil {
 		go s.cacheController.Run()
 	}
-	return http.ListenAndServe(addr, s.withMiddleware(s.mux))
+	server := &http.Server{
+		Addr:              addr,
+		Handler:           s.withMiddleware(s.mux),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      5 * time.Minute,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 20,
+	}
+	return server.ListenAndServe()
 }
 
 func (s *Server) applyDeleteCleanup(cleanup store.DeleteCleanup) {

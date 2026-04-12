@@ -1,4 +1,5 @@
 import { getPreviewUrl } from "../../../lib/api";
+import { revokeDraftMediaResources } from "./local-media";
 import type { TimelineEntry, TimelineTimeMode, TimelineVisibility } from "../../../lib/types";
 import type { DraftMedia, UploadDraft } from "./types";
 
@@ -46,7 +47,6 @@ export function buildDrafts(files: File[]) {
       id: createClientId("media"),
       file,
       fileName: file.name,
-      previewUrl: URL.createObjectURL(file),
       capturedAt,
       mediaType: file.type || "application/octet-stream",
       localPreview: true
@@ -169,11 +169,5 @@ export function timeModeLabel(value: TimelineTimeMode) {
 }
 
 export function revokeDrafts(items: UploadDraft[]) {
-  for (const draft of items) {
-    for (const item of draft.items) {
-      if (item.localPreview) {
-        URL.revokeObjectURL(item.previewUrl);
-      }
-    }
-  }
+  revokeDraftMediaResources(items);
 }

@@ -25,6 +25,7 @@ describe("upload draft helpers", () => {
     expect(drafts).toHaveLength(2);
     expect(drafts.find((draft) => draft.items.length === 2)?.manualDate).toBe("2026-03-27");
     expect(drafts.find((draft) => draft.items[0].mediaType.startsWith("video/"))?.items).toHaveLength(1);
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
   });
 
   it("merges incoming photo drafts into available batches", () => {

@@ -69,6 +69,7 @@ test("uploads a small video and shows a local video preview in the draft sheet",
 
   await expect(page.locator(".draftListCard")).toHaveCount(1);
   await expect(page.locator(".draftMediaThumbVideoElement")).toHaveCount(1);
+  await expect(page.locator(".draftMediaThumbVideoElement")).toHaveAttribute("poster", /blob:/);
   await page.locator(".draftListCaption").fill(caption);
   await page.getByRole("button", { name: "保存" }).click();
 

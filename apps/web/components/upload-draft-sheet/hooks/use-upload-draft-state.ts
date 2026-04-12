@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { TimelineEntry, TimelineTimeMode, TimelineVisibility } from "../../../lib/types";
 import { buildDraftFromEntry, buildDrafts, mergeDrafts, revokeDrafts, toCapturedAt, createClientId } from "../model/drafts";
+import { revokeLocalMediaResourcesForFile } from "../model/local-media";
 import type { DraftModal, DraftScene, UploadDraft } from "../model/types";
 
 const SHEET_EXIT_MS = 260;
@@ -129,8 +130,8 @@ export function useUploadDraftState({ albumId, open, editingEntry }: UseUploadDr
             return draft;
           }
           const removedItem = draft.items.find((item) => item.id === itemId);
-          if (removedItem?.localPreview) {
-            URL.revokeObjectURL(removedItem.previewUrl);
+          if (removedItem?.file) {
+            revokeLocalMediaResourcesForFile(removedItem.file);
           }
           return { ...draft, items: draft.items.filter((item) => item.id !== itemId) };
         })
@@ -156,7 +157,6 @@ export function useUploadDraftState({ albumId, open, editingEntry }: UseUploadDr
       id: createClientId("media"),
       file,
       fileName: file.name,
-      previewUrl: URL.createObjectURL(file),
       capturedAt: toCapturedAt(file),
       mediaType: file.type || "application/octet-stream",
       localPreview: true
@@ -164,12 +164,10 @@ export function useUploadDraftState({ albumId, open, editingEntry }: UseUploadDr
     const hasVideo = selectedDraft.items.some((item) => item.mediaType.startsWith("video/"));
     const incomingVideo = nextItems.some((item) => item.mediaType.startsWith("video/"));
     if (hasVideo || incomingVideo) {
-      nextItems.forEach((item) => URL.revokeObjectURL(item.previewUrl));
       setStatus("视频记录暂不支持继续追加，请新建一条记录。");
       return;
     }
     if (selectedDraft.items.length + nextItems.length > 9) {
-      nextItems.forEach((item) => URL.revokeObjectURL(item.previewUrl));
       setStatus("一条记录最多 9 张照片。");
       return;
     }

@@ -4,7 +4,8 @@ export type DraftMedia = {
   id: string;
   file: File | null;
   fileName: string;
-  previewUrl: string;
+  previewUrl?: string;
+  posterUrl?: string;
   capturedAt: string;
   mediaType: string;
   existingMediaId?: string;

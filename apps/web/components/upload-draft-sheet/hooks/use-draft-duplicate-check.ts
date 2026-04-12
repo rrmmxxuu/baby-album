@@ -4,11 +4,14 @@ import { startTransition, useDeferredValue, useEffect, useMemo, useRef, useState
 import { probeDuplicateMedia, resolveDuplicateMedia } from "../../../lib/api";
 import { chunkItems } from "../model/drafts";
 import { buildDuplicateTargetSignature, collectDraftDuplicateTargets } from "../model/duplicates";
+import { isIosWebKit } from "../model/platform";
 import { bytesToHex, sha256Hex } from "../model/sha256";
 import type { DraftDuplicateState, UploadDraft } from "../model/types";
 
 const PROBE_BATCH_SIZE = 200;
 const RESOLVE_BATCH_SIZE = 100;
+const LARGE_IOS_DUPLICATE_DELAY_THRESHOLD = 30;
+const IOS_DUPLICATE_CHECK_DELAY_MS = 180;
 
 interface UseDraftDuplicateCheckOptions {
   albumId: string;
@@ -19,6 +22,11 @@ interface UseDraftDuplicateCheckOptions {
 type HashWorkerMessage =
   | { requestId: string; sha256: string }
   | { requestId: string; error: string };
+
+type IdleWindow = Window & typeof globalThis & {
+  cancelIdleCallback?: (handle: number) => void;
+  requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+};
 
 function fileCacheKey(albumId: string, fileKey: string) {
   return `${albumId}:${fileKey}`;
@@ -64,6 +72,20 @@ function hashFileWithWorker(worker: Worker, requestId: string, file: File) {
   });
 }
 
+function scheduleDeferredRun(task: () => void) {
+  const idleWindow = window as IdleWindow;
+  if (typeof idleWindow.requestIdleCallback === "function") {
+    const handle = idleWindow.requestIdleCallback(task, { timeout: 700 });
+    return () => {
+      idleWindow.cancelIdleCallback?.(handle);
+    };
+  }
+  const handle = window.setTimeout(task, IOS_DUPLICATE_CHECK_DELAY_MS);
+  return () => {
+    window.clearTimeout(handle);
+  };
+}
+
 export function useDraftDuplicateCheck({ albumId, open, drafts }: UseDraftDuplicateCheckOptions) {
   const [itemStates, setItemStates] = useState<Record<string, DraftDuplicateState>>({});
   const [checking, setChecking] = useState(false);
@@ -75,6 +97,7 @@ export function useDraftDuplicateCheck({ albumId, open, drafts }: UseDraftDuplic
   const targets = useMemo(() => collectDraftDuplicateTargets(deferredDrafts), [deferredDrafts]);
   const targetSignature = useMemo(() => buildDuplicateTargetSignature(targets), [targets]);
   const targetByItemId = useMemo(() => new Map(targets.map((target) => [target.itemId, target])), [targets]);
+  const shouldDelayLargeIosCheck = targets.length > LARGE_IOS_DUPLICATE_DELAY_THRESHOLD && isIosWebKit();
 
   useEffect(() => {
     if (!open) {
@@ -95,6 +118,7 @@ export function useDraftDuplicateCheck({ albumId, open, drafts }: UseDraftDuplic
     const abortController = new AbortController();
     let worker: Worker | null = null;
     let disposed = false;
+    let cancelScheduledRun: (() => void) | null = null;
 
     async function run() {
       const nextStates: Record<string, DraftDuplicateState> = {};
@@ -203,35 +227,47 @@ export function useDraftDuplicateCheck({ albumId, open, drafts }: UseDraftDuplic
       }
     }
 
-    void run().catch((error) => {
-      if (abortController.signal.aborted || disposed || runId !== runIdRef.current) {
-        return;
-      }
-      console.error("draft duplicate check failed", error);
-      setItemStates((current) => {
-        const next = { ...current };
-        for (const target of targets) {
-          if (!next[target.itemId] || next[target.itemId].status === "probing" || next[target.itemId].status === "hashing") {
-            next[target.itemId] = createState("error");
-          }
+    const executeRun = () => {
+      void run().catch((error) => {
+        if (abortController.signal.aborted || disposed || runId !== runIdRef.current) {
+          return;
         }
-        return next;
-      });
-    }).finally(() => {
-      if (!disposed && runId === runIdRef.current) {
-        startTransition(() => {
-          setChecking(false);
+        console.error("draft duplicate check failed", error);
+        setItemStates((current) => {
+          const next = { ...current };
+          for (const target of targets) {
+            if (!next[target.itemId] || next[target.itemId].status === "probing" || next[target.itemId].status === "hashing") {
+              next[target.itemId] = createState("error");
+            }
+          }
+          return next;
         });
-      }
-      worker?.terminate();
-    });
+      }).finally(() => {
+        if (!disposed && runId === runIdRef.current) {
+          startTransition(() => {
+            setChecking(false);
+          });
+        }
+        worker?.terminate();
+      });
+    };
+
+    if (shouldDelayLargeIosCheck) {
+      cancelScheduledRun = scheduleDeferredRun(() => {
+        cancelScheduledRun = null;
+        executeRun();
+      });
+    } else {
+      executeRun();
+    }
 
     return () => {
       disposed = true;
       abortController.abort();
+      cancelScheduledRun?.();
       worker?.terminate();
     };
-  }, [albumId, open, targetSignature]);
+  }, [albumId, open, shouldDelayLargeIosCheck, targetSignature]);
 
   return {
     checking,

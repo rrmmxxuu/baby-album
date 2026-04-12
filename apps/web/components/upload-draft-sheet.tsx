@@ -1,15 +1,17 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { TimelineEntry } from "../lib/types";
 import { useDraftDuplicateCheck } from "./upload-draft-sheet/hooks/use-draft-duplicate-check";
 import { useUploadDraftState } from "./upload-draft-sheet/hooks/use-upload-draft-state";
 import { useUploadSubmit } from "./upload-draft-sheet/hooks/use-upload-submit";
+import { isIosWebKit } from "./upload-draft-sheet/model/platform";
 import { DraftBatchSettingsModal } from "./upload-draft-sheet/ui/draft-batch-settings-modal";
 import { DraftDetailScene } from "./upload-draft-sheet/ui/draft-detail-scene";
 import { DraftEmptyState } from "./upload-draft-sheet/ui/draft-empty-state";
 import { DraftFloatingBar } from "./upload-draft-sheet/ui/draft-floating-bar";
 import { DraftListScene } from "./upload-draft-sheet/ui/draft-list-scene";
+import { DraftPickerGuidanceModal } from "./upload-draft-sheet/ui/draft-picker-guidance-modal";
 import { DraftSheetHeader } from "./upload-draft-sheet/ui/draft-sheet-header";
 import type { BackgroundUploadController } from "./upload-draft-sheet/hooks/use-background-upload";
 import { HiddenFileInput } from "./ui/hidden-file-input";
@@ -31,6 +33,9 @@ export function UploadDraftSheet({ albumId, babyName, open, disabled, disabledRe
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const appendInputRef = useRef<HTMLInputElement | null>(null);
   const editAppendInputRef = useRef<HTMLInputElement | null>(null);
+  const pendingPickerActionRef = useRef<(() => void) | null>(null);
+  const [pickerHintOpen, setPickerHintOpen] = useState(false);
+  const [pickerHintAcknowledged, setPickerHintAcknowledged] = useState(false);
   const draftState = useUploadDraftState({ albumId, open, editingEntry });
   const duplicateState = useDraftDuplicateCheck({
     albumId,
@@ -52,6 +57,40 @@ export function UploadDraftSheet({ albumId, babyName, open, disabled, disabledRe
     setStatus: draftState.setStatus
   });
 
+  useEffect(() => {
+    if (open) {
+      return;
+    }
+    pendingPickerActionRef.current = null;
+    setPickerHintOpen(false);
+    setPickerHintAcknowledged(false);
+  }, [open]);
+
+  function openPicker(trigger: () => void) {
+    if (disabled && !editingEntry) {
+      return;
+    }
+    if (!pickerHintAcknowledged && isIosWebKit()) {
+      pendingPickerActionRef.current = trigger;
+      setPickerHintOpen(true);
+      return;
+    }
+    trigger();
+  }
+
+  function handleContinuePickerHint() {
+    setPickerHintAcknowledged(true);
+    setPickerHintOpen(false);
+    const pendingAction = pendingPickerActionRef.current;
+    pendingPickerActionRef.current = null;
+    pendingAction?.();
+  }
+
+  function handleCancelPickerHint() {
+    pendingPickerActionRef.current = null;
+    setPickerHintOpen(false);
+  }
+
   if (!draftState.shouldRender) {
     return null;
   }
@@ -60,9 +99,11 @@ export function UploadDraftSheet({ albumId, babyName, open, disabled, disabledRe
     <div className={`draftSheetOverlay${draftState.visible ? " draftSheetOverlayOpen" : ""}${open ? "" : " draftSheetOverlayClosing"}`}>
       <section className={`draftSheet${draftState.visible ? " draftSheetOpen" : ""}${open ? "" : " draftSheetClosing"}${!draftState.isEditMode && draftState.currentScene === "list" ? " draftSheetWithFloatingBar" : ""}`}>
         <DraftSheetHeader
+          appendDisabled={disabled}
           babyName={babyName}
           currentScene={draftState.currentScene}
           isEditMode={draftState.isEditMode}
+          onAppendFiles={() => openPicker(() => appendInputRef.current?.click())}
           onBackToList={() => draftState.setScene("list")}
           onClose={onClose}
           onSaveOrDone={() => {
@@ -72,6 +113,7 @@ export function UploadDraftSheet({ albumId, babyName, open, disabled, disabledRe
             }
             draftState.setScene("list");
           }}
+          showAppendAction={!draftState.isEditMode && draftState.currentScene === "list" && draftState.drafts.length > 0}
         />
 
         <HiddenFileInput inputRef={fileInputRef} onFilesSelected={draftState.replaceWithFiles} />
@@ -84,17 +126,18 @@ export function UploadDraftSheet({ albumId, babyName, open, disabled, disabledRe
             disabledReason={disabledReason}
             isEditMode={draftState.isEditMode}
             onClose={onClose}
-            onPickFiles={() => (draftState.isEditMode ? editAppendInputRef.current?.click() : fileInputRef.current?.click())}
+            onPickFiles={() => openPicker(() => (draftState.isEditMode ? editAppendInputRef.current?.click() : fileInputRef.current?.click()))}
           />
         ) : (
           <>
             {draftState.currentScene === "list" && !draftState.isEditMode ? <DraftListScene draftState={draftState} duplicateState={duplicateState} /> : null}
-            {draftState.currentScene === "detail" || draftState.isEditMode ? <DraftDetailScene draftState={draftState} duplicateState={duplicateState} onAppendFiles={() => editAppendInputRef.current?.click()} submitState={submitState} /> : null}
+            {draftState.currentScene === "detail" || draftState.isEditMode ? <DraftDetailScene draftState={draftState} duplicateState={duplicateState} onAppendFiles={() => openPicker(() => editAppendInputRef.current?.click())} submitState={submitState} /> : null}
             {draftState.status ? <p className="statusNote">{draftState.status}</p> : null}
           </>
         )}
       </section>
       <DraftBatchSettingsModal draftState={draftState} />
+      <DraftPickerGuidanceModal onCancel={handleCancelPickerHint} onContinue={handleContinuePickerHint} open={pickerHintOpen} />
       {!draftState.isEditMode && draftState.currentScene === "list" ? (
         <DraftFloatingBar disabled={disabled} onOpenBatchSettings={() => draftState.setActiveModal("batchSettings")} onSave={submitState.handleUploadAll} uploading={submitState.uploading} />
       ) : null}

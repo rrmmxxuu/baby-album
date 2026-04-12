@@ -2,12 +2,15 @@ interface DraftSheetHeaderProps {
   isEditMode: boolean;
   currentScene: "list" | "detail";
   babyName?: string;
+  appendDisabled?: boolean;
+  showAppendAction?: boolean;
   onClose: () => void;
   onBackToList: () => void;
+  onAppendFiles?: () => void;
   onSaveOrDone: () => void;
 }
 
-export function DraftSheetHeader({ isEditMode, currentScene, babyName, onClose, onBackToList, onSaveOrDone }: DraftSheetHeaderProps) {
+export function DraftSheetHeader({ isEditMode, currentScene, babyName, appendDisabled, showAppendAction, onClose, onBackToList, onAppendFiles, onSaveOrDone }: DraftSheetHeaderProps) {
   return (
     <header className="draftSheetHeader">
       {currentScene === "detail" ? (
@@ -20,7 +23,11 @@ export function DraftSheetHeader({ isEditMode, currentScene, babyName, onClose, 
         <>
           <button className="draftTopAction" onClick={onClose} type="button">取消</button>
           <h2>{babyName ? `${babyName}新变化` : "本次上传"}</h2>
-          <span className="draftTopSpacer" />
+          {showAppendAction ? (
+            <button className="draftTopPrimary draftTopSecondary" disabled={appendDisabled} onClick={onAppendFiles} type="button">追加</button>
+          ) : (
+            <span className="draftTopSpacer" />
+          )}
         </>
       )}
     </header>

@@ -8,6 +8,7 @@ import (
 	"image"
 	"image/color"
 	"image/jpeg"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -25,6 +26,7 @@ import (
 )
 
 const sampleHEICBase64 = "AAAAHGZ0eXBoZWl4AAAAAG1pZjFoZWl4bWlhZgAAAXZtZXRhAAAAAAAAACFoZGxyAAAAAAAAAABwaWN0AAAAAAAAAAAAAAAAAAAAAA5waXRtAAAAAAABAAAAImlsb2MAAAAAREAAAQABAAAAAAGaAAEAAAAAAAAAIwAAACNpaW5mAAAAAAABAAAAFWluZmUCAAAAAAEAAGh2YzEAAAAA9mlwcnAAAADWaXBjbwAAAHFodmNDAQQIAAAAAAAAAAAAHvAA/Pz4+AAADwNgAAEAF0ABDAH//wQIAAADAJ/4AAADAAAeugJAYQABACZCAQEECAAAAwCf+AAAAwAAHsCCBBZbqrprmwIAAAMAAgAAAwACEGIAAQAGRAHBc8GJAAAAE2NvbHJuY2x4AAEADQAGgAAAABRpc3BlAAAAAAAAAEAAAABAAAAAKGNsYXAAAAAQAAAAAQAAABAAAAAB////0AAAAAL////QAAAAAgAAAA5waXhpAAAAAAEIAAAAGGlwbWEAAAAAAAAAAQABBYECAwWEAAAAK21kYXQAAAAfKAGuJkJKJOfXDf/+HwsXYVVzU7JsIGJEKRKAY/X0rg=="
+const coloredHEICBase64 = "AAAAHGZ0eXBoZWljAAAAAG1pZjFoZWljbWlhZgAAAX1tZXRhAAAAAAAAACFoZGxyAAAAAAAAAABwaWN0AAAAAAAAAAAAAAAAAAAAAA5waXRtAAAAAAABAAAAImlsb2MAAAAAREAAAQABAAAAAAGhAAEAAAAAAAAAjgAAACNpaW5mAAAAAAABAAAAFWluZmUCAAAAAAEAAGh2YzEAAAAA/WlwcnAAAADdaXBjbwAAAHZodmNDAQNwAAAAAAAAAAAAHvAA/P34+AAADwNgAAEAGEABDAH//wNwAAADAJAAAAMAAAMAHroCQGEAAQAqQgEBA3AAAAMAkAAAAwAAAwAeoCCBBZbq5Ka5uAhoMCAAAAMAIAAAAwAhYgABAAZEAcFzwIkAAAATY29scm5jbHgAAQANAAaAAAAAFGlzcGUAAAAAAAAAQAAAAEAAAAAoY2xhcAAAACAAAAABAAAAIAAAAAH////gAAAAAv///+AAAAACAAAAEHBpeGkAAAAAAwgICAAAABhpcG1hAAAAAAAAAAEAAQWBAgMFhAAAAJZtZGF0AAAAiigBrwT4mwzXdDX5+rMWy4wwUfPPiywj+jSlFzY25+wnHFqojp5+nYs/ePrL5G/u5WS6fzEBxqHpWcfaYozSpnXXO7JaSWBQCoNXsMEFLdQtolUcKyKVWavpcWYOTx57wE4rLb/6gOyi6bND7IW96JNqHcmq5jb90pWJ4vhi/hEO91iUKsVh0jiv/A=="
 
 type failingObjectStore struct {
 	putErr error
@@ -131,6 +133,144 @@ func TestHandleUploadSessionContentGeneratesPreviewInAPI(t *testing.T) {
 	}
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", recorder.Code)
+	}
+}
+
+func TestDetectMediaTypeFromBytesRecognizesHEICContainer(t *testing.T) {
+	heicData, err := base64.StdEncoding.DecodeString(sampleHEICBase64)
+	if err != nil {
+		t.Fatalf("decode heic fixture: %v", err)
+	}
+
+	if mediaType := detectMediaTypeFromBytes(heicData); mediaType != "image/heic" {
+		t.Fatalf("expected image/heic, got %q", mediaType)
+	}
+}
+
+func TestHandleUploadSessionContentDetectsHEICContainer(t *testing.T) {
+	blobStorage := blob.New(t.TempDir())
+	heicData, err := base64.StdEncoding.DecodeString(sampleHEICBase64)
+	if err != nil {
+		t.Fatalf("decode heic fixture: %v", err)
+	}
+
+	called := false
+	server := NewServer(&stubRepository{
+		attachUploadContent: func(userID, sessionID string, input store.UploadContentInput) (domain.UploadSession, error) {
+			called = true
+			if input.DetectedMediaType != "image/heic" {
+				t.Fatalf("expected detected media type image/heic, got %s", input.DetectedMediaType)
+			}
+			return domain.UploadSession{ID: sessionID, Status: "uploaded"}, nil
+		},
+	}, blobStorage, 8<<20, nil)
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", "sample.heic")
+	if err != nil {
+		t.Fatalf("create form file: %v", err)
+	}
+	if _, err := part.Write(heicData); err != nil {
+		t.Fatalf("write form file: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close writer: %v", err)
+	}
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/upload-sessions/session-1/content", &body)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	request.Header.Set("Authorization", "Bearer test-session")
+
+	server.withMiddleware(server.mux).ServeHTTP(recorder, request)
+
+	if !called {
+		t.Fatal("expected AttachUploadContent to be called")
+	}
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestHandleDraftMediaPreviewConvertsHEICToJPEG(t *testing.T) {
+	heicData, err := base64.StdEncoding.DecodeString(sampleHEICBase64)
+	if err != nil {
+		t.Fatalf("decode heic fixture: %v", err)
+	}
+	sourcePath := filepath.Join(t.TempDir(), "sample.heic")
+	if err := os.WriteFile(sourcePath, heicData, 0o644); err != nil {
+		t.Fatalf("write heic fixture: %v", err)
+	}
+	if !heicPreviewSupported(t, sourcePath) {
+		t.Skip("ffmpeg on this runner does not support HEIC decoding")
+	}
+
+	server := NewServer(&stubRepository{}, blob.New(t.TempDir()), 8<<20, nil)
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", "sample.heic")
+	if err != nil {
+		t.Fatalf("create form file: %v", err)
+	}
+	if _, err := part.Write(heicData); err != nil {
+		t.Fatalf("write form file: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close writer: %v", err)
+	}
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/media-preview", &body)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	request.Header.Set("Authorization", "Bearer test-session")
+
+	server.withMiddleware(server.mux).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	if contentType := recorder.Header().Get("Content-Type"); contentType != "image/jpeg" {
+		t.Fatalf("expected image/jpeg, got %q", contentType)
+	}
+	cfg, format, err := image.DecodeConfig(bytes.NewReader(recorder.Body.Bytes()))
+	if err != nil {
+		t.Fatalf("decode preview config: %v", err)
+	}
+	if format != "jpeg" {
+		t.Fatalf("expected jpeg preview, got %s", format)
+	}
+	if cfg.Width <= 0 || cfg.Height <= 0 {
+		t.Fatalf("expected positive dimensions, got %dx%d", cfg.Width, cfg.Height)
+	}
+}
+
+func TestGenerateBestStillImagePreviewConvertsHEICWithoutBlackOutput(t *testing.T) {
+	if _, err := exec.LookPath("heif-convert"); err != nil {
+		t.Skip("heif-convert is not available")
+	}
+	heicData, err := base64.StdEncoding.DecodeString(coloredHEICBase64)
+	if err != nil {
+		t.Fatalf("decode colored heic fixture: %v", err)
+	}
+	sourcePath := filepath.Join(t.TempDir(), "colored.heic")
+	if err := os.WriteFile(sourcePath, heicData, 0o644); err != nil {
+		t.Fatalf("write colored heic fixture: %v", err)
+	}
+
+	width, height, preview, err := generateBestStillImagePreview(sourcePath, "image/heic", "colored.heic", 480, 82)
+	if err != nil {
+		t.Fatalf("generate heic preview: %v", err)
+	}
+	if width <= 0 || height <= 0 {
+		t.Fatalf("expected positive dimensions, got %dx%d", width, height)
+	}
+	maxRGB, err := maxRGBSum(preview)
+	if err != nil {
+		t.Fatalf("measure preview brightness: %v", err)
+	}
+	if maxRGB < 10_000 {
+		t.Fatalf("expected visible non-black preview, max RGB sum was %d", maxRGB)
 	}
 }
 
@@ -361,7 +501,7 @@ func TestApplyDeleteCleanupRemovesScreenPreviewObject(t *testing.T) {
 
 func TestEnsureMediaPreviewsRepairsHEICFromOriginalBlob(t *testing.T) {
 	blobStorage := blob.New(t.TempDir())
-	heicData, err := base64.StdEncoding.DecodeString(sampleHEICBase64)
+	heicData, err := base64.StdEncoding.DecodeString(coloredHEICBase64)
 	if err != nil {
 		t.Fatalf("decode heic fixture: %v", err)
 	}
@@ -410,10 +550,45 @@ func TestEnsureMediaPreviewsRepairsHEICFromOriginalBlob(t *testing.T) {
 	if item.ScreenPreviewObjectKey == "" {
 		t.Fatal("expected screen preview object key")
 	}
+	previewFile, err := blobStorage.Open(item.PreviewBlobKey)
+	if err != nil {
+		t.Fatalf("open repaired preview blob: %v", err)
+	}
+	previewBytes, err := io.ReadAll(previewFile)
+	_ = previewFile.Close()
+	if err != nil {
+		t.Fatalf("read repaired preview blob: %v", err)
+	}
+	previewMaxRGB, err := maxRGBSum(previewBytes)
+	if err != nil {
+		t.Fatalf("measure repaired preview: %v", err)
+	}
+	if previewMaxRGB < 10_000 {
+		t.Fatalf("expected repaired preview to be non-black, max RGB sum was %d", previewMaxRGB)
+	}
+	screenPreview, err := server.screenPreviews.Get(context.Background(), item.ScreenPreviewObjectKey)
+	if err != nil {
+		t.Fatalf("open repaired screen preview: %v", err)
+	}
+	screenPreviewBytes, err := io.ReadAll(screenPreview.Body)
+	_ = screenPreview.Body.Close()
+	if err != nil {
+		t.Fatalf("read repaired screen preview: %v", err)
+	}
+	screenMaxRGB, err := maxRGBSum(screenPreviewBytes)
+	if err != nil {
+		t.Fatalf("measure repaired screen preview: %v", err)
+	}
+	if screenMaxRGB < 10_000 {
+		t.Fatalf("expected repaired screen preview to be non-black, max RGB sum was %d", screenMaxRGB)
+	}
 }
 
 func heicPreviewSupported(t *testing.T, sourcePath string) bool {
 	t.Helper()
+	if _, err := exec.LookPath("heif-convert"); err == nil {
+		return true
+	}
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		return false
 	}
@@ -432,6 +607,25 @@ func heicPreviewSupported(t *testing.T, sourcePath string) bool {
 	}
 	info, err := os.Stat(outputPath)
 	return err == nil && info.Size() > 0
+}
+
+func maxRGBSum(data []byte) (uint32, error) {
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return 0, err
+	}
+	bounds := img.Bounds()
+	var maxRGB uint32
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			red, green, blue, _ := img.At(x, y).RGBA()
+			sum := red + green + blue
+			if sum > maxRGB {
+				maxRGB = sum
+			}
+		}
+	}
+	return maxRGB, nil
 }
 
 func TestServeOriginalAssetMarksMissingLocalOriginal(t *testing.T) {

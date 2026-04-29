@@ -1,5 +1,5 @@
 import { getPreviewUrl } from "../../../lib/api";
-import { revokeDraftMediaResources } from "./local-media";
+import { inferredMediaTypeForFile, revokeDraftMediaResources } from "./local-media";
 import type { TimelineEntry, TimelineTimeMode, TimelineVisibility } from "../../../lib/types";
 import type { DraftMedia, UploadDraft } from "./types";
 
@@ -48,7 +48,7 @@ export function buildDrafts(files: File[]) {
       file,
       fileName: file.name,
       capturedAt,
-      mediaType: file.type || "application/octet-stream",
+      mediaType: inferredMediaTypeForFile(file),
       localPreview: true
     };
     if (media.mediaType.startsWith("video/")) {

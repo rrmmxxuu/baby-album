@@ -1,3 +1,4 @@
+import { createDraftMediaPreview } from "../../../lib/api";
 import type { UploadDraft } from "./types";
 
 const LOCAL_VIDEO_POSTER_TARGET_SECONDS = 0.3;
@@ -5,6 +6,8 @@ const LOCAL_VIDEO_POSTER_MAX_EDGE = 640;
 const LOCAL_VIDEO_POSTER_QUALITY = 0.82;
 
 const previewUrlCache = new Map<string, string>();
+const stillImagePreviewUrlCache = new Map<string, string>();
+const stillImagePreviewTaskCache = new Map<string, Promise<string>>();
 const posterUrlCache = new Map<string, string>();
 const posterTaskCache = new Map<string, Promise<string>>();
 const resourceVersionCache = new Map<string, number>();
@@ -32,6 +35,86 @@ export function ensureLocalPreviewUrl(file: File) {
   const nextUrl = URL.createObjectURL(file);
   previewUrlCache.set(key, nextUrl);
   return nextUrl;
+}
+
+export function inferredMediaTypeForFile(file: File) {
+  const explicitType = file.type.trim().toLowerCase();
+  if (explicitType) {
+    if (explicitType === "image/heic-sequence") {
+      return "image/heic";
+    }
+    if (explicitType === "image/heif-sequence") {
+      return "image/heif";
+    }
+    return explicitType === "image/jpg" ? "image/jpeg" : explicitType;
+  }
+  const name = file.name.trim().toLowerCase();
+  if (name.endsWith(".heic")) {
+    return "image/heic";
+  }
+  if (name.endsWith(".heif")) {
+    return "image/heif";
+  }
+  if (name.endsWith(".jpg") || name.endsWith(".jpeg")) {
+    return "image/jpeg";
+  }
+  if (name.endsWith(".png")) {
+    return "image/png";
+  }
+  if (name.endsWith(".gif")) {
+    return "image/gif";
+  }
+  if (name.endsWith(".webp")) {
+    return "image/webp";
+  }
+  if (name.endsWith(".mov")) {
+    return "video/quicktime";
+  }
+  if (name.endsWith(".mp4") || name.endsWith(".m4v")) {
+    return "video/mp4";
+  }
+  return "application/octet-stream";
+}
+
+export function isHeicLikeMedia(file: File, mediaType = inferredMediaTypeForFile(file)) {
+  const normalizedType = mediaType.trim().toLowerCase();
+  const name = file.name.trim().toLowerCase();
+  return normalizedType === "image/heic" || normalizedType === "image/heif" || name.endsWith(".heic") || name.endsWith(".heif");
+}
+
+export async function ensureLocalStillImagePreviewUrl(file: File, mediaType = inferredMediaTypeForFile(file)) {
+  if (!isHeicLikeMedia(file, mediaType)) {
+    return ensureLocalPreviewUrl(file);
+  }
+
+  const key = localMediaFileKey(file);
+  const cached = stillImagePreviewUrlCache.get(key);
+  if (cached) {
+    return cached;
+  }
+
+  const pendingTask = stillImagePreviewTaskCache.get(key);
+  if (pendingTask) {
+    return pendingTask;
+  }
+
+  const expectedVersion = mediaResourceVersion(key);
+  const task = createDraftMediaPreview(file)
+    .then((blob) => {
+      const previewUrl = URL.createObjectURL(blob);
+      if (mediaResourceVersion(key) !== expectedVersion) {
+        URL.revokeObjectURL(previewUrl);
+        throw new Error("stale image preview");
+      }
+      stillImagePreviewUrlCache.set(key, previewUrl);
+      return previewUrl;
+    })
+    .finally(() => {
+      stillImagePreviewTaskCache.delete(key);
+    });
+
+  stillImagePreviewTaskCache.set(key, task);
+  return task;
 }
 
 async function renderLocalVideoPoster(previewUrl: string) {
@@ -174,7 +257,14 @@ export function revokeLocalMediaResourcesForFile(file: File) {
     posterUrlCache.delete(key);
   }
 
+  const stillPreviewUrl = stillImagePreviewUrlCache.get(key);
+  if (stillPreviewUrl) {
+    URL.revokeObjectURL(stillPreviewUrl);
+    stillImagePreviewUrlCache.delete(key);
+  }
+
   posterTaskCache.delete(key);
+  stillImagePreviewTaskCache.delete(key);
 }
 
 export function revokeDraftMediaResources(drafts: UploadDraft[]) {

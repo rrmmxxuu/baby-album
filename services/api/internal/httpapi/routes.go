@@ -20,6 +20,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/v1/members", s.handleMembers)
 	s.mux.HandleFunc("/api/v1/upload-sessions", s.handleUploadSessions)
 	s.mux.HandleFunc("/api/v1/upload-sessions/", s.handleUploadSessionActions)
+	s.mux.HandleFunc("/api/v1/media-preview", s.handleDraftMediaPreview)
 	s.mux.HandleFunc("/api/v1/media/", s.handleMediaActions)
 	s.mux.HandleFunc("/api/v1/babies/", s.handleBabyAssets)
 	s.mux.HandleFunc("/api/v1/storage-nodes/register", s.handleNodeRegister)

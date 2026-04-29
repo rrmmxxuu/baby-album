@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ensureLocalPreviewUrl, ensureLocalVideoPosterUrl } from "../model/local-media";
+import { ensureLocalPreviewUrl, ensureLocalStillImagePreviewUrl, ensureLocalVideoPosterUrl } from "../model/local-media";
 import type { DraftMedia } from "../model/types";
 
 interface DraftMediaThumbProps {
@@ -48,8 +48,26 @@ export function DraftMediaThumb({ item }: DraftMediaThumbProps) {
       setPreviewUrl(item.previewUrl ?? "");
       return;
     }
-    setPreviewUrl(ensureLocalPreviewUrl(item.file));
-  }, [item.file, item.previewUrl, shouldLoad]);
+    if (item.mediaType.startsWith("video/")) {
+      setPreviewUrl(ensureLocalPreviewUrl(item.file));
+      return;
+    }
+    let cancelled = false;
+    void ensureLocalStillImagePreviewUrl(item.file, item.mediaType)
+      .then((nextPreviewUrl) => {
+        if (!cancelled) {
+          setPreviewUrl(nextPreviewUrl);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPreviewUrl("");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [item.file, item.mediaType, item.previewUrl, shouldLoad]);
 
   useEffect(() => {
     if (!item.mediaType.startsWith("video/")) {

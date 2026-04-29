@@ -269,10 +269,24 @@ func generateBestStillImagePreview(sourcePath, mediaType, originalName string, m
 	if err == nil {
 		return width, height, encoded, nil
 	}
+	if isHEIFStillImageMediaType(mediaType) {
+		if convertedWidth, convertedHeight, converted, convertedErr := generateHEIFStillImagePreview(sourcePath, maxEdge, quality); convertedErr == nil {
+			return convertedWidth, convertedHeight, converted, nil
+		}
+	}
 	if !allowsStillImageFFmpegFallback(mediaType, originalName) {
 		return width, height, nil, err
 	}
 	return generateFFmpegStillImagePreview(sourcePath, maxEdge, quality)
+}
+
+func isHEIFStillImageMediaType(mediaType string) bool {
+	switch strings.ToLower(strings.TrimSpace(mediaType)) {
+	case "image/heic", "image/heif":
+		return true
+	default:
+		return false
+	}
 }
 
 func allowsStillImageFFmpegFallback(mediaType, originalName string) bool {
@@ -284,6 +298,30 @@ func allowsStillImageFFmpegFallback(mediaType, originalName string) bool {
 		_ = originalName
 		return false
 	}
+}
+
+func generateHEIFStillImagePreview(sourcePath string, maxEdge, quality int) (int, int, []byte, error) {
+	if _, err := exec.LookPath("heif-convert"); err != nil {
+		return 0, 0, nil, err
+	}
+	tempDir, err := os.MkdirTemp("", "baby-album-heif-preview-*")
+	if err != nil {
+		return 0, 0, nil, err
+	}
+	defer os.RemoveAll(tempDir)
+
+	convertedPath := filepath.Join(tempDir, "source.jpg")
+	cmd := exec.Command(
+		"heif-convert",
+		"--quiet",
+		"-q", strconv.Itoa(maxInt(1, minInt(100, quality))),
+		sourcePath,
+		convertedPath,
+	)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return 0, 0, nil, fmt.Errorf("heif-convert failed: %v (%s)", err, strings.TrimSpace(string(output)))
+	}
+	return generateImagePreview(convertedPath, maxEdge, quality)
 }
 
 func generateFFmpegStillImagePreview(sourcePath string, maxEdge, quality int) (int, int, []byte, error) {

@@ -74,6 +74,27 @@ export function getApiBaseUrl() {
   return apiBaseUrl;
 }
 
+export async function createDraftMediaPreview(file: File): Promise<Blob> {
+  const formData = new FormData();
+  formData.append("file", file, file.name);
+  const response = await fetch(`${apiBaseUrl}/api/v1/media-preview`, {
+    method: "POST",
+    body: formData
+  });
+  if (!response.ok) {
+    const requestId = response.headers.get("X-Request-ID") ?? "";
+    let message = `Request failed with status ${response.status}`;
+    try {
+      const payload = (await response.json()) as { error?: string };
+      message = payload.error ?? message;
+    } catch {
+      // Keep the generic status message when the binary endpoint did not return JSON.
+    }
+    throw new ApiError(message, response.status, requestId);
+  }
+  return response.blob();
+}
+
 export async function reportClientError(input: {
   message: string;
   stack?: string;

@@ -28,6 +28,14 @@ describe("upload draft helpers", () => {
     expect(URL.createObjectURL).not.toHaveBeenCalled();
   });
 
+  it("infers HEIC media type when browsers omit the file type", () => {
+    const [draft] = buildDrafts([
+      new File(["a"], "IMG_0001.HEIC", { lastModified: new Date("2026-03-27T08:00:00.000Z").getTime() })
+    ]);
+
+    expect(draft.items[0].mediaType).toBe("image/heic");
+  });
+
   it("merges incoming photo drafts into available batches", () => {
     const existing = buildDrafts([
       new File(["a"], "a.jpg", { type: "image/jpeg", lastModified: new Date("2026-03-27T08:00:00.000Z").getTime() })

@@ -55,7 +55,52 @@ func detectMediaTypeFromFile(sourcePath string) string {
 	if n <= 0 {
 		return ""
 	}
-	return http.DetectContentType(header[:n])
+	return detectMediaTypeFromBytes(header[:n])
+}
+
+func detectMediaTypeFromBytes(data []byte) string {
+	if mediaType := detectISOBMFFImageMediaType(data); mediaType != "" {
+		return mediaType
+	}
+	return http.DetectContentType(data)
+}
+
+func detectISOBMFFImageMediaType(data []byte) string {
+	if len(data) < 12 || string(data[4:8]) != "ftyp" {
+		return ""
+	}
+	boxSize := int(binary.BigEndian.Uint32(data[:4]))
+	if boxSize != 0 && boxSize < 16 {
+		return ""
+	}
+	end := len(data)
+	if boxSize > 0 && boxSize < end {
+		end = boxSize
+	}
+	brands := make([]string, 0, 1+(end-16)/4)
+	brands = append(brands, string(data[8:12]))
+	for offset := 16; offset+4 <= end; offset += 4 {
+		brands = append(brands, string(data[offset:offset+4]))
+	}
+	for _, brand := range brands {
+		switch brand {
+		case "avif", "avis":
+			return "image/avif"
+		}
+	}
+	for _, brand := range brands {
+		switch brand {
+		case "heic", "heix", "hevc", "hevx", "heim", "heis", "hevm", "hevs":
+			return "image/heic"
+		}
+	}
+	for _, brand := range brands {
+		switch brand {
+		case "mif1", "msf1":
+			return "image/heif"
+		}
+	}
+	return ""
 }
 
 func normalizedMediaType(value string) string {
@@ -63,6 +108,10 @@ func normalizedMediaType(value string) string {
 	switch value {
 	case "image/jpg":
 		return "image/jpeg"
+	case "image/heic-sequence":
+		return "image/heic"
+	case "image/heif-sequence":
+		return "image/heif"
 	case "video/x-m4v":
 		return "video/mp4"
 	case "video/x-quicktime":

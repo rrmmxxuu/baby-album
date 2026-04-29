@@ -6,11 +6,13 @@ import { DraftMediaThumb } from "./draft-media-thumb";
 
 const localMediaMocks = vi.hoisted(() => ({
   ensureLocalPreviewUrl: vi.fn((file: File) => `blob:${file.name}`),
+  ensureLocalStillImagePreviewUrl: vi.fn((file: File) => Promise.resolve(`blob:preview-${file.name}`)),
   ensureLocalVideoPosterUrl: vi.fn(() => Promise.resolve("blob:clip-poster.jpg"))
 }));
 
 vi.mock("../model/local-media", () => ({
   ensureLocalPreviewUrl: localMediaMocks.ensureLocalPreviewUrl,
+  ensureLocalStillImagePreviewUrl: localMediaMocks.ensureLocalStillImagePreviewUrl,
   ensureLocalVideoPosterUrl: localMediaMocks.ensureLocalVideoPosterUrl
 }));
 
@@ -29,6 +31,7 @@ function buildMedia(overrides?: Partial<DraftMedia>): DraftMedia {
 describe("DraftMediaThumb", () => {
   beforeEach(() => {
     localMediaMocks.ensureLocalPreviewUrl.mockClear();
+    localMediaMocks.ensureLocalStillImagePreviewUrl.mockClear();
     localMediaMocks.ensureLocalVideoPosterUrl.mockClear();
   });
 
@@ -51,6 +54,19 @@ describe("DraftMediaThumb", () => {
     expect(screen.getByText("视频")).toBeVisible();
     await waitFor(() => expect(container.querySelector("video")).not.toBeNull());
     await waitFor(() => expect(container.querySelector("video")).toHaveAttribute("poster", "blob:clip-poster.jpg"));
+  });
+
+  it("renders local HEIC images through converted preview urls", async () => {
+    render(createElement(DraftMediaThumb, {
+      item: buildMedia({
+        file: new File(["heic"], "moment.heic", { type: "image/heic" }),
+        fileName: "moment.heic",
+        mediaType: "image/heic"
+      })
+    }));
+
+    await waitFor(() => expect(screen.getByRole("img", { name: "moment.heic" })).toHaveAttribute("src", "blob:preview-moment.heic"));
+    expect(localMediaMocks.ensureLocalStillImagePreviewUrl).toHaveBeenCalled();
   });
 
   it("renders existing videos with a preview image instead of a broken video source", () => {

@@ -9,7 +9,7 @@ export function HiddenFileInput({ inputRef, onFilesSelected }: HiddenFileInputPr
   return (
     <input
       hidden
-      accept="image/*,video/*"
+      accept="image/*,image/heic,image/heif,.heic,.heif,video/*"
       multiple
       onChange={(event) => {
         onFilesSelected(Array.from(event.target.files ?? []));

@@ -6,7 +6,9 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -131,6 +133,80 @@ func (s *Server) handleUploadSessionActions(w http.ResponseWriter, r *http.Reque
 		s.cacheController.RunNow()
 	}
 	writeJSON(w, http.StatusOK, session)
+}
+
+func (s *Server) handleDraftMediaPreview(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w)
+		return
+	}
+	if _, err := s.actorID(r); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	file, header, ok := parseMultipartFile(w, r, s.maxUploadBytes)
+	if !ok {
+		return
+	}
+	defer file.Close()
+	if r.MultipartForm != nil {
+		defer r.MultipartForm.RemoveAll()
+	}
+	if err := validateUploadType(file, header.Filename, allowMediaUploadType, "unsupported media file type"); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	tempDir, err := os.MkdirTemp("", "baby-album-draft-preview-*")
+	if err != nil {
+		writeLoggedError(r, w, http.StatusInternalServerError, "preview conversion failed", "draft preview temp dir failed", err, map[string]any{
+			"file_name": header.Filename,
+		})
+		return
+	}
+	defer os.RemoveAll(tempDir)
+
+	sourcePath := filepath.Join(tempDir, "source"+strings.ToLower(filepath.Ext(header.Filename)))
+	out, err := os.Create(sourcePath)
+	if err != nil {
+		writeLoggedError(r, w, http.StatusInternalServerError, "preview conversion failed", "draft preview temp file failed", err, map[string]any{
+			"file_name": header.Filename,
+		})
+		return
+	}
+	if _, err := io.Copy(out, file); err != nil {
+		_ = out.Close()
+		writeLoggedError(r, w, http.StatusInternalServerError, "preview conversion failed", "draft preview copy failed", err, map[string]any{
+			"file_name": header.Filename,
+		})
+		return
+	}
+	if err := out.Close(); err != nil {
+		writeLoggedError(r, w, http.StatusInternalServerError, "preview conversion failed", "draft preview temp close failed", err, map[string]any{
+			"file_name": header.Filename,
+		})
+		return
+	}
+
+	metadata := inspectUploadedMedia(sourcePath, header.Filename, header.Header.Get("Content-Type"))
+	if !isTrustedStillImageMediaType(metadata.DetectedMediaType) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported image file type"})
+		return
+	}
+	width, height, encoded, err := generateBestStillImagePreview(sourcePath, metadata.DetectedMediaType, header.Filename, 640, 82)
+	if err != nil {
+		writeLoggedError(r, w, http.StatusUnprocessableEntity, "preview not available for this image", "draft preview conversion failed", err, map[string]any{
+			"file_name":  header.Filename,
+			"media_type": metadata.DetectedMediaType,
+		})
+		return
+	}
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("X-Image-Width", strconv.Itoa(width))
+	w.Header().Set("X-Image-Height", strconv.Itoa(height))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(encoded)
 }
 
 func (s *Server) handleMediaActions(w http.ResponseWriter, r *http.Request) {

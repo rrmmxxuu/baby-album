@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { TimelineEntry, TimelineTimeMode, TimelineVisibility } from "../../../lib/types";
 import { buildDraftFromEntry, buildDrafts, mergeDrafts, revokeDrafts, toCapturedAt, createClientId } from "../model/drafts";
-import { revokeLocalMediaResourcesForFile } from "../model/local-media";
+import { inferredMediaTypeForFile, revokeLocalMediaResourcesForFile } from "../model/local-media";
 import type { DraftModal, DraftScene, UploadDraft } from "../model/types";
 
 const SHEET_EXIT_MS = 260;
@@ -158,7 +158,7 @@ export function useUploadDraftState({ albumId, open, editingEntry }: UseUploadDr
       file,
       fileName: file.name,
       capturedAt: toCapturedAt(file),
-      mediaType: file.type || "application/octet-stream",
+      mediaType: inferredMediaTypeForFile(file),
       localPreview: true
     }));
     const hasVideo = selectedDraft.items.some((item) => item.mediaType.startsWith("video/"));

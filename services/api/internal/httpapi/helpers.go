@@ -174,7 +174,7 @@ func detectMultipartContentType(file multipartFile) (string, error) {
 	if n <= 0 {
 		return "", nil
 	}
-	return normalizedMediaType(http.DetectContentType(header[:n])), nil
+	return normalizedMediaType(detectMediaTypeFromBytes(header[:n])), nil
 }
 
 func validateUploadType(file multipartFile, fileName string, allowed func(string, string) bool, publicError string) error {
@@ -202,7 +202,7 @@ func allowAvatarUploadType(detected, _ string) bool {
 
 func allowMediaUploadType(detected, fileName string) bool {
 	switch detected {
-	case "image/jpeg", "image/png", "image/gif", "image/webp", "video/mp4", "video/quicktime":
+	case "image/jpeg", "image/png", "image/gif", "image/webp", "image/heic", "image/heif", "video/mp4", "video/quicktime":
 		return true
 	}
 	extensionType := normalizedMediaType(mediaTypeForFileExtension(fileName))

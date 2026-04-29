@@ -101,7 +101,7 @@ export function BabyPhotosRoute() {
     }
     previousUploadPhaseRef.current = nextPhase;
 
-    if (nextPhase === "success") {
+    if (nextPhase === "success" || nextPhase === "partial_success") {
       if (timeline.draftSheetOpen) {
         handleCloseDraftSheet();
       }
@@ -110,7 +110,6 @@ export function BabyPhotosRoute() {
 
     if (nextPhase === "error") {
       session.showError("上传失败", backgroundUpload.state.errorMessage || "上传失败。");
-      backgroundUpload.clear();
     }
   }, [backgroundUpload, session, timeline.draftSheetOpen]);
 
@@ -189,7 +188,8 @@ export function BabyPhotosRoute() {
   }
 
   const showUploadFab = (backgroundUpload.state.phase === "uploading" && backgroundUpload.state.surface === "minimized")
-    || backgroundUpload.state.phase === "success";
+    || backgroundUpload.state.phase === "success"
+    || (backgroundUpload.state.phase === "partial_success" && backgroundUpload.state.surface === "minimized");
 
   return (
     <>

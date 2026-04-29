@@ -32,8 +32,15 @@ export type UploadProgressState = {
   bytesPerSecond: number;
 };
 
-export type BackgroundUploadPhase = "idle" | "uploading" | "success" | "error";
+export type BackgroundUploadPhase = "idle" | "uploading" | "success" | "partial_success" | "error";
 export type BackgroundUploadSurface = "dialog" | "minimized";
+
+export type BackgroundUploadFailure = {
+  draftId: string;
+  itemId: string;
+  fileName: string;
+  message: string;
+};
 
 export type BackgroundUploadJobMedia = {
   id: string;
@@ -67,6 +74,7 @@ export type BackgroundUploadState = {
   surface: BackgroundUploadSurface;
   progress: UploadProgressState | null;
   errorMessage: string;
+  failedItems: BackgroundUploadFailure[];
   albumId: string;
 };
 

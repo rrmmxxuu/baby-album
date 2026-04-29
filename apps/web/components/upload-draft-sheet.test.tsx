@@ -15,6 +15,7 @@ function buildBackgroundUpload(): BackgroundUploadController {
       surface: "dialog",
       progress: null,
       errorMessage: "",
+      failedItems: [],
       albumId: ""
     }
   };

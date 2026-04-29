@@ -9,13 +9,14 @@ interface UploadProgressFabProps {
 }
 
 export function UploadProgressFab({ state, onClick }: UploadProgressFabProps) {
-  if (state.phase !== "uploading" && state.phase !== "success") {
+  if (state.phase !== "uploading" && state.phase !== "success" && state.phase !== "partial_success") {
     return null;
   }
 
   const isSuccess = state.phase === "success";
+  const isPartialSuccess = state.phase === "partial_success";
   const percent = state.progress ? progressPercent(state.progress) : 0;
-  const progress = isSuccess ? 100 : Math.min(Math.max(percent, 0), 100);
+  const progress = isSuccess || isPartialSuccess ? 100 : Math.min(Math.max(percent, 0), 100);
   const strokeWidth = 4;
   const ringSize = 46;
   const radius = (ringSize - strokeWidth) / 2;
@@ -27,8 +28,8 @@ export function UploadProgressFab({ state, onClick }: UploadProgressFabProps) {
 
   return (
     <button
-      aria-label={isSuccess ? "上传已完成" : `上传进度 ${percent}%`}
-      className={`floatingAddButton uploadProgressFab${isSuccess ? " uploadProgressFabSuccess" : ""}`}
+      aria-label={isSuccess ? "上传已完成" : isPartialSuccess ? "上传完成，有文件未上传" : `上传进度 ${percent}%`}
+      className={`floatingAddButton uploadProgressFab${isSuccess ? " uploadProgressFabSuccess" : ""}${isPartialSuccess ? " uploadProgressFabWarning" : ""}`}
       onClick={onClick}
       type="button"
     >
@@ -44,7 +45,7 @@ export function UploadProgressFab({ state, onClick }: UploadProgressFabProps) {
           strokeWidth={strokeWidth}
         />
       </svg>
-      <span className="uploadProgressFabLabel">{isSuccess ? "✓" : percent}</span>
+      <span className="uploadProgressFabLabel">{isSuccess ? "✓" : isPartialSuccess ? "!" : percent}</span>
     </button>
   );
 }

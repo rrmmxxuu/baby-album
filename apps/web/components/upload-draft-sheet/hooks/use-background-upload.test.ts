@@ -5,6 +5,7 @@ import { useBackgroundUpload } from "./use-background-upload";
 
 const apiMocks = vi.hoisted(() => ({
   createTimelineEntry: vi.fn(),
+  deleteTimelineEntry: vi.fn(),
   deleteTimelineEntryMedia: vi.fn(),
   getApiBaseUrl: vi.fn(() => "/api/proxy"),
   updateTimelineEntry: vi.fn()
@@ -12,6 +13,7 @@ const apiMocks = vi.hoisted(() => ({
 
 vi.mock("../../../lib/api", () => ({
   createTimelineEntry: apiMocks.createTimelineEntry,
+  deleteTimelineEntry: apiMocks.deleteTimelineEntry,
   deleteTimelineEntryMedia: apiMocks.deleteTimelineEntryMedia,
   getApiBaseUrl: apiMocks.getApiBaseUrl,
   updateTimelineEntry: apiMocks.updateTimelineEntry
@@ -54,6 +56,11 @@ class FakeXMLHttpRequest {
     this.onload?.call(this as unknown as XMLHttpRequest, new ProgressEvent("load"));
   }
 
+  failWithStatus(status: number, error: string) {
+    this.responseText = JSON.stringify({ error });
+    this.succeed(status);
+  }
+
   fail() {
     this.onerror?.call(this as unknown as XMLHttpRequest, new ProgressEvent("error"));
   }
@@ -61,6 +68,16 @@ class FakeXMLHttpRequest {
 
 const originalFetch = globalThis.fetch;
 const originalXMLHttpRequest = globalThis.XMLHttpRequest;
+
+function buildNewMedia(id: string, fileName: string): BackgroundUploadJob["drafts"][number]["items"][number] {
+  return {
+    id,
+    file: new File([fileName], fileName, { type: "image/jpeg" }),
+    fileName,
+    capturedAt: "2026-03-20T08:00:00.000Z",
+    mediaType: "image/jpeg"
+  };
+}
 
 function buildCreateJob(overrides?: Partial<BackgroundUploadJob>): BackgroundUploadJob {
   return {
@@ -72,13 +89,7 @@ function buildCreateJob(overrides?: Partial<BackgroundUploadJob>): BackgroundUpl
       visibility: "members",
       timeMode: "captured_at",
       manualDate: "",
-      items: [{
-        id: "media-1",
-        file: new File(["hello"], "hello.jpg", { type: "image/jpeg" }),
-        fileName: "hello.jpg",
-        capturedAt: "2026-03-20T08:00:00.000Z",
-        mediaType: "image/jpeg"
-      }]
+      items: [buildNewMedia("media-1", "hello.jpg")]
     }],
     originalMediaIds: [],
     ...overrides
@@ -89,15 +100,16 @@ describe("useBackgroundUpload", () => {
   beforeEach(() => {
     FakeXMLHttpRequest.reset();
     apiMocks.createTimelineEntry.mockReset().mockResolvedValue({ id: "entry-1" });
+    apiMocks.deleteTimelineEntry.mockReset().mockResolvedValue(undefined);
     apiMocks.updateTimelineEntry.mockReset().mockResolvedValue({ id: "entry-1" });
     apiMocks.deleteTimelineEntryMedia.mockReset().mockResolvedValue(undefined);
     globalThis.XMLHttpRequest = FakeXMLHttpRequest as unknown as typeof XMLHttpRequest;
-    globalThis.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: "session-1" }), {
+    globalThis.fetch = vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({ id: "session-1" }), {
       status: 200,
       headers: {
         "Content-Type": "application/json"
       }
-    })) as typeof fetch;
+    }))) as typeof fetch;
   });
 
   afterEach(() => {
@@ -159,7 +171,12 @@ describe("useBackgroundUpload", () => {
 
     await waitFor(() => expect(result.current.state.phase).toBe("error"));
     expect(result.current.state.surface).toBe("dialog");
-    expect(result.current.state.errorMessage).toContain("上传 hello.jpg 失败");
+    expect(result.current.state.errorMessage).toContain("没有文件上传成功");
+    expect(result.current.state.failedItems).toEqual([expect.objectContaining({
+      fileName: "hello.jpg",
+      message: "上传 hello.jpg 失败。"
+    })]);
+    expect(apiMocks.deleteTimelineEntry).toHaveBeenCalledWith("album-1", "entry-1");
 
     act(() => {
       result.current.clear();
@@ -167,7 +184,86 @@ describe("useBackgroundUpload", () => {
     expect(result.current.state.phase).toBe("idle");
   });
 
-  it("uses the edit flow to update the entry and delete removed media before uploading new files", async () => {
+  it("continues uploading later files and reports partial success when one file fails", async () => {
+    const onUploaded = vi.fn();
+    const { result } = renderHook(() => useBackgroundUpload());
+
+    act(() => {
+      result.current.startUpload(buildCreateJob({
+        onUploaded,
+        drafts: [{
+          id: "draft-1",
+          caption: "caption",
+          visibility: "members",
+          timeMode: "captured_at",
+          manualDate: "",
+          items: [
+            buildNewMedia("media-1", "bad.jpg"),
+            buildNewMedia("media-2", "good.jpg")
+          ]
+        }]
+      }));
+    });
+
+    await waitFor(() => expect(FakeXMLHttpRequest.instances).toHaveLength(1));
+    act(() => {
+      FakeXMLHttpRequest.instances[0].failWithStatus(400, "unsupported media type");
+    });
+
+    await waitFor(() => expect(FakeXMLHttpRequest.instances).toHaveLength(2));
+    act(() => {
+      FakeXMLHttpRequest.instances[1].succeed();
+    });
+
+    await waitFor(() => expect(result.current.state.phase).toBe("partial_success"));
+    expect(result.current.state.surface).toBe("dialog");
+    expect(result.current.state.progress?.completedFiles).toBe(2);
+    expect(result.current.state.failedItems).toEqual([expect.objectContaining({
+      fileName: "bad.jpg",
+      message: "unsupported media type"
+    })]);
+    expect(apiMocks.deleteTimelineEntry).not.toHaveBeenCalled();
+    expect(onUploaded).toHaveBeenCalledTimes(1);
+  });
+
+  it("tries every file, cleans up the empty entry, and errors when all files fail", async () => {
+    const { result } = renderHook(() => useBackgroundUpload());
+
+    act(() => {
+      result.current.startUpload(buildCreateJob({
+        drafts: [{
+          id: "draft-1",
+          caption: "caption",
+          visibility: "members",
+          timeMode: "captured_at",
+          manualDate: "",
+          items: [
+            buildNewMedia("media-1", "first.jpg"),
+            buildNewMedia("media-2", "second.jpg")
+          ]
+        }]
+      }));
+    });
+
+    await waitFor(() => expect(FakeXMLHttpRequest.instances).toHaveLength(1));
+    act(() => {
+      FakeXMLHttpRequest.instances[0].failWithStatus(400, "first failed");
+    });
+
+    await waitFor(() => expect(FakeXMLHttpRequest.instances).toHaveLength(2));
+    act(() => {
+      FakeXMLHttpRequest.instances[1].failWithStatus(400, "second failed");
+    });
+
+    await waitFor(() => expect(result.current.state.phase).toBe("error"));
+    expect(FakeXMLHttpRequest.instances).toHaveLength(2);
+    expect(result.current.state.errorMessage).toContain("没有文件上传成功");
+    expect(result.current.state.progress?.completedFiles).toBe(2);
+    expect(result.current.state.failedItems).toHaveLength(2);
+    expect(apiMocks.deleteTimelineEntry).toHaveBeenCalledWith("album-1", "entry-1");
+  });
+
+  it("uses the edit flow to upload new files before deleting removed media", async () => {
     const { result } = renderHook(() => useBackgroundUpload());
 
     act(() => {
@@ -206,13 +302,60 @@ describe("useBackgroundUpload", () => {
       albumId: "album-1",
       caption: "updated"
     })));
-    expect(apiMocks.deleteTimelineEntryMedia).toHaveBeenCalledWith("album-1", "entry-1", "remove-1");
-    expect(apiMocks.deleteTimelineEntryMedia).not.toHaveBeenCalledWith("album-1", "entry-1", "keep-1");
+    expect(apiMocks.deleteTimelineEntryMedia).not.toHaveBeenCalled();
 
     await waitFor(() => expect(FakeXMLHttpRequest.instances).toHaveLength(1));
     act(() => {
       FakeXMLHttpRequest.instances[0].succeed();
     });
+    await waitFor(() => expect(apiMocks.deleteTimelineEntryMedia).toHaveBeenCalledWith("album-1", "entry-1", "remove-1"));
+    expect(apiMocks.deleteTimelineEntryMedia).not.toHaveBeenCalledWith("album-1", "entry-1", "keep-1");
+
     await waitFor(() => expect(result.current.state.phase).toBe("success"));
+  });
+
+  it("keeps old media when a new edit upload fails", async () => {
+    const onUploaded = vi.fn();
+    const { result } = renderHook(() => useBackgroundUpload());
+
+    act(() => {
+      result.current.startUpload(buildCreateJob({
+        mode: "edit",
+        editingEntryId: "entry-42",
+        onUploaded,
+        drafts: [{
+          id: "draft-1",
+          caption: "updated",
+          visibility: "members",
+          timeMode: "captured_at",
+          manualDate: "",
+          items: [
+            {
+              id: "existing-1",
+              file: null,
+              fileName: "old.jpg",
+              capturedAt: "2026-03-20T08:00:00.000Z",
+              mediaType: "image/jpeg",
+              existingMediaId: "keep-1"
+            },
+            buildNewMedia("media-2", "new.jpg")
+          ]
+        }],
+        originalMediaIds: ["keep-1", "remove-1"]
+      }));
+    });
+
+    await waitFor(() => expect(FakeXMLHttpRequest.instances).toHaveLength(1));
+    act(() => {
+      FakeXMLHttpRequest.instances[0].failWithStatus(400, "unsupported media type");
+    });
+
+    await waitFor(() => expect(result.current.state.phase).toBe("partial_success"));
+    expect(apiMocks.deleteTimelineEntryMedia).not.toHaveBeenCalled();
+    expect(onUploaded).toHaveBeenCalledTimes(1);
+    expect(result.current.state.failedItems).toEqual([expect.objectContaining({
+      fileName: "new.jpg",
+      message: "unsupported media type"
+    })]);
   });
 });

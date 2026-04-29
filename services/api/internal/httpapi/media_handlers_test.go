@@ -148,6 +148,23 @@ func TestDetectMediaTypeFromBytesRecognizesHEICContainer(t *testing.T) {
 	}
 }
 
+func TestDetectMediaTypeFromBytesRecognizesQuickTimeBrand(t *testing.T) {
+	data := []byte{
+		0x00, 0x00, 0x00, 0x14,
+		'f', 't', 'y', 'p',
+		'q', 't', ' ', ' ',
+		0x00, 0x00, 0x00, 0x00,
+		'q', 't', ' ', ' ',
+	}
+
+	if mediaType := detectMediaTypeFromBytes(data); mediaType != "video/quicktime" {
+		t.Fatalf("expected video/quicktime, got %q", mediaType)
+	}
+	if !allowMediaUploadType(detectMediaTypeFromBytes(data), "33.MP4") {
+		t.Fatal("expected QuickTime brand in MP4 file to be allowed")
+	}
+}
+
 func TestHandleUploadSessionContentDetectsHEICContainer(t *testing.T) {
 	blobStorage := blob.New(t.TempDir())
 	heicData, err := base64.StdEncoding.DecodeString(sampleHEICBase64)

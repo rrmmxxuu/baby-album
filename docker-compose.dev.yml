@@ -22,6 +22,11 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-baby_album}
       POSTGRES_USER: ${POSTGRES_USER:-baby_album}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-baby_album}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
@@ -32,7 +37,9 @@ services:
     build:
       context: ./services/api
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
     environment:
       API_ADDR: :8080
       DATABASE_URL: postgres://baby_album:baby_album@postgres:5432/baby_album?sslmode=disable

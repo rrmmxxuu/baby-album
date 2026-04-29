@@ -59,13 +59,13 @@ func detectMediaTypeFromFile(sourcePath string) string {
 }
 
 func detectMediaTypeFromBytes(data []byte) string {
-	if mediaType := detectISOBMFFImageMediaType(data); mediaType != "" {
+	if mediaType := detectISOBMFFMediaType(data); mediaType != "" {
 		return mediaType
 	}
 	return http.DetectContentType(data)
 }
 
-func detectISOBMFFImageMediaType(data []byte) string {
+func detectISOBMFFMediaType(data []byte) string {
 	if len(data) < 12 || string(data[4:8]) != "ftyp" {
 		return ""
 	}
@@ -98,6 +98,18 @@ func detectISOBMFFImageMediaType(data []byte) string {
 		switch brand {
 		case "mif1", "msf1":
 			return "image/heif"
+		}
+	}
+	for _, brand := range brands {
+		if brand == "qt  " {
+			return "video/quicktime"
+		}
+	}
+	for _, brand := range brands {
+		switch brand {
+		case "isom", "iso2", "iso3", "iso4", "iso5", "iso6", "iso7", "iso8", "iso9",
+			"mp41", "mp42", "avc1", "M4V ", "M4A ", "MSNV", "dash", "cmfc", "cmfs":
+			return "video/mp4"
 		}
 	}
 	return ""

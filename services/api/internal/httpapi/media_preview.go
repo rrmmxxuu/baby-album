@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"image"
 	"image/jpeg"
@@ -11,6 +12,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -269,15 +271,43 @@ func generateBestStillImagePreview(sourcePath, mediaType, originalName string, m
 	if err == nil {
 		return width, height, encoded, nil
 	}
+	var heifErr error
 	if isHEIFStillImageMediaType(mediaType) {
 		if convertedWidth, convertedHeight, converted, convertedErr := generateHEIFStillImagePreview(sourcePath, maxEdge, quality); convertedErr == nil {
 			return convertedWidth, convertedHeight, converted, nil
+		} else {
+			heifErr = convertedErr
 		}
 	}
 	if !allowsStillImageFFmpegFallback(mediaType, originalName) {
 		return width, height, nil, err
 	}
-	return generateFFmpegStillImagePreview(sourcePath, maxEdge, quality)
+	fallbackWidth, fallbackHeight, fallbackEncoded, fallbackErr := generateFFmpegStillImagePreview(sourcePath, maxEdge, quality)
+	if fallbackErr == nil {
+		return fallbackWidth, fallbackHeight, fallbackEncoded, nil
+	}
+	if fallbackWidth > 0 || fallbackHeight > 0 {
+		width = fallbackWidth
+		height = fallbackHeight
+	}
+	return width, height, nil, stillImagePreviewError(err, heifErr, fallbackErr)
+}
+
+func stillImagePreviewError(imageErr, heifErr, ffmpegErr error) error {
+	parts := make([]string, 0, 3)
+	if imageErr != nil {
+		parts = append(parts, fmt.Sprintf("go image preview failed: %v", imageErr))
+	}
+	if heifErr != nil {
+		parts = append(parts, fmt.Sprintf("heif-convert preview failed: %v", heifErr))
+	}
+	if ffmpegErr != nil {
+		parts = append(parts, fmt.Sprintf("ffmpeg fallback failed: %v", ffmpegErr))
+	}
+	if len(parts) == 0 {
+		return fmt.Errorf("still image preview failed")
+	}
+	return errors.New(strings.Join(parts, "; "))
 }
 
 func isHEIFStillImageMediaType(mediaType string) bool {
@@ -311,17 +341,94 @@ func generateHEIFStillImagePreview(sourcePath string, maxEdge, quality int) (int
 	defer os.RemoveAll(tempDir)
 
 	convertedPath := filepath.Join(tempDir, "source.jpg")
-	cmd := exec.Command(
-		"heif-convert",
-		"--quiet",
-		"-q", strconv.Itoa(maxInt(1, minInt(100, quality))),
-		sourcePath,
-		convertedPath,
-	)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return 0, 0, nil, fmt.Errorf("heif-convert failed: %v (%s)", err, strings.TrimSpace(string(output)))
+	if err := runHEIFConvert(sourcePath, convertedPath, quality, false); err != nil {
+		if sequenceErr := runHEIFConvert(sourcePath, convertedPath, quality, true); sequenceErr != nil {
+			return 0, 0, nil, fmt.Errorf("heif-convert failed: %v; sequence fallback failed: %v", err, sequenceErr)
+		}
+		sequencePath, findErr := firstHEIFSequenceOutputPath(convertedPath)
+		if findErr != nil {
+			return 0, 0, nil, findErr
+		}
+		convertedPath = sequencePath
 	}
 	return generateImagePreview(convertedPath, maxEdge, quality)
+}
+
+func runHEIFConvert(sourcePath, outputPath string, quality int, sequence bool) error {
+	args := []string{
+		"--quiet",
+		"-q", strconv.Itoa(maxInt(1, minInt(100, quality))),
+	}
+	if sequence {
+		args = append(args, "--sequence")
+	}
+	args = append(args, sourcePath, outputPath)
+	cmd := exec.Command("heif-convert", args...)
+	output, err := cmd.CombinedOutput()
+	outputText := strings.TrimSpace(string(output))
+	if err != nil {
+		return fmt.Errorf("%v (%s)", err, outputText)
+	}
+	if outputText != "" && strings.Contains(strings.ToLower(outputText), "unrecognized option") {
+		return errors.New(outputText)
+	}
+	if sequence {
+		if _, err := firstHEIFSequenceOutputPath(outputPath); err != nil {
+			return fmt.Errorf("%v (%s)", err, outputText)
+		}
+		return nil
+	}
+	info, statErr := os.Stat(outputPath)
+	if statErr != nil {
+		return fmt.Errorf("heif-convert output was not created (%s)", outputText)
+	}
+	if info.Size() == 0 {
+		return fmt.Errorf("heif-convert output was empty (%s)", outputText)
+	}
+	return nil
+}
+
+func firstHEIFSequenceOutputPath(outputPath string) (string, error) {
+	extension := filepath.Ext(outputPath)
+	prefix := strings.TrimSuffix(outputPath, extension)
+	patterns := []string{
+		prefix + "-*" + extension,
+		outputPath + "-*" + extension,
+		filepath.Join(filepath.Dir(outputPath), "*"+extension),
+	}
+	var matches []string
+	for _, pattern := range patterns {
+		found, err := filepath.Glob(pattern)
+		if err != nil {
+			return "", err
+		}
+		matches = append(matches, found...)
+	}
+	matches = uniqueStrings(matches)
+	sort.Strings(matches)
+	for _, match := range matches {
+		info, err := os.Stat(match)
+		if err == nil && !info.IsDir() && info.Size() > 0 {
+			return match, nil
+		}
+	}
+	return "", fmt.Errorf("heif-convert sequence output was not created")
+}
+
+func uniqueStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(values))
+	unique := make([]string, 0, len(values))
+	for _, value := range values {
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		unique = append(unique, value)
+	}
+	return unique
 }
 
 func generateFFmpegStillImagePreview(sourcePath string, maxEdge, quality int) (int, int, []byte, error) {

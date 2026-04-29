@@ -1,0 +1,84 @@
+## Containerized local development stack.
+##
+## This stack intentionally uses the same Compose project name and Postgres
+## volume as docker-compose.yml, so it reuses the database you already start
+## with `docker compose up -d postgres`.
+##
+## Start:
+##   docker compose -f docker-compose.dev.yml up --build
+##
+## Stop app containers only:
+##   docker compose -f docker-compose.dev.yml stop baby-album-web baby-album-api
+##
+## Stop everything while keeping data:
+##   docker compose -f docker-compose.dev.yml down
+
+name: baby-album
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-baby_album}
+      POSTGRES_USER: ${POSTGRES_USER:-baby_album}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-baby_album}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  baby-album-api:
+    container_name: baby-album-api
+    build:
+      context: ./services/api
+    depends_on:
+      - postgres
+    environment:
+      API_ADDR: :8080
+      DATABASE_URL: postgres://baby_album:baby_album@postgres:5432/baby_album?sslmode=disable
+      CACHE_ROOT: /var/lib/baby-album/cache
+      R2_LOCAL_ROOT: /var/lib/baby-album/r2
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-512}
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
+      MEDIA_URL_SIGNING_SECRET: ${MEDIA_URL_SIGNING_SECRET:-local-compose-media-url-signing-secret-not-for-production-20260429}
+      PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-http://192.168.31.200:8080}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://192.168.31.200:3000,http://localhost:3000,http://127.0.0.1:3000}
+      LOG_FORMAT: ${LOG_FORMAT:-pretty}
+      LOG_COLOR: ${LOG_COLOR:-always}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      BLOB_STORAGE_MAX_GB: ${BLOB_STORAGE_MAX_GB:-50}
+      BLOB_STORAGE_TARGET_GB: ${BLOB_STORAGE_TARGET_GB:-35}
+      ORIGINAL_HOT_MIN_RETENTION_DAYS: ${ORIGINAL_HOT_MIN_RETENTION_DAYS:-30}
+      BLOB_MAINTENANCE_INTERVAL_MINUTES: ${BLOB_MAINTENANCE_INTERVAL_MINUTES:-15}
+      R2_MAX_GB: ${R2_MAX_GB:-8}
+      R2_TARGET_GB: ${R2_TARGET_GB:-6}
+      R2_CLASS_A_SOFT_LIMIT: ${R2_CLASS_A_SOFT_LIMIT:-800000}
+      R2_CLASS_B_SOFT_LIMIT: ${R2_CLASS_B_SOFT_LIMIT:-8000000}
+    ports:
+      - "${API_PORT:-8080}:8080"
+    volumes:
+      - ./services/api/tmp/cache:/var/lib/baby-album/cache
+      - ./services/api/tmp/r2:/var/lib/baby-album/r2
+
+  baby-album-web:
+    container_name: baby-album-web
+    image: node:24-alpine
+    depends_on:
+      - baby-album-api
+    working_dir: /app
+    command: sh -lc "if [ ! -d node_modules/.bin ]; then npm ci; fi; npm run dev -- --hostname 0.0.0.0 --port 3000"
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://192.168.31.200:8080}
+      INTERNAL_API_BASE_URL: http://baby-album-api:8080
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    volumes:
+      - ./apps/web:/app
+      - web-node-modules:/app/node_modules
+      - web-next-cache:/app/.next
+
+volumes:
+  postgres-data:
+  web-node-modules:
+  web-next-cache:
